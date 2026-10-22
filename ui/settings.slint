@@ -1,0 +1,1150 @@
+import { Button, CheckBox, ComboBox, ListView, ScrollView, Slider, SpinBox } from "std-widgets.slint";
+import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell } from "common.slint";
+import { VM, TabButton } from "version_manager.slint";
+
+export struct ToggleItem {
+    env: string,
+    label: string,
+    hint: string,
+    on: bool,
+}
+
+// A row of the Games tab: one library game and its emulator pin.
+export struct GameConfigRow {
+    name: string,
+    serial: string,
+    game-version: string,
+    emu: string,         // "None", the pinned build's name, "<name> (missing)", or "-" for a game without a serial
+    emu-missing: bool,   // the pinned exe is gone
+    pinned: bool,
+    can-config: bool,    // false without a title id: no pin and no per-game settings
+    icon: image,
+}
+
+// A build the pin picker lists (every installed build, not filtered by the Version Manager's search).
+export struct BuildChoice {
+    name: string,
+    path: string,
+}
+
+// Sizes shared by the form rows, so the controls of every group line up.
+global Form {
+    out property <length> label-w: 150px; // the "Label:" column
+    out property <length> row-h: 30px;
+    out property <length> gap: 10px;      // between groups, and between the two columns
+}
+
+// A titled group: a thin frame with its title sitting on the top edge.
+component Card inherits VerticalLayout {
+    in property <string> title;
+    padding-top: 8px; // room for the title, which rises above the frame
+    Rectangle {
+        border-width: 1px;
+        border-color: #343b48;
+        border-radius: 4px;
+        VerticalLayout {
+            padding: 12px;
+            padding-top: 16px;
+            spacing: 8px;
+            alignment: start;
+            @children
+        }
+        // The title covers the border behind it.
+        Rectangle {
+            x: 10px;
+            y: -8px;
+            width: title-text.preferred-width + 8px;
+            height: 16px;
+            background: Theme.bg;
+            title-text := Text {
+                x: 4px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: root.title;
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// One of the two columns of a tab; both get the same width.
+component Column inherits VerticalLayout {
+    horizontal-stretch: 1;
+    preferred-width: 0px;
+    alignment: start;
+    spacing: Form.gap;
+}
+
+// "Label:" and its control(s), which fill the rest of the row.
+component FormRow inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 8px;
+    min-height: Form.row-h;
+    Text {
+        width: Form.label-w;
+        text: root.label + ":";
+        color: Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    @children
+}
+
+// A text setting.
+component Field inherits FormRow {
+    in property <string> placeholder;
+    in-out property <string> text <=> edit.text;
+    edit := ThemedEdit {
+        horizontal-stretch: 1;
+        placeholder: root.placeholder;
+    }
+}
+
+// A folder or file setting with Browse.
+component PathField inherits FormRow {
+    in property <string> placeholder;
+    in-out property <string> text <=> edit.text;
+    callback browse();
+    edit := ThemedEdit {
+        horizontal-stretch: 1;
+        placeholder: root.placeholder;
+    }
+    Button {
+        text: "Browse…";
+        clicked => { root.browse(); }
+    }
+}
+
+// A row of the game folder list: a kind tag, then the path.
+component FolderRow inherits Rectangle {
+    in property <string> path;
+    in property <bool> selected: false;
+    callback clicked();
+    height: 26px;
+    border-radius: 3px;
+    background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 52px;
+                height: 18px;
+                border-radius: 3px;
+                background: #1f3550;
+                Text {
+                    text: "Game";
+                    color: Theme.text;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.path;
+            color: Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// A row of the Games tab, laid out like a library row.
+component GameConfigRowView inherits Rectangle {
+    in property <GameConfigRow> game;
+    in property <bool> selected;
+    in property <length> name-w;
+    in property <length> serial-w;
+    in property <length> version-w;
+    in property <length> emu-w;
+    callback clicked();
+    callback double-clicked();
+    callback menu(length, length); // right-click, in window coordinates
+    height: 42px;
+    background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.row-outline;
+
+    HorizontalLayout {
+        spacing: 0px;
+        padding-left: 10px;
+        padding-right: 10px;
+        HorizontalLayout {
+            width: root.name-w;
+            padding-left: 6px;
+            padding-right: 8px;
+            spacing: 8px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    background: Theme.log-bg;
+                    clip: true;
+                    Image {
+                        source: root.game.icon;
+                        image-fit: cover;
+                        width: parent.width;
+                        height: parent.height;
+                    }
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                text: root.game.name;
+                color: Theme.text;
+                font-size: 13px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+        }
+        TextCell { w: root.serial-w; text: root.game.serial == "" ? "—" : root.game.serial; }
+        TextCell { w: root.version-w; text: root.game.game-version == "" ? "—" : root.game.game-version; }
+        TextCell {
+            w: root.emu-w;
+            text: root.game.emu;
+            color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+                root.clicked();
+                root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+}
+
+// Grey help text inside a group.
+component Hint inherits Text {
+    color: Theme.muted;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+// An on/off setting: a checkbox, its hint in grey after it, the variable or flag in the tooltip.
+// `indent` lines it up with the controls of the label rows above it.
+component ToggleRow inherits Rectangle {
+    in property <ToggleItem> item;
+    in property <bool> indent: false;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    HorizontalLayout {
+        spacing: 8px;
+        min-height: 26px;
+        if root.indent: Rectangle { width: Form.label-w; }
+        CheckBox {
+            text: root.item.label;
+            enabled: root.enabled;
+            checked: root.item.on;
+            toggled => { root.toggled(self.checked); }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.item.hint;
+            color: Theme.faint;
+            font-size: 11px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    if root.item.env != "": Tooltip {
+        text: @markdown("`\{root.item.env}`");
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <color> base: Theme.accent;
+    in property <color> hover: Theme.accent-hover;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 32px;
+    border-radius: 4px;
+    background: !root.enabled ? #2a303b : touch.has-hover ? root.hover : root.base;
+    animate background { duration: 120ms; }
+    Text {
+        overflow: elide;
+        text: root.text;
+        color: root.enabled ? white : Theme.faint;
+        font-size: 13px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The Settings page. The window keeps the values (the C++ side talks to it) and binds them to these.
+export component SettingsPage inherits VerticalLayout {
+    in-out property <bool> amd-cpu;
+    in-out property <bool> cmd-dump;
+    in-out property <string> cmd-dump-folder;
+    in-out property <int> console-language;
+    in-out property <string> extra-args;
+    in property <[string]> game-dir-list;
+    in-out property <int> game-dir-selected;
+    in-out property <string> gpu-text;
+    // General and Controller cards (the Qt launcher's options, same defaults).
+    in-out property <bool> fullscreen;
+    in-out property <bool> hide-cursor;
+    in-out property <bool> perf-panel;
+    in-out property <bool> skip-boot-logos;
+    in-out property <bool> trophy: true;
+    in-out property <int> trophy-duration: 6; // seconds
+    in-out property <string> controller-color; // "#rrggbb", empty = the default lightbar
+    in property <color> controller-swatch; // controller-color as a colour (the C++ side parses it)
+    in-out property <float> controller-vibration: 100;
+    in-out property <float> controller-volume: 50;
+    in-out property <int> keyboard-player: 0;
+    in-out property <bool> hdr;
+    in-out property <string> height-text;
+    in property <bool> is-windows;
+    // Per-game mode: the page edits one game's overrides (the C++ side loads the game's resolved values into
+    // the same properties) and hides the launcher-only settings.
+    in property <bool> game-mode;
+    in property <string> game-mode-name;
+    in property <string> game-mode-serial;
+    // Games tab.
+    in property <[GameConfigRow]> game-configs;
+    in-out property <int> games-selected: -1;
+    in-out property <length> gw-name: 300px;
+    in-out property <length> gw-serial: 110px;
+    in-out property <length> gw-version: 110px;
+    in-out property <length> gw-emu: 280px;
+    in-out property <string> microphone;
+    in-out property <int> present-mode;
+    in-out property <int> printf-dir;
+    in-out property <string> printf-file;
+    in-out property <bool> profiler;
+    in-out property <bool> readback;
+    in-out property <bool> readback-tiled;
+    in-out property <bool> network-connected;
+    in-out property <string> addons-dir;
+    in-out property <bool> red-zone;
+    in-out property <bool> renderdoc;
+    in-out property <string> run-dir;
+    in property <bool> running;
+    in-out property <int> settings-tab;
+    in-out property <int> shader-log;
+    in-out property <string> shader-log-folder;
+    in-out property <int> shader-opt;
+    in-out property <bool> shader-validation;
+    in-out property <bool> sync-raw;
+    in-out property <bool> tessellation;
+    in-out property <string> user-id-text;
+    in-out property <string> user-name;
+    in-out property <string> vblank-text;
+    in-out property <bool> vulkan-validation;
+    in property <int> recommended-size; // the Window size preset that matches the monitor (-1: none)
+    in-out property <string> width-text;
+    // Window size picker: the matching preset, or 5 (Custom) when the size isn't a preset.
+    in-out property <int> size-index: width-text == "1280" && height-text == "720" ? 0
+        : width-text == "1600" && height-text == "900" ? 1
+        : width-text == "1920" && height-text == "1080" ? 2
+        : width-text == "2560" && height-text == "1440" ? 3
+        : width-text == "3840" && height-text == "2160" ? 4 : 5;
+
+    callback back();
+    callback browse-game-dir();
+    callback browse-run-dir();
+    callback delete-cache-requested();
+    callback dry-run();
+    callback open-versions();
+    callback play();
+    callback remove-game-dir(int);
+    callback save();
+    callback stop();
+    callback controller-color-edited(string);
+    callback browse-addons-dir();
+    callback import-ini();                   // Paths: "Import from Kyty.ini..." (the app shows the file picker)
+    // Goes back to the library; edits already made stay until the launcher closes.
+    callback discard();
+    callback games-opened();                 // the Games tab was shown: refresh its rows
+    callback open-game-settings(int);        // Games tab row -> per-game mode
+    callback clear-game-emu(int);            // pin "None"
+    callback pick-game-emu(int);             // "Set Emu..." (the window shows the picker)
+    callback reset-game();                   // per-game mode: drop the game's overrides
+
+    changed settings-tab => {
+        if (self.settings-tab == 4) {
+            root.games-opened();
+        }
+    }
+
+    padding: 12px;
+    padding-top: 10px;
+    spacing: 10px;
+
+    // Tabs, and the way back to the library.
+    HorizontalLayout {
+        spacing: 2px;
+        for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
+            text: tab;
+            active: i == root.settings-tab;
+            clicked => { root.settings-tab = i; }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: "← Library";
+            clicked => { root.back(); }
+        }
+    }
+
+    // Per-game mode: which game is being edited.
+    if root.game-mode: Rectangle {
+        height: 30px;
+        background: #1f3550;
+        border-radius: 4px;
+        Text {
+            x: 12px;
+            width: parent.width - 24px;
+            height: parent.height;
+            text: "Editing settings for " + root.game-mode-name + " (" + root.game-mode-serial + ") - only changes from your global settings are saved";
+            color: Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // One tab at a time, each two columns of groups.
+    if root.settings-tab == 0: general-view := ScrollView {
+        vertical-stretch: 1;
+        content-width: self.visible-width;
+        HorizontalLayout {
+            width: general-view.visible-width;
+            padding-right: 12px;
+            spacing: Form.gap;
+            Column {
+                Card {
+                    title: "User profile";
+                    Field {
+                        label: "User name";
+                        placeholder: "Kyty";
+                        text <=> root.user-name;
+                    }
+                    Field {
+                        label: "User ID";
+                        placeholder: "1000";
+                        text <=> root.user-id-text;
+                    }
+                    FormRow {
+                        label: "Console language";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["Japanese", "English (United States)", "French (France)", "Spanish (Spain)", "German", "Italian", "Dutch", "Portuguese (Portugal)", "Russian", "Korean", "Chinese (Traditional)", "Chinese (Simplified)", "Finnish", "Swedish", "Danish", "Norwegian", "Polish", "Portuguese (Brazil)", "English (United Kingdom)", "Turkish", "Spanish (Latin America)", "Arabic", "French (Canada)", "Czech", "Hungarian", "Greek", "Romanian", "Thai", "Vietnamese", "Indonesian"];
+                            current-index <=> root.console-language;
+                        }
+                    }
+                }
+                Card {
+                    title: "Audio";
+                    Field {
+                        label: "Microphone";
+                        placeholder: "None (or the device name)";
+                        text <=> root.microphone;
+                    }
+                }
+                if !root.game-mode: Card {
+                    title: "Paths";
+                    PathField {
+                        label: "Run folder";
+                        text <=> root.run-dir;
+                        browse => { root.browse-run-dir(); }
+                    }
+                    Hint {
+                        text: "Save data, flags.ctl and the logs go in the run folder.";
+                    }
+                    FormRow {
+                        label: "Add-ons folder";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "None (--addcont-dir)";
+                            text <=> root.addons-dir;
+                        }
+                        Button {
+                            text: "Browse…";
+                            clicked => { root.browse-addons-dir(); }
+                        }
+                        Button {
+                            text: "Clear";
+                            enabled: root.addons-dir != "";
+                            clicked => { root.addons-dir = ""; }
+                        }
+                    }
+                    Hint {
+                        text: "One folder holding the extracted add-ons (DLC), shared by every game.";
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: "Import from Kyty.ini…";
+                            clicked => { root.import-ini(); }
+                        }
+                    }
+                    Hint {
+                        text: "Brings over the settings of the old Qt launcher. Only the values the file holds are replaced.";
+                    }
+                    FormRow {
+                        label: "Save versions to";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            text <=> VM.versions-path;
+                            // Enter applies the typed folder, like Browse does.
+                            accepted => { VM.refresh-installed(); }
+                        }
+                        Button {
+                            text: "Browse…";
+                            clicked => { VM.browse-path(); }
+                        }
+                    }
+                }
+                if !root.game-mode: Card {
+                    title: "Game folders";
+                    Rectangle {
+                        height: 160px;
+                        background: #0b0e14;
+                        border-width: 1px;
+                        border-radius: 4px;
+                        border-color: Theme.card-border;
+                        clip: true;
+                        ScrollView {
+                            VerticalLayout {
+                                alignment: start;
+                                padding: 4px;
+                                for dir[i] in root.game-dir-list: FolderRow {
+                                    path: dir;
+                                    selected: i == root.game-dir-selected;
+                                    clicked => { root.game-dir-selected = i; }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        IconButton {
+                            width: 32px;
+                            height: 32px;
+                            icon: @image-url("icons/folder-add.svg");
+                            tooltip: "Add a game folder";
+                            clicked => { root.browse-game-dir(); }
+                        }
+                        IconButton {
+                            width: 32px;
+                            height: 32px;
+                            icon: @image-url("icons/remove-configuration.svg");
+                            tooltip: "Remove the selected folder";
+                            enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dir-list.length;
+                            clicked => { root.remove-game-dir(root.game-dir-selected); }
+                        }
+                    }
+                }
+
+            }
+            Column {
+                Card {
+                    title: "Compatibility";
+                    ToggleRow {
+                        item: { env: "--amd-cpu", label: "AMD CPU patch (experimental)", hint: "", on: root.amd-cpu };
+                        toggled(on) => { root.amd-cpu = on; }
+                    }
+                    // Windows only: shown everywhere, greyed out elsewhere.
+                    ToggleRow {
+                        enabled: root.is-windows;
+                        item: { env: "--redzone", label: "Windows SysV red zone crash protection (experimental)", hint: root.is-windows ? "" : "Windows only", on: root.red-zone };
+                        toggled(on) => { root.red-zone = on; }
+                    }
+                }
+                Card {
+                    title: "General";
+                    ToggleRow {
+                        item: { env: "--fullscreen", label: "Run in fullscreen", hint: "", on: root.fullscreen };
+                        toggled(on) => { root.fullscreen = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--hide-cursor", label: "Auto-hide cursor", hint: "", on: root.hide-cursor };
+                        toggled(on) => { root.hide-cursor = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--perf-overlay (F2 toggles it, Shift+F2 shows the detailed view)", label: "Show performance panel", hint: "", on: root.perf-panel };
+                        toggled(on) => { root.perf-panel = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--skip-notice-screen", label: "Skip boot logos", hint: "", on: root.skip-boot-logos };
+                        toggled(on) => { root.skip-boot-logos = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--network-connected", label: "Network connected", hint: "", on: root.network-connected };
+                        toggled(on) => { root.network-connected = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--no-trophy-notifications", label: "Enable trophy notifications", hint: "", on: root.trophy };
+                        toggled(on) => { root.trophy = on; }
+                    }
+                    FormRow {
+                        label: "Trophy duration";
+                        SpinBox {
+                            width: 90px;
+                            minimum: 5;
+                            maximum: 10;
+                            enabled: root.trophy;
+                            value <=> root.trophy-duration;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: "s";
+                            color: Theme.text;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                Card {
+                    title: "Controller";
+                    FormRow {
+                        label: "DualSense lightbar";
+                        // The colour as hex text, with a swatch of it; empty (or not a colour) = the default lightbar.
+                        Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            y: (parent.height - self.height) / 2;
+                            border-width: 1px;
+                            border-radius: 4px;
+                            border-color: Theme.card-border;
+                            background: root.controller-swatch;
+                        }
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "Default (#RRGGBB)";
+                            text <=> root.controller-color;
+                            edited(text) => { root.controller-color-edited(text); }
+                        }
+                        Button {
+                            text: "Default";
+                            enabled: root.controller-color != "";
+                            clicked => {
+                                root.controller-color = "";
+                                root.controller-color-edited("");
+                            }
+                        }
+                    }
+                    FormRow {
+                        label: "Vibration intensity";
+                        Slider {
+                            horizontal-stretch: 1;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.controller-vibration;
+                        }
+                        Text {
+                            width: 40px;
+                            text: round(root.controller-vibration) + "%";
+                            color: Theme.text;
+                            font-size: 13px;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                    FormRow {
+                        label: "Speaker volume";
+                        Slider {
+                            horizontal-stretch: 1;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.controller-volume;
+                        }
+                        Text {
+                            width: 40px;
+                            text: round(root.controller-volume) + "%";
+                            color: Theme.text;
+                            font-size: 13px;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                    FormRow {
+                        label: "Keyboard player";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["Shared with player 1 (default)", "Player 1", "Player 2", "Player 3", "Player 4"];
+                            current-index <=> root.keyboard-player;
+                        }
+                    }
+                }
+                if !root.game-mode: Card {
+                    title: "Emulator builds";
+                    Hint {
+                        text: "Downloaded and custom emulator builds are managed in the Version Manager.";
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: "Open Version Manager";
+                            clicked => { root.open-versions(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.settings-tab == 1: graphics-view := ScrollView {
+        vertical-stretch: 1;
+        content-width: self.visible-width;
+        HorizontalLayout {
+            width: graphics-view.visible-width;
+            padding-right: 12px;
+            spacing: Form.gap;
+            Column {
+                Card {
+                    title: "Graphics & display";
+                    FormRow {
+                        label: "Screen resolution";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: [
+                                "1280 x 720" + (root.recommended-size == 0 ? " (recommended)" : ""),
+                                "1600 x 900" + (root.recommended-size == 1 ? " (recommended)" : ""),
+                                "1920 x 1080" + (root.recommended-size == 2 ? " (recommended)" : ""),
+                                "2560 x 1440" + (root.recommended-size == 3 ? " (recommended)" : ""),
+                                "3840 x 2160" + (root.recommended-size == 4 ? " (recommended)" : ""),
+                                "Custom"
+                            ];
+                            current-index <=> root.size-index;
+                            selected(value) => {
+                                if (self.current-index == 0) { root.width-text = "1280"; root.height-text = "720"; }
+                                else if (self.current-index == 1) { root.width-text = "1600"; root.height-text = "900"; }
+                                else if (self.current-index == 2) { root.width-text = "1920"; root.height-text = "1080"; }
+                                else if (self.current-index == 3) { root.width-text = "2560"; root.height-text = "1440"; }
+                                else if (self.current-index == 4) { root.width-text = "3840"; root.height-text = "2160"; }
+                            }
+                        }
+                    }
+                    if root.size-index == 5: FormRow {
+                        label: "Custom size";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "width";
+                            text <=> root.width-text;
+                        }
+                        Text {
+                            text: "x";
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "height";
+                            text <=> root.height-text;
+                        }
+                    }
+                    FormRow {
+                        label: "Present mode";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["Fifo", "Mailbox", "Immediate"];
+                            current-index <=> root.present-mode;
+                        }
+                    }
+                    Field {
+                        label: "Vblank frequency";
+                        placeholder: "60";
+                        text <=> root.vblank-text;
+                    }
+                    FormRow {
+                        label: "Shader optimization";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["None", "Size", "Performance"];
+                            current-index <=> root.shader-opt;
+                        }
+                    }
+                    Field {
+                        label: "GPU";
+                        placeholder: "Auto";
+                        text <=> root.gpu-text;
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--readback-linear-images", label: "Enable readback", hint: "", on: root.readback };
+                        toggled(on) => { root.readback = on; }
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--readback-tiled-images", label: "Enable tiled image readback", hint: "", on: root.readback-tiled };
+                        toggled(on) => { root.readback-tiled = on; }
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--tessellation", label: "Enable tessellation support (experimental)", hint: "", on: root.tessellation };
+                        toggled(on) => { root.tessellation = on; }
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--hdr", label: "Enable HDR display support", hint: "", on: root.hdr };
+                        toggled(on) => { root.hdr = on; }
+                    }
+                }
+            }
+            Column {}
+        }
+    }
+
+    if root.settings-tab == 2: advanced-view := ScrollView {
+        vertical-stretch: 1;
+        content-width: self.visible-width;
+        HorizontalLayout {
+            width: advanced-view.visible-width;
+            padding-right: 12px;
+            spacing: Form.gap;
+            Column {
+                Card {
+                    title: "Launch";
+                    Field {
+                        label: "Extra arguments";
+                        placeholder: "e.g. --no-async-pipelines";
+                        text <=> root.extra-args;
+                    }
+                }
+                if !root.game-mode: Card {
+                    title: "GitHub token";
+                    Hint {
+                        text: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. "
+                            + (VM.gh-token-storable
+                                ? "A saved token is encrypted in the system credential store and can't be shown again: clear it to replace it."
+                                : "This system has no supported credential store yet, so the token lasts until the launcher closes.");
+                    }
+                    if !VM.gh-token-set: VerticalLayout {
+                        spacing: 8px;
+                        FormRow {
+                            label: "Token";
+                            token-edit := ThemedEdit {
+                                horizontal-stretch: 1;
+                                input-type: InputType.password;
+                                placeholder: "ghp_… or github_pat_…";
+                                accepted => {
+                                    VM.gh-token-changed(self.text);
+                                    self.text = "";
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Rectangle { width: Form.label-w; }
+                            Button {
+                                text: "Save";
+                                primary: true;
+                                enabled: token-edit.text != "";
+                                clicked => {
+                                    VM.gh-token-changed(token-edit.text);
+                                    token-edit.text = "";
+                                }
+                            }
+                        }
+                    }
+                    if VM.gh-token-set: FormRow {
+                        label: "Token";
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            // Only the start of the token, to tell which one is saved.
+                            Rectangle {
+                                background: Theme.card;
+                                border-color: Theme.card-border;
+                                border-width: 1px;
+                                border-radius: 6px;
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    padding-top: 5px;
+                                    padding-bottom: 5px;
+                                    Text {
+                                        text: VM.gh-token-hint;
+                                        font-family: "Consolas";
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            Text {
+                                text: VM.gh-token-storable ? "Encrypted" : "This session only";
+                                color: Theme.muted;
+                                vertical-alignment: center;
+                            }
+                            Button {
+                                text: "Clear";
+                                clicked => { VM.gh-token-changed(""); }
+                            }
+                        }
+                    }
+                }
+                if !root.game-mode: Card {
+                    title: "Release list cache";
+                    Hint {
+                        text: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: "Delete cache";
+                            enabled: !VM.busy;
+                            clicked => { root.delete-cache-requested(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.settings-tab == 3: debug-view := ScrollView {
+        vertical-stretch: 1;
+        content-width: self.visible-width;
+        HorizontalLayout {
+            width: debug-view.visible-width;
+            padding-right: 12px;
+            spacing: Form.gap;
+            Column {
+                Card {
+                    title: "Debug";
+                    ToggleRow {
+                        item: { env: "--vulkan-validation", label: "Vulkan validation", hint: "", on: root.vulkan-validation };
+                        toggled(on) => { root.vulkan-validation = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--shader-validation", label: "Shader validation", hint: "", on: root.shader-validation };
+                        toggled(on) => { root.shader-validation = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--rd", label: "RenderDoc capture", hint: "", on: root.renderdoc };
+                        toggled(on) => { root.renderdoc = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--command-buffer-dump", label: "Command buffer dump", hint: "", on: root.cmd-dump };
+                        toggled(on) => { root.cmd-dump = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--profile", label: "Tracy profiler", hint: "", on: root.profiler };
+                        toggled(on) => { root.profiler = on; }
+                    }
+                }
+            }
+            Column {
+                Card {
+                    title: "Logging";
+                    FormRow {
+                        label: "Shader logging";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["Silent", "Console", "File"];
+                            current-index <=> root.shader-log;
+                        }
+                    }
+                    Field {
+                        label: "Shader log folder";
+                        placeholder: "<run folder>\\shaders";
+                        text <=> root.shader-log-folder;
+                    }
+                    FormRow {
+                        label: "Printf output";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: ["Silent", "Console", "File"];
+                            current-index <=> root.printf-dir;
+                        }
+                    }
+                    Field {
+                        label: "Printf output file";
+                        placeholder: "_kyty.txt";
+                        text <=> root.printf-file;
+                    }
+                    Field {
+                        label: "Command buffer folder";
+                        placeholder: "_Buffers";
+                        text <=> root.cmd-dump-folder;
+                    }
+                }
+            }
+        }
+    }
+
+    // Games: every library game with its emulator pin; each can also open its own settings.
+    if root.settings-tab == 4 && !root.game-mode: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 8px;
+        Hint {
+            text: "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
+        }
+        games-box := Rectangle {
+            vertical-stretch: 1;
+            background: Theme.bg;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            clip: true;
+            // Right-click menu of the selected row (the row selects itself first).
+            games-menu := ContextMenuArea {
+                x: 0px;
+                y: 0px;
+                width: 0px;
+                height: 0px;
+                Menu {
+                    MenuItem {
+                        title: "Game settings…";
+                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
+                        activated => { root.open-game-settings(root.games-selected); }
+                    }
+                    MenuItem {
+                        title: "None";
+                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
+                        activated => { root.clear-game-emu(root.games-selected); }
+                    }
+                    MenuItem {
+                        title: "Set Emu…";
+                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
+                        activated => { root.pick-game-emu(root.games-selected); }
+                    }
+                }
+            }
+            VerticalLayout {
+                padding: 1px;
+                // The header follows the rows' horizontal scroll.
+                Rectangle {
+                    height: 28px;
+                    background: #0b0e14d9;
+                    clip: true;
+                    HorizontalLayout {
+                        x: games-table.content-x;
+                        width: 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu;
+                        height: parent.height;
+                        spacing: 0px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        HeaderCell { text: "Game"; w <=> root.gw-name; }
+                        HeaderCell { text: "Serial"; w <=> root.gw-serial; }
+                        HeaderCell { text: "Game Version"; w <=> root.gw-version; }
+                        HeaderCell { text: "Emu"; w <=> root.gw-emu; }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.card-border;
+                    }
+                }
+                games-table := ListView {
+                    vertical-stretch: 1;
+                    content-width: max(self.visible-width, 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu);
+                    for game[index] in root.game-configs: GameConfigRowView {
+                        width: 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu;
+                        game: game;
+                        name-w: root.gw-name;
+                        serial-w: root.gw-serial;
+                        version-w: root.gw-version;
+                        emu-w: root.gw-emu;
+                        selected: index == root.games-selected;
+                        clicked => { root.games-selected = index; }
+                        double-clicked => {
+                            if (game.can-config) {
+                                root.open-game-settings(index);
+                            }
+                        }
+                        menu(x, y) => {
+                            games-menu.show({ x: x - games-menu.absolute-position.x, y: y - games-menu.absolute-position.y });
+                        }
+                    }
+                }
+            }
+            if root.game-configs.length == 0: Text {
+                text: "No games in the library. Add a game folder in General.";
+                color: Theme.muted;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Button {
+                text: "Game settings…";
+                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
+                clicked => { root.open-game-settings(root.games-selected); }
+            }
+            Button {
+                text: "None";
+                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
+                clicked => { root.clear-game-emu(root.games-selected); }
+            }
+            Button {
+                text: "Set Emu…";
+                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
+                clicked => { root.pick-game-emu(root.games-selected); }
+            }
+        }
+    }
+
+    // Bottom bar: run on the left, save on the right. (Games tab: nothing to save there, pins apply at once.)
+    if !(root.settings-tab == 4 && !root.game-mode): HorizontalLayout {
+        spacing: 8px;
+        if !root.game-mode: ActionButton {
+            width: 110px;
+            text: root.running ? "Stop" : "Play";
+            base: root.running ? Theme.danger : Theme.accent;
+            hover: root.running ? Theme.danger-hover : Theme.accent-hover;
+            clicked => {
+                if (root.running) {
+                    root.stop();
+                } else {
+                    root.play();
+                }
+            }
+        }
+        if !root.game-mode: Button {
+            text: "Dry run";
+            clicked => { root.dry-run(); }
+        }
+        // Per-game mode: deletes the game's overrides (its emulator pin stays).
+        if root.game-mode: Button {
+            text: "Reset to global";
+            clicked => { root.reset-game(); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        // Drops the unsaved changes and goes back to the library.
+        Button {
+            width: 110px;
+            text: "Discard";
+            clicked => {
+                root.discard();
+                root.back();
+            }
+        }
+        Button {
+            width: 110px;
+            text: "Save";
+            primary: true;
+            clicked => { root.save(); }
+        }
+    }
+}

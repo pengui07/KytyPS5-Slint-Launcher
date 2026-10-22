@@ -1,0 +1,334 @@
+// Colours and table cells shared by the pages.
+
+export global Theme {
+    // 0 unknown, 1 in game, 2 main menu, 3 logo, 4 doesn't boot
+    public pure function status-color(code: int) -> color {
+        return code == 1 ? #30a46c : code == 2 ? #3d8bfd : code == 3 ? #f5a524 : code == 4 ? #e5484d : #5d6878;
+    }
+    out property <color> row-hover: #ffffff0f;
+    out property <color> row-selected: #ffffff1a;
+    out property <color> row-outline: #e7ecf3cc;
+    out property <color> card-glass: #181c24b8;
+    out property <color> bg: #0f1218;
+    out property <color> card: #181c24;
+    out property <color> card-border: #252b36;
+    out property <color> text: #e7ecf3;
+    out property <color> muted: #8a97a8;
+    out property <color> faint: #5d6878;
+    out property <color> accent: #3d8bfd;
+    out property <color> accent-hover: #5a9dff;
+    out property <color> danger: #e5484d;
+    out property <color> danger-hover: #f06065;
+    out property <color> log-bg: #0b0d12;
+}
+
+export // One fixed-width table cell; long text is cut with an ellipsis.
+component TextCell inherits HorizontalLayout {
+    in property <length> w;
+    in property <string> text;
+    in property <color> color: Theme.text;
+    in property <bool> bold: false;
+    width: root.w;
+    padding-left: 8px;
+    padding-right: 8px;
+    Text {
+        horizontal-stretch: 1;
+        min-width: 0px;
+        text: root.text;
+        color: root.color;
+        font-size: 13px;
+        font-weight: root.bold ? 700 : 400;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+export // Header cell with a drag grip on its right edge.
+component HeaderCell inherits Rectangle {
+    in property <string> text;
+    in-out property <length> w;
+    in property <string> tooltip; // shown after hovering for a moment
+    width: root.w;
+    Text {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        text: root.text;
+        color: Theme.muted;
+        font-size: 12px;
+        font-weight: 600;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Rectangle {
+        x: parent.width - 1px;
+        y: 5px;
+        width: 1px;
+        height: parent.height - 10px;
+        background: grip.has-hover || grip.pressed ? Theme.accent : Theme.card-border;
+    }
+    grip := TouchArea {
+        x: parent.width - 6px;
+        width: 6px;
+        mouse-cursor: col-resize;
+        // The grip moves with the edge, so each move adds the delta since the last one.
+        moved => {
+            if (self.pressed) {
+                root.w = max(40px, root.w + self.mouse-x - self.pressed-x);
+            }
+        }
+    }
+    if root.tooltip != "": Tooltip {
+        text: @markdown("\{root.tooltip}");
+    }
+}
+
+// Text field whose example text is dark and see-through (LineEdit's placeholder colour can't be set).
+export component ThemedEdit inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> editable: true;
+    in property <InputType> input-type: InputType.text; // password hides what is typed
+    in-out property <string> text <=> input.text;
+    out property <bool> has-focus: input.has-focus;
+    callback accepted();
+    callback edited(string); // the text changed by typing
+    min-width: 60px;
+    height: 32px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: input.has-focus ? Theme.accent : Theme.card-border;
+    background: #0b0e14;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        // Clipped, and the text scrolls to keep the cursor in view (as std-widgets' LineEdit does).
+        Rectangle {
+            horizontal-stretch: 1;
+            min-width: 1px;
+            clip: true;
+            input := TextInput {
+                property <length> computed-x;
+                x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+                width: max(parent.width - self.text-cursor-width, self.preferred-width);
+                height: 100%;
+                cursor-position-changed(pos) => {
+                    if pos.x + self.computed-x < 0px {
+                        self.computed-x = -pos.x;
+                    } else if pos.x + self.computed-x > parent.width - self.text-cursor-width {
+                        self.computed-x = parent.width - pos.x - self.text-cursor-width;
+                    }
+                }
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+                single-line: true;
+                enabled: root.editable;
+                input-type: root.input-type;
+                accepted => { root.accepted(); }
+                edited => { root.edited(self.text); }
+            }
+            Text {
+                visible: input.text == "";
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                color: #4a5566b3;
+                font-size: 13px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> enabled: true;
+    in property <length> icon-size: 22px;
+    in property <string> tooltip; // shown after hovering for a moment
+    callback clicked();
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: icon-touch.has-hover && root.enabled ? #1e2533 : transparent;
+    animate background { duration: 100ms; }
+    Image {
+        source: root.icon;
+        colorize: root.enabled ? Theme.text : Theme.faint;
+        width: root.icon-size;
+        height: root.icon-size;
+    }
+    icon-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if root.tooltip != "": Tooltip {
+        text: @markdown("\{root.tooltip}");
+    }
+}
+
+// A name edited in place: Enter or clicking away keeps the change, Escape drops it.
+export component InlineEdit inherits Rectangle {
+    in property <string> text;
+    callback done(string);   // the new text, only when it changed
+    callback cancelled();
+    property <bool> finished: false;
+    min-width: 90px;
+    background: #0b0e14;
+    border-width: 1px;
+    border-color: Theme.accent;
+    border-radius: 3px;
+    Rectangle {
+        x: 6px;
+        width: parent.width - 12px;
+        height: parent.height;
+        clip: true;
+    input := TextInput {
+        property <length> computed-x;
+        x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+        width: max(parent.width - self.text-cursor-width, self.preferred-width);
+        height: 100%;
+        cursor-position-changed(pos) => {
+            if pos.x + self.computed-x < 0px {
+                self.computed-x = -pos.x;
+            } else if pos.x + self.computed-x > parent.width - self.text-cursor-width {
+                self.computed-x = parent.width - pos.x - self.text-cursor-width;
+            }
+        }
+        text: root.text;
+        color: Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        single-line: true;
+        accepted => { root.finish(); }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.finished = true;
+                root.cancelled();
+                return accept;
+            }
+            return reject;
+        }
+        changed has-focus => {
+            if (!self.has-focus) {
+                root.finish();
+            }
+        }
+    }
+    }
+    function finish() {
+        if (root.finished) {
+            return;
+        }
+        root.finished = true;
+        if (input.text != root.text) {
+            root.done(input.text);
+        } else {
+            root.cancelled();
+        }
+    }
+    init => {
+        input.focus();
+        input.select-all();
+    }
+}
+
+// A compact drop-down (std ComboBox cannot be made as short as a thin text field).
+// ">" chevron that turns by `angle` (90deg points down). Drawn as a path with its points rotated here,
+// because the software renderer ignores rotation-angle on an Image.
+export component Chevron inherits Path {
+    in property <angle> angle: 0deg;
+    in property <color> color: Theme.text;
+    viewbox-width: 32;
+    viewbox-height: 32;
+    stroke: root.color;
+    stroke-width: 1.6px;
+    stroke-line-cap: round;
+    fill: transparent;
+    // The icons/chevron-right.svg points (12,7) (21,16) (12,25), turned about the centre (16,16).
+    MoveTo {
+        x: 16 + (12 - 16) * cos(root.angle) - (7 - 16) * sin(root.angle);
+        y: 16 + (12 - 16) * sin(root.angle) + (7 - 16) * cos(root.angle);
+    }
+    LineTo {
+        x: 16 + (21 - 16) * cos(root.angle) - (16 - 16) * sin(root.angle);
+        y: 16 + (21 - 16) * sin(root.angle) + (16 - 16) * cos(root.angle);
+    }
+    LineTo {
+        x: 16 + (12 - 16) * cos(root.angle) - (25 - 16) * sin(root.angle);
+        y: 16 + (12 - 16) * sin(root.angle) + (25 - 16) * cos(root.angle);
+    }
+}
+
+export component Selector inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index: 0;
+    callback selected(int);
+    height: 26px;
+    min-width: 90px;
+    background: #0b0e14;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: touch.has-hover ? Theme.accent : Theme.card-border;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 6px;
+        Text {
+            horizontal-stretch: 1;
+            text: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
+            color: Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        VerticalLayout {
+            alignment: center;
+            Chevron {
+                color: Theme.muted;
+                width: 12px;
+                height: 12px;
+                angle: 90deg;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { popup.show(); }
+    }
+    popup := PopupWindow {
+        x: 0px;
+        y: root.height + 2px;
+        width: root.width;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: #141923;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            border-radius: 4px;
+            VerticalLayout {
+                padding: 3px;
+                for item[i] in root.model: Rectangle {
+                    height: 26px;
+                    border-radius: 3px;
+                    background: item-touch.has-hover ? Theme.row-hover : i == root.current-index ? #ffffff10 : transparent;
+                    Text {
+                        x: 8px;
+                        text: item;
+                        color: Theme.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    item-touch := TouchArea {
+                        clicked => {
+                            root.current-index = i;
+                            popup.close();
+                            root.selected(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
