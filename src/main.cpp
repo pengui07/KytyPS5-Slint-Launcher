@@ -5,6 +5,7 @@
 //   kyty_slint_launcher.exe --play           start the emulator with the saved settings (no window)
 
 #include "app.h"
+#include "input_mapping.h" // STEP6:6f: the Controls page's bindings and capture
 #include "launch.h"
 #include "library.h"
 #include "paths.h"
@@ -1168,6 +1169,191 @@ int main(int argc, char** argv)
 		    {
 			    ui->set_status(slint::SharedString("Could not reset the settings of " + game_mode_tid));
 		    }
+	    });
+
+	// ---- STEP6:6f: Controls page (keyboard/mouse and gamepad bindings) ----
+	// The page edits a working copy of Settings::host_input_mapping; Save writes it into `s` and saves the file.
+	auto input_mapping = std::make_shared<InputMapping>();
+	auto capture_timer = std::make_shared<slint::Timer>();
+	{
+		std::vector<slint::SharedString> labels;
+		for (const auto& source: InputMapping::Sources())
+		{
+			labels.push_back(slint::SharedString(source.label));
+		}
+		ui->global<Controls>().set_pad_sources(std::make_shared<slint::VectorModel<slint::SharedString>>(labels));
+	}
+	auto control_rows = [](const std::vector<ControlBinding>& rows)
+	{
+		std::vector<ControlRow> out;
+		out.reserve(rows.size());
+		for (const auto& r: rows)
+		{
+			ControlRow row;
+			row.id            = slint::SharedString(r.id);
+			row.label         = slint::SharedString(r.label);
+			row.binding       = slint::SharedString(r.binding);
+			row.section       = slint::SharedString(r.section);
+			row.section_start = r.section_start;
+			out.push_back(row);
+		}
+		return out;
+	};
+	// "1.5": one decimal without going through the locale's decimal point (snprintf %f would).
+	auto one_decimal = [](double v)
+	{
+		const int tenths = static_cast<int>(std::lround(v * 10.0));
+		char      buf[24];
+		std::snprintf(buf, sizeof(buf), "%d.%d", tenths / 10, tenths % 10);
+		return std::string(buf);
+	};
+	auto refresh_controls = [ui, input_mapping, control_rows]
+	{
+		auto& c = ui->global<Controls>();
+		c.set_gamepad_rows(std::make_shared<slint::VectorModel<ControlRow>>(control_rows(input_mapping->Rows(true))));
+		c.set_keyboard_rows(std::make_shared<slint::VectorModel<ControlRow>>(control_rows(input_mapping->Rows(false))));
+	};
+	auto stop_controls_capture = [ui, input_mapping, capture_timer]
+	{
+		capture_timer->stop();
+		input_mapping->CancelCapture();
+		auto& c = ui->global<Controls>();
+		c.set_listening(false);
+		c.set_capture_id("");
+		c.set_capture_label("");
+		c.set_capture_message("");
+	};
+	ui->global<Controls>().on_opened(
+	    [&]
+	    {
+		    auto& c = ui->global<Controls>();
+		    input_mapping->Load(s);
+		    c.set_tab(0);
+		    c.set_listening(false);
+		    c.set_capture_id("");
+		    c.set_capture_label("");
+		    c.set_capture_message("");
+		    c.set_notice("");
+		    c.set_sensitivity(static_cast<float>(input_mapping->Sensitivity()));
+		    c.set_sensitivity_text(slint::SharedString(one_decimal(input_mapping->Sensitivity()) + "\xc3\x97"));
+		    c.set_skin_index(input_mapping->SkinIndex());
+		    c.set_show_cursor(input_mapping->ShowCursor());
+		    c.set_status(slint::SharedString(input_mapping->PadStatus()));
+		    refresh_controls();
+	    });
+	// A click on a binding starts a capture: the timer polls the keyboard/mouse or the gamepad until it has one.
+	ui->global<Controls>().on_begin_capture(
+	    [&](const slint::SharedString& id, bool pad)
+	    {
+		    const std::string key = ToStd(id);
+		    std::string       error;
+		    stop_controls_capture();
+		    auto& c = ui->global<Controls>();
+		    c.set_capture_id(slint::SharedString(key));
+		    c.set_capture_label(slint::SharedString(input_mapping->RowLabel(pad, key)));
+		    c.set_listening(true);
+		    if (!input_mapping->BeginCapture(pad, key, &error))
+		    {
+			    c.set_capture_message(slint::SharedString(error));
+			    return;
+		    }
+		    c.set_capture_message(slint::SharedString(pad ? "Press a button or trigger \xe2\x80\x94 Esc cancels"
+		                                                   : "Press a key / mouse button \xe2\x80\x94 Esc cancels"));
+		    capture_timer->start(
+		        slint::TimerMode::Repeated, std::chrono::milliseconds(14),
+		        [&]
+		        {
+			        const CaptureHit hit = input_mapping->PollCapture();
+			        auto&             c  = ui->global<Controls>();
+			        switch (hit.kind)
+			        {
+				        case CaptureHit::Kind::None: return;
+				        case CaptureHit::Kind::Cancelled: stop_controls_capture(); return;
+				        case CaptureHit::Kind::Reserved:
+				        case CaptureHit::Kind::Unsupported: c.set_capture_message(slint::SharedString(hit.name)); return;
+				        case CaptureHit::Kind::Key:
+				        case CaptureHit::Kind::Pad:
+				        {
+					        const bool pad_hit = hit.kind == CaptureHit::Kind::Pad;
+					        input_mapping->Assign(pad_hit, ToStd(c.get_capture_id()), hit.name);
+					        refresh_controls();
+					        stop_controls_capture();
+					        return;
+				        }
+			        }
+		        });
+	    });
+	// The dropdown of every pad source: the buttons XInput can't report (Guide, Touchpad, paddles, Misc1).
+	ui->global<Controls>().on_pick_source(
+	    [&](int index)
+	    {
+		    auto&       c       = ui->global<Controls>();
+		    const auto& sources = InputMapping::Sources();
+		    if (!c.get_listening() || index < 0 || static_cast<size_t>(index) >= sources.size())
+		    {
+			    return;
+		    }
+		    input_mapping->Assign(true, ToStd(c.get_capture_id()), sources[static_cast<size_t>(index)].id);
+		    refresh_controls();
+		    stop_controls_capture();
+	    });
+	ui->global<Controls>().on_clear_binding(
+	    [&](const slint::SharedString& id, bool pad)
+	    {
+		    input_mapping->Clear(pad, ToStd(id));
+		    refresh_controls();
+	    });
+	ui->global<Controls>().on_restore_defaults(
+	    [&](bool pad)
+	    {
+		    input_mapping->RestoreDefaults(pad);
+		    auto& c = ui->global<Controls>();
+		    c.set_sensitivity(static_cast<float>(input_mapping->Sensitivity()));
+		    c.set_sensitivity_text(slint::SharedString(one_decimal(input_mapping->Sensitivity()) + "\xc3\x97"));
+		    refresh_controls();
+	    });
+	ui->global<Controls>().on_sensitivity_edited(
+	    [&](float value)
+	    {
+		    const double rounded = std::round(std::clamp(static_cast<double>(value), 0.1, 5.0) * 10.0) / 10.0;
+		    auto&        c       = ui->global<Controls>();
+		    c.set_sensitivity(static_cast<float>(rounded));
+		    c.set_sensitivity_text(slint::SharedString(one_decimal(rounded) + "\xc3\x97"));
+	    });
+	ui->global<Controls>().on_cancel_capture(stop_controls_capture);
+	ui->global<Controls>().on_save(
+	    [&]
+	    {
+		    auto&    c      = ui->global<Controls>();
+		    Settings edited = s;
+		    input_mapping->SetTouchOptions(static_cast<double>(c.get_sensitivity()), c.get_skin_index(), c.get_show_cursor());
+		    input_mapping->SaveMapping(edited);
+		    const std::vector<std::string> before = s.host_input_mapping;
+		    s.host_input_mapping                  = edited.host_input_mapping;
+		    if (!save())
+		    {
+			    s.host_input_mapping = before;
+			    c.set_notice(slint::SharedString("Could not save the controls"));
+			    ui->set_status(slint::SharedString("Could not save the controls"));
+			    return;
+		    }
+		    c.set_notice("");
+		    stop_controls_capture();
+		    ui->set_show_controls(false);
+		    ui->set_status(slint::SharedString("Controls saved"));
+	    });
+	// Cancel and Back leave the page without writing anything.
+	ui->global<Controls>().on_cancel(
+	    [&]
+	    {
+		    stop_controls_capture();
+		    ui->set_show_controls(false);
+	    });
+	ui->global<Controls>().on_close(
+	    [&]
+	    {
+		    stop_controls_capture();
+		    ui->set_show_controls(false);
 	    });
 
 	ui->on_open_console(

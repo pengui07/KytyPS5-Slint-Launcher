@@ -3,9 +3,11 @@ import { Theme, TextCell, HeaderCell, IconButton } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
 import { SettingsPage, GameConfigRow, BuildChoice } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
+import { ControlsPage, Controls, ControlRow } from "controls.slint";
 
 // The generated C++ header needs these.
-export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice }
+// STEP6:6f: Controls, ControlRow are the Controls page's global and row.
+export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, Controls, ControlRow }
 
 export struct GameRow {
     name: string,
@@ -268,6 +270,8 @@ export component AppWindow inherits Window {
         }
     }
     in-out property <bool> show-trophies: false;
+    // STEP6:6f: the Controls page (keyboard/mouse and gamepad bindings).
+    in-out property <bool> show-controls: false;
     // Settings page in per-game mode (the C++ side loads the game's values into the properties below).
     in property <bool> game-mode;
     in property <string> game-mode-name;
@@ -584,7 +588,17 @@ export component AppWindow inherits Window {
                 enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
                 clicked => { root.remove-game(); }
             }
-            IconButton { icon: @image-url("icons/input-mapping.svg"); enabled: false; }
+            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
+            IconButton {
+                icon: @image-url("icons/input-mapping.svg");
+                clicked => {
+                    root.show-settings = false;
+                    root.show-versions = false;
+                    root.show-trophies = false;
+                    Controls.opened();
+                    root.show-controls = true;
+                }
+            }
             IconButton {
                 icon: @image-url("icons/trophy.svg");
                 clicked => {
@@ -873,6 +887,18 @@ export component AppWindow inherits Window {
         height: root.height;
         back => {
             root.show-trophies = false;
+        }
+    }
+
+    // STEP6:6f: the Controls page; the toolbar's input-mapping button opens it.
+    if root.show-controls: ControlsPage {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        close => {
+            root.show-controls = false;
+            Controls.close(); // Back leaves without saving, and stops a capture that is still listening
         }
     }
 
