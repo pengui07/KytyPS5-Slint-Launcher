@@ -23,6 +23,10 @@ struct GameEntry
 	uint64_t    size   = 0;
 	GameStatus  status = GameStatus::Unknown;
 	std::string comment;
+	// STEP6:6e: a .zar archive listed as the game itself: `dir` and `eboot` are the file, the name is the file
+	// stem, and the title id, versions and icon are unknown (they live inside the archive, which the launcher
+	// cannot read: that needs zarchive).
+	bool archive = false;
 };
 
 struct CompatEntry
@@ -35,7 +39,8 @@ using CompatDb  = std::map<std::string, CompatEntry>; // key: upper-case title i
 using SizeCache = std::map<std::string, uint64_t>;    // key: path_key(dir)
 
 // Finds game folders (a folder holding eboot.bin) under the ';'-separated roots and reads
-// their sce_sys/param.json. Sorted by name. Folder sizes already in `sizes` are reused.
+// their sce_sys/param.json. A root that is a regular .zar file is a game of its own (see GameEntry::archive).
+// Sorted by name. Folder sizes already in `sizes` are reused.
 std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes);
 
 CompatDb parse_compat(const std::string& json);

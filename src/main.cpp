@@ -165,6 +165,44 @@ GameRow MakeRow(const GameEntry& g)
 	return r;
 }
 
+// STEP6:6e: helper for the environment table and the .zar entries.
+std::string TrimText(const std::string& s)
+{
+	size_t b = 0;
+	size_t e = s.size();
+	while (b < e && std::isspace(static_cast<unsigned char>(s[b])) != 0)
+	{
+		b++;
+	}
+	while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0)
+	{
+		e--;
+	}
+	return s.substr(b, e - b);
+}
+
+// A .zar archive (the emulator's ZArchive format), whatever the case of the extension.
+bool IsArchivePath(const std::string& path)
+{
+	std::string ext = path_utf8(utf8_path(path).extension());
+	std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	return ext == ".zar";
+}
+
+// Whether `child` is `parent` or sits inside it; both must be canonical paths.
+bool PathIsUnder(const fs::path& child, const fs::path& parent)
+{
+	auto c = child.begin();
+	for (auto p = parent.begin(); p != parent.end(); ++p, ++c)
+	{
+		if (c == child.end() || *c != *p)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -288,10 +326,72 @@ int main(int argc, char** argv)
 
 	auto log_model  = std::make_shared<slint::VectorModel<slint::SharedString>>();
 
-	ui->set_game_dirs(slint::SharedString(s.game_dirs));
-	ui->set_emulator(slint::SharedString(s.emulator));
-	ui->set_game(slint::SharedString(s.game));
-	ui->set_run_dir(slint::SharedString(s.run_dir));
+	// STEP6:6e: the Advanced tab's environment table (C++ owns the rows) and the device pickers of the page.
+	auto env_model   = std::make_shared<slint::VectorModel<EnvVar>>();
+	auto audio_model = std::make_shared<slint::VectorModel<slint::SharedString>>();
+	auto gpu_model   = std::make_shared<slint::VectorModel<slint::SharedString>>();
+	ui->global<EnvEditor>().set_vars(env_model);
+	ui->global<Devices>().set_audio_inputs(audio_model);
+	ui->global<Devices>().set_gpu_choices(gpu_model);
+	{
+		// A row edit (the page sends the whole row on every keystroke, so both fields stay in step).
+		auto& env_editor = ui->global<EnvEditor>();
+		env_editor.on_edited(
+		    [env_model](int row, const slint::SharedString& name, const slint::SharedString& value)
+		    {
+			    if (row < 0 || static_cast<size_t>(row) >= env_model->row_count())
+			    {
+				    return;
+			    }
+			    EnvVar v;
+			    v.name  = name;
+			    v.value = value;
+			    env_model->set_row_data(static_cast<size_t>(row), v);
+		    });
+		env_editor.on_removed(
+		    [env_model](int row)
+		    {
+			    if (row >= 0 && static_cast<size_t>(row) < env_model->row_count())
+			    {
+				    env_model->erase(static_cast<size_t>(row));
+			    }
+		    });
+		env_editor.on_added([env_model] { env_model->push_back(EnvVar {}); });
+	}
+	{
+		// STEP6:6e: the microphone and GPU lists are enumerated at most once per session (a few ms), again when
+		// the page asks for a rescan, and never where the platform has no enumeration (macOS, Linux).
+		auto device_cache = std::make_shared<std::vector<std::string>>(); // audio input devices
+		auto gpu_cache    = std::make_shared<std::vector<std::string>>();
+		auto enumerated   = std::make_shared<bool>(false);
+		auto push_devices = [audio_model, gpu_model, device_cache, gpu_cache, enumerated](bool rescan)
+		{
+			if (rescan || !*enumerated)
+			{
+				*device_cache = list_audio_input_devices();
+				*gpu_cache    = list_gpu_devices();
+				*enumerated   = true;
+			}
+			std::vector<slint::SharedString> audio;
+			audio.reserve(device_cache->size());
+			for (const auto& name: *device_cache)
+			{
+				audio.emplace_back(name);
+			}
+			audio_model->set_vector(audio);
+			// Index 0 is "Auto" (the emulator's gpu index -1), so the device at index N is gpu index N-1.
+			std::vector<slint::SharedString> gpu;
+			gpu.reserve(gpu_cache->size() + 1);
+			gpu.emplace_back("Auto");
+			for (const auto& name: *gpu_cache)
+			{
+				gpu.emplace_back(name);
+			}
+			gpu_model->set_vector(gpu);
+		};
+		ui->global<Devices>().on_refresh([push_devices] { push_devices(false); });
+		ui->global<Devices>().on_rescan([push_devices] { push_devices(true); });
+	}
 	{
 		// Index in the Window size list (1280x720, 1600x900, 1920x1080, 2560x1440, 3840x2160); -1: not a preset.
 		constexpr int kPresets[][2] = {{1280, 720}, {1600, 900}, {1920, 1080}, {2560, 1440}, {3840, 2160}};
@@ -349,28 +449,31 @@ int main(int argc, char** argv)
 		ui->set_controller_vibration(static_cast<float>(v.controller_vibration));
 		ui->set_controller_volume(static_cast<float>(v.controller_volume));
 		ui->set_keyboard_player(v.keyboard_player);
+		// STEP6:6e: the environment table, and the GPU picker's index (0 = Auto, so the device at N is gpu index N-1).
+		{
+			std::vector<EnvVar> rows;
+			rows.reserve(v.env.size());
+			for (const auto& [name, value]: v.env)
+			{
+				EnvVar row;
+				row.name  = slint::SharedString(name);
+				row.value = slint::SharedString(value);
+				rows.push_back(std::move(row));
+			}
+			env_model->set_vector(rows);
+		}
+		ui->global<Devices>().set_gpu_choice(v.gpu_index + 1);
 	};
-	push_emu(s);
-#ifdef _WIN32
-	ui->set_is_windows(true);
-#endif
-	ui->set_addons_dir(slint::SharedString(s.addons_dir));
-	ui->set_status(slint::SharedString(imported ? "Imported settings from " + import_report.source : startup_note.empty() ? "Ready" : startup_note));
-	if (imported)
-	{
-		ui->set_import_summary_text(slint::SharedString(import_report.text()));
-		ui->set_import_summary_open(true);
-	}
-
-	// Library column widths, in header order.
+	// Library column widths, in header order ("240,100,...", in logical pixels).
+	auto push_columns = [&](const std::string& columns)
 	{
 		auto&              cols = ui->global<Cols>();
 		std::vector<float> w;
-		for (size_t pos = 0; pos < s.columns.size();)
+		for (size_t pos = 0; pos < columns.size();)
 		{
-			w.push_back(static_cast<float>(std::atof(s.columns.c_str() + pos)));
-			size_t comma = s.columns.find(',', pos);
-			pos          = comma == std::string::npos ? s.columns.size() : comma + 1;
+			w.push_back(static_cast<float>(std::atof(columns.c_str() + pos)));
+			size_t comma = columns.find(',', pos);
+			pos          = comma == std::string::npos ? columns.size() : comma + 1;
 		}
 		if (w.size() == 9 && std::all_of(w.begin(), w.end(), [](float v) { return v >= 40.0f && v <= 4000.0f; }))
 		{
@@ -384,10 +487,38 @@ int main(int argc, char** argv)
 			cols.set_comment(w[7]);
 			cols.set_playtime(w[8]);
 		}
+	};
+	// STEP6:6e: every field of the settings page (and of the launcher's own bar) from one Settings: startup, and
+	// Settings > Discard, which is why this is one function.
+	auto push_all = [&](const Settings& v)
+	{
+		ui->set_game_dirs(slint::SharedString(v.game_dirs));
+		ui->set_emulator(slint::SharedString(v.emulator));
+		ui->set_game(slint::SharedString(v.game));
+		ui->set_run_dir(slint::SharedString(v.run_dir));
+		ui->set_addons_dir(slint::SharedString(v.addons_dir));
+		push_columns(v.columns);
+		push_emu(v);
+	};
+	push_all(s);
+#ifdef _WIN32
+	ui->set_is_windows(true);
+#endif
+	ui->set_status(slint::SharedString(imported ? "Imported settings from " + import_report.source : startup_note.empty() ? "Ready" : startup_note));
+	if (imported)
+	{
+		ui->set_import_summary_text(slint::SharedString(import_report.text()));
+		ui->set_import_summary_open(true);
 	}
 
 	// Title id of the game whose settings the page is editing (per-game mode); empty on the global page.
 	std::string game_mode_tid;
+	// STEP6:6e: what the per-game page showed when it was opened: Discard puts it back.
+	Settings game_mode_opened;
+	// STEP6:6e: the last settings written to disk; Settings > Discard reloads them.
+	Settings saved_settings = s;
+	// STEP6:6e: set by collect_emu when the environment table has a row that can't be saved.
+	std::string env_error;
 	// The emulator settings shown on the settings page, written into `t`.
 	auto collect_emu = [&](Settings& t)
 	{
@@ -433,6 +564,51 @@ int main(int argc, char** argv)
 		t.controller_vibration = std::clamp(static_cast<int>(std::lround(ui->get_controller_vibration())), 0, 100);
 		t.controller_volume    = std::clamp(static_cast<int>(std::lround(ui->get_controller_volume())), 0, 100);
 		t.keyboard_player      = std::clamp(ui->get_keyboard_player(), 0, 4);
+		// STEP6:6e: the environment table. Names are trimmed; an empty name is an unused row, a blank value
+		// leaves the variable out (the launcher unsets what is not in the table for the child), and a bad row is
+		// reported (env_error) instead of being saved silently.
+		env_error.clear();
+		t.env.clear();
+		for (size_t i = 0; i < env_model->row_count(); i++)
+		{
+			const auto row = env_model->row_data(i);
+			if (!row.has_value())
+			{
+				continue;
+			}
+			const std::string name  = TrimText(ToStd(row->name));
+			const std::string value = ToStd(row->value);
+			if (name.empty())
+			{
+				continue;
+			}
+			const bool bad_first = std::isalpha(static_cast<unsigned char>(name[0])) == 0 && name[0] != '_';
+			const bool bad_char  = std::any_of(name.begin(), name.end(),
+			                                   [](unsigned char c) { return std::isalnum(c) == 0 && c != '_'; });
+			if (bad_first || bad_char)
+			{
+				env_error = "Not an environment variable name: " + name + " (letters, digits, underscore)";
+				continue;
+			}
+			if (t.env.count(name) != 0)
+			{
+				env_error = "Duplicate environment variable: " + name;
+				continue;
+			}
+			// A line break would break the child's environment block.
+			bool has_line_break = value.find(static_cast<char>(10)) != std::string::npos
+			                      || value.find(static_cast<char>(13)) != std::string::npos;
+			if (has_line_break)
+			{
+				env_error = "The value of " + name + " can't hold a line break";
+				continue;
+			}
+			if (value.empty())
+			{
+				continue; // an empty value removes the variable
+			}
+			t.env[name] = value;
+		}
 	};
 	auto collect = [&]
 	{
@@ -464,7 +640,13 @@ int main(int argc, char** argv)
 		{
 			out.run_dir.clear();
 		}
-		return save_settings(settings_path, out);
+		const bool ok = save_settings(settings_path, out);
+		if (ok)
+		{
+			// STEP6:6e: what Settings > Discard puts back (the effective values, not the sparse file).
+			saved_settings = s;
+		}
+		return ok;
 	};
 
 	// View > Console window: created on first use, shows the emulator output.
@@ -680,6 +862,7 @@ int main(int argc, char** argv)
 	ui->on_select_game(
 	    [&, want_bg](int i)
 	    {
+		    const int previous = ui->get_selected();
 		    if (i < 0)
 		    {
 			    ui->set_selected(-1);
@@ -689,6 +872,31 @@ int main(int argc, char** argv)
 			    ui->set_selected(i);
 			    ui->set_game(slint::SharedString((*games)[static_cast<size_t>(i)].eboot));
 			    (*want_bg)((*games)[static_cast<size_t>(i)].background);
+		    } else
+		    {
+			    return;
+		    }
+		    // STEP6:6e: the previous game's status line does not apply to this one. Only the game-specific
+		    // texts go (the version manager's and the library's own messages stay), and never while a game runs.
+		    if (i != previous && !ui->get_running())
+		    {
+			    const std::string status = ToStd(ui->get_status());
+			    for (const char* prefix: {"No save data yet", "Game settings saved for", "Could not save the settings of",
+			                              "Removed "})
+			    {
+				    if (status.rfind(prefix, 0) == 0)
+				    {
+					    ui->set_status(slint::SharedString());
+					    break;
+				    }
+			    }
+			    // STEP6:6e: a .zar archive: the launcher can only see the file name (see library.cpp).
+			    if (i >= 0 && (*games)[static_cast<size_t>(i)].archive)
+			    {
+				    ui->set_status(slint::SharedString((*games)[static_cast<size_t>(i)].name
+				                                       + " is a .zar archive: the name and serial come from the file name; reading its "
+				                                         "metadata needs zarchive, which the launcher doesn't have"));
+			    }
 		    }
 	    });
 	// Game folders list: the ';'-separated game-dirs shown one per row.
@@ -854,6 +1062,72 @@ int main(int argc, char** argv)
 		    }
 		    open_in_system(path_utf8(dir));
 	    });
+	// STEP6:6e: "Delete save data…" - only <run folder>/_SaveData/<serial>, never the game folder, _Trophies or
+	// anything else. The dialog in the launcher window asks first; Settings > Games routes through GameActions.
+	auto delete_save_data = [&](int i)
+	{
+		if (i < 0 || static_cast<size_t>(i) >= games->size())
+		{
+			return;
+		}
+		const GameEntry& g = (*games)[static_cast<size_t>(i)];
+		if (g.title_id.empty())
+		{
+			ui->set_status(slint::SharedString(g.name + " has no title id, so it has no save data folder"));
+			return;
+		}
+		std::error_code ec;
+		const fs::path  save_root = utf8_path(ToStd(ui->get_run_dir())) / "_SaveData";
+		const fs::path  target    = save_root / utf8_path(g.title_id);
+		if (!fs::is_directory(target, ec))
+		{
+			ui->set_status(slint::SharedString("No save data for " + g.name + " (" + g.title_id + ")"));
+			return;
+		}
+		// Canonical paths, so a symlink or a "<serial>/.." trick can't lead out of _SaveData.
+		std::error_code ec_root;
+		std::error_code ec_target;
+		const fs::path  canon_root   = fs::weakly_canonical(save_root, ec_root);
+		const fs::path  canon_target = fs::weakly_canonical(target, ec_target);
+		if (ec_root || ec_target || canon_root.empty() || canon_target == canon_root || !PathIsUnder(canon_target, canon_root))
+		{
+			ui->set_status(slint::SharedString("Not deleting " + path_utf8(target) + ": it is not inside " + path_utf8(save_root)));
+			return;
+		}
+		// Counted first for the status line (a save folder holds a handful of files).
+		uint64_t        files = 0;
+		uint64_t        bytes = 0;
+		std::error_code wec;
+		for (fs::recursive_directory_iterator it(canon_target, fs::directory_options::skip_permission_denied, wec), end; !wec && it != end;
+		     it.increment(wec))
+		{
+			std::error_code fec;
+			if (it->is_regular_file(fec))
+			{
+				files++;
+				bytes += it->file_size(fec);
+			}
+		}
+		std::error_code del;
+		fs::remove_all(canon_target, del);
+		if (del)
+		{
+			ui->set_status(slint::SharedString("Could not delete the save data of " + g.name + ": " + del.message()));
+			return;
+		}
+		ui->set_status(slint::SharedString("Deleted save data for " + g.name + " (" + std::to_string(files) + " files, " + format_size(bytes) + ")"));
+	};
+	ui->on_delete_save_data(delete_save_data);
+	ui->global<GameActions>().on_delete_save_data(
+	    [&](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size())
+		    {
+			    return;
+		    }
+		    ui->set_delete_save_row(i);
+		    ui->set_delete_save_prompt_open(true);
+	    });
 	ui->on_remove_game(
 	    [&, want_bg]
 	    {
@@ -874,13 +1148,14 @@ int main(int argc, char** argv)
 	ui->on_add_game(
 	    [&, sync_game_dirs]
 	    {
-		    auto p = PickPath(ToStd(ui->get_game()), false, L"Game (eboot.bin)", L"eboot.bin;*.bin;*.elf");
+		    auto p = PickPath(ToStd(ui->get_game()), false, L"Game (eboot.bin, .bin, .elf, .zar)", L"eboot.bin;*.bin;*.elf;*.zar");
 		    if (p.empty())
 		    {
 			    return;
 		    }
-		    // A folder holding eboot.bin is scanned as a game of its own.
-		    const std::string dir = path_utf8(utf8_path(p).parent_path());
+		    // A folder holding eboot.bin is scanned as a game of its own. STEP6:6e: a .zar archive is listed as
+		    // the game itself, so its full path goes into the game folders (scan_games takes file roots).
+		    const std::string dir = IsArchivePath(p) ? p : path_utf8(utf8_path(p).parent_path());
 		    std::string       cur = ToStd(ui->get_game_dirs());
 		    if (!dir.empty() && (";" + path_key(cur) + ";").find(";" + path_key(dir) + ";") == std::string::npos)
 		    {
@@ -989,7 +1264,7 @@ int main(int argc, char** argv)
 	ui->on_browse_game(
 	    [&]
 	    {
-		    auto p = PickPath(ToStd(ui->get_game()), false, L"Game (eboot.bin)", L"eboot.bin;*.bin;*.elf");
+		    auto p = PickPath(ToStd(ui->get_game()), false, L"Game (eboot.bin, .bin, .elf, .zar)", L"eboot.bin;*.bin;*.elf;*.zar");
 		    if (!p.empty())
 		    {
 			    ui->set_game(slint::SharedString(p));
@@ -1020,11 +1295,32 @@ int main(int argc, char** argv)
 			    }();
 			    Settings edited = baseline;
 			    collect_emu(edited);
-			    ui->set_status(slint::SharedString(save_game_overrides(paths, tid, baseline, edited) ? "Game settings saved for " + tid
-			                                                                                           : "Could not save the settings of " + tid));
+			    const bool ok = save_game_overrides(paths, tid, baseline, edited);
+			    // STEP6:6e: a bad environment row is reported instead of "saved" (the other values did save).
+			    ui->set_status(slint::SharedString(!ok ? "Could not save the settings of " + tid
+			                                           : env_error.empty() ? "Game settings saved for " + tid : env_error));
 			    return;
 		    }
-		    ui->set_status(save() ? "Settings saved" : "Could not save settings");
+		    const bool ok = save();
+		    // STEP6:6e: same for the env table (save() ran collect(), which fills env_error).
+		    ui->set_status(slint::SharedString(!env_error.empty() ? env_error
+		                                         : ok                 ? std::string("Settings saved")
+		                                                              : std::string("Could not save settings")));
+	    });
+	// Settings > Discard: put the saved values back; nothing is written. The page goes back to the library on
+	// its own after calling this (ui/settings.slint), so there is no status line to set.
+	ui->on_discard_settings(
+	    [&]
+	    {
+		    if (!game_mode_tid.empty())
+		    {
+			    // Per-game mode: the values the page showed when it was opened (the emulator pin is untouched).
+			    push_emu(game_mode_opened);
+			    return;
+		    }
+		    s = saved_settings;
+		    push_all(s);
+		    sync_game_dirs();
 	    });
 	// Emulator builds: the Version Manager page and the build dropdown.
 	VersionManager version_manager(
@@ -1118,7 +1414,10 @@ int main(int argc, char** argv)
 	{
 		Settings user = s;
 		user.emulator = emulator_for_game(s, paths, tid);
-		push_emu(resolve_for_launch(user, paths, tid));
+		const Settings resolved = resolve_for_launch(user, paths, tid);
+		// STEP6:6e: what Discard puts back in per-game mode.
+		game_mode_opened = resolved;
+		push_emu(resolved);
 	};
 	ui->on_open_game_settings(
 	    [&](int row, bool from_library)
@@ -1333,8 +1632,38 @@ int main(int argc, char** argv)
 	// Same on macOS: native context menus, but keep the native menu bar.
 	slint::Timer::single_shot(std::chrono::milliseconds(0), [] { setenv("SLINT_NO_MUDA", "1", 1); });
 #endif
+	// STEP6:6e: the window's last size and position (window_x/y/window_w/window_h). Sizes that don't look like a
+	// real window, or a position off the primary monitor (whose rect is taken as 0,0..w,h), fall back to the
+	// Slint defaults: the page's preferred-width/height, placed by the window manager.
+	const bool restore_size = s.window_w >= 800 && s.window_h >= 500;
+	if (restore_size)
+	{
+		ui->window().set_size(slint::LogicalSize(static_cast<float>(s.window_w), static_cast<float>(s.window_h)));
+	}
+	if (restore_size && s.window_x >= 0 && s.window_y >= 0 && have_monitor && s.window_x < monitor_w && s.window_y < monitor_h)
+	{
+		ui->window().set_position(slint::LogicalPosition(static_cast<float>(s.window_x), static_cast<float>(s.window_y)));
+	}
 	refresh();
 	ui->run();
+	// STEP6:6e: keep the geometry for the next start. Read once, after run() returns: the native window is gone
+	// but the component handle still reports its last size and position (never saved on every resize).
+	{
+		const float                   scale  = ui->window().scale_factor();
+		const float                   factor = scale > 0.01f ? scale : 1.0f;
+		const slint::PhysicalSize     size   = ui->window().size();
+		const slint::PhysicalPosition pos    = ui->window().position();
+		const int w = static_cast<int>(std::lround(static_cast<float>(size.width) / factor));
+		const int h = static_cast<int>(std::lround(static_cast<float>(size.height) / factor));
+		// A platform that answers nothing after the window closed leaves the saved values alone.
+		if (w >= 800 && h >= 500)
+		{
+			s.window_w = w;
+			s.window_h = h;
+			s.window_x = static_cast<int>(std::lround(static_cast<float>(pos.x) / factor));
+			s.window_y = static_cast<int>(std::lround(static_cast<float>(pos.y) / factor));
+		}
+	}
 	save();
 	if (scan_thread.joinable())
 	{

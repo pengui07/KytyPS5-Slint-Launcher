@@ -4,12 +4,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 
 #ifdef _WIN32
 #include <windows.h>
+#include <mmsystem.h>
 #include <shellapi.h>
 #else
 #ifdef __APPLE__
@@ -57,6 +59,178 @@ bool detect_primary_monitor(int* width, int* height)
 std::string pick_path_dialog(const std::string&, bool)
 {
 	return {};
+}
+
+namespace {
+
+// STEP6:6e: device enumeration for the settings page.
+// winmm is loaded on demand: the launcher must not gain a link library for two calls (CMake is not ours).
+using WaveInGetNumDevsFn  = UINT(__stdcall*)();
+using WaveInGetDevCapsWFn = MMRESULT(__stdcall*)(UINT_PTR, WAVEINCAPSW*, UINT);
+
+// Minimal Vulkan declarations: only the physical device names are needed, so no Vulkan headers and no
+// vulkan-1.dll link library are used (the DLL is loaded on demand).
+using VkInstance       = struct VkInstance_T*;
+using VkPhysicalDevice = struct VkPhysicalDevice_T*;
+using VkResult         = int32_t;
+using VkFlags          = uint32_t;
+
+struct VkApplicationInfo
+{
+	int32_t     sType;
+	const void* pNext;
+	const char* pApplicationName;
+	uint32_t    applicationVersion;
+	const char* pEngineName;
+	uint32_t    engineVersion;
+	uint32_t    apiVersion;
+};
+
+struct VkInstanceCreateInfo
+{
+	int32_t                  sType;
+	const void*              pNext;
+	VkFlags                  flags;
+	const VkApplicationInfo* pApplicationInfo;
+	uint32_t                 enabledLayerCount;
+	const char* const*       ppEnabledLayerNames;
+	uint32_t                 enabledExtensionCount;
+	const char* const*       ppEnabledExtensionNames;
+};
+
+// deviceName sits at its real offset; the block behind it is only here because the driver writes the whole
+// struct (limits, sparse properties), which must not run past this buffer.
+struct alignas(8) VkPhysicalDeviceProperties
+{
+	uint32_t apiVersion;
+	uint32_t driverVersion;
+	uint32_t vendorID;
+	uint32_t deviceID;
+	int32_t  deviceType;
+	char     deviceName[256];
+	uint8_t  pipelineCacheUUID[16];
+	uint8_t  rest[4096];
+};
+
+using PfnVkVoidFunction              = void(__stdcall*)();
+using PfnGetInstanceProcAddr         = PfnVkVoidFunction(__stdcall*)(VkInstance, const char*);
+using PfnCreateInstance              = VkResult(__stdcall*)(const VkInstanceCreateInfo*, const void*, VkInstance*);
+using PfnEnumeratePhysicalDevices    = VkResult(__stdcall*)(VkInstance, uint32_t*, VkPhysicalDevice*);
+using PfnGetPhysicalDeviceProperties = void(__stdcall*)(VkPhysicalDevice, VkPhysicalDeviceProperties*);
+using PfnDestroyInstance             = void(__stdcall*)(VkInstance, const void*);
+
+constexpr VkResult kVkSuccess                  = 0;
+constexpr int32_t  kVkStructureApplicationInfo = 0;         // VK_STRUCTURE_TYPE_APPLICATION_INFO
+constexpr int32_t  kVkStructureInstanceCreate  = 1;         // VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+constexpr uint32_t kVkApiVersion10             = 1u << 22;  // VK_MAKE_API_VERSION(0, 1, 0, 0)
+
+template<typename Fn>
+Fn LoadProc(HMODULE dll, const char* name)
+{
+	return reinterpret_cast<Fn>(GetProcAddress(dll, name));
+}
+
+} // namespace
+
+std::vector<std::string> list_audio_input_devices()
+{
+	std::vector<std::string> out;
+	HMODULE                  dll = LoadLibraryW(L"winmm.dll");
+	if (dll == nullptr)
+	{
+		return out;
+	}
+	const auto count_devices = LoadProc<WaveInGetNumDevsFn>(dll, "waveInGetNumDevs");
+	const auto device_caps   = LoadProc<WaveInGetDevCapsWFn>(dll, "waveInGetDevCapsW");
+	if (count_devices != nullptr && device_caps != nullptr)
+	{
+		const UINT count = count_devices();
+		out.reserve(count);
+		for (UINT i = 0; i < count; i++)
+		{
+			WAVEINCAPSW caps {};
+			if (device_caps(static_cast<UINT_PTR>(i), &caps, sizeof(caps)) != MMSYSERR_NOERROR)
+			{
+				continue;
+			}
+			caps.szPname[MAXPNAMELEN - 1] = L'\0';
+			const std::string name        = path_utf8(fs::path(caps.szPname));
+			// Two devices can carry the same name; the picker lists each name once.
+			if (!name.empty() && std::find(out.begin(), out.end(), name) == out.end())
+			{
+				out.push_back(name);
+			}
+		}
+	}
+	FreeLibrary(dll);
+	return out;
+}
+
+std::vector<std::string> list_gpu_devices()
+{
+	std::vector<std::string> out;
+	HMODULE                  dll = LoadLibraryW(L"vulkan-1.dll");
+	if (dll == nullptr)
+	{
+		return out; // no Vulkan runtime: the page keeps its text field
+	}
+	const auto get_proc = LoadProc<PfnGetInstanceProcAddr>(dll, "vkGetInstanceProcAddr");
+	if (get_proc != nullptr)
+	{
+		const auto create_instance = reinterpret_cast<PfnCreateInstance>(get_proc(nullptr, "vkCreateInstance"));
+		if (create_instance != nullptr)
+		{
+			VkApplicationInfo app {};
+			app.sType              = kVkStructureApplicationInfo;
+			app.pApplicationName   = "Kyty launcher";
+			app.applicationVersion = 1;
+			app.pEngineName        = "Kyty launcher";
+			app.engineVersion      = 1;
+			app.apiVersion         = kVkApiVersion10;
+			VkInstanceCreateInfo info {};
+			info.sType            = kVkStructureInstanceCreate;
+			info.pApplicationInfo = &app;
+			VkInstance instance   = nullptr;
+			if (create_instance(&info, nullptr, &instance) == kVkSuccess && instance != nullptr)
+			{
+				const auto enumerate  = reinterpret_cast<PfnEnumeratePhysicalDevices>(get_proc(instance, "vkEnumeratePhysicalDevices"));
+				const auto properties = reinterpret_cast<PfnGetPhysicalDeviceProperties>(get_proc(instance, "vkGetPhysicalDeviceProperties"));
+				const auto destroy    = reinterpret_cast<PfnDestroyInstance>(get_proc(instance, "vkDestroyInstance"));
+				if (enumerate != nullptr && properties != nullptr)
+				{
+					uint32_t count = 0;
+					if (enumerate(instance, &count, nullptr) == kVkSuccess && count > 0)
+					{
+						std::vector<VkPhysicalDevice> devices(count, nullptr);
+						if (enumerate(instance, &count, devices.data()) == kVkSuccess)
+						{
+							devices.resize(count);
+							out.reserve(count);
+							for (uint32_t i = 0; i < count; i++)
+							{
+								VkPhysicalDeviceProperties props {};
+								properties(devices[i], &props);
+								props.deviceName[sizeof(props.deviceName) - 1] = '\0';
+								std::string name(props.deviceName);
+								// The list position is the emulator's gpu index + 1, so keep empty names in it.
+								if (name.empty())
+								{
+									name = "GPU " + std::to_string(i);
+								}
+								out.push_back(std::move(name));
+							}
+						}
+					}
+				}
+				if (destroy != nullptr)
+				{
+					destroy(instance, nullptr);
+				}
+			}
+		}
+	}
+	FreeLibrary(dll);
+	return out;
 }
 
 #else
@@ -328,6 +502,17 @@ bool detect_primary_monitor(int* width, int* height)
 	}
 	return found;
 #endif
+}
+
+// STEP6:6e: no device enumeration outside Windows yet; the settings page keeps its text fields.
+std::vector<std::string> list_audio_input_devices()
+{
+	return {};
+}
+
+std::vector<std::string> list_gpu_devices()
+{
+	return {};
 }
 
 #endif

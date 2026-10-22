@@ -27,6 +27,37 @@ export struct BuildChoice {
     path: string,
 }
 
+// STEP6:6e: one row of the environment variable table (Settings > Advanced, global and per-game mode).
+export struct EnvVar {
+    name: string,
+    value: string,
+}
+
+// STEP6:6e: the environment table lives in a global so that C++ owns the rows (a model) without the launcher
+// window having to forward every edit. Row indices are the model's.
+export global EnvEditor {
+    in property <[EnvVar]> vars;
+    callback edited(int, string, string); // row, name, value (both as typed: C++ only trims on save)
+    callback removed(int);
+    callback added();
+}
+
+// STEP6:6e: the microphone and GPU pickers. C++ fills these when the page opens and on Refresh; empty lists
+// mean the page keeps its plain text fields (macOS and Linux, or when nothing was detected).
+export global Devices {
+    in property <[string]> audio-inputs;
+    in property <[string]> gpu-choices;    // "Auto" first, then the Vulkan devices in enumeration order
+    in-out property <int> gpu-choice: 0;   // index in gpu-choices; 0 = Auto (the emulator's gpu index -1)
+    callback refresh();                    // page opened: use the session's list (enumerate on first use)
+    callback rescan();                     // "Refresh" button: look for the devices again
+}
+
+// STEP6:6e: per-game actions of the Settings > Games tab that the launcher window handles: it draws the
+// confirmation dialogs (a row index is a library index, the Games tab lists the library in order).
+export global GameActions {
+    callback delete-save-data(int);
+}
+
 // Sizes shared by the form rows, so the controls of every group line up.
 global Form {
     out property <length> label-w: 150px; // the "Label:" column
@@ -392,6 +423,13 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
+    // STEP6:6e: fill the microphone and GPU pickers when the page opens (their Refresh buttons redo it).
+    changed visible => {
+        if (self.visible) {
+            Devices.refresh();
+        }
+    }
+
     padding: 12px;
     padding-top: 10px;
     spacing: 10px;
@@ -460,10 +498,40 @@ export component SettingsPage inherits VerticalLayout {
                 }
                 Card {
                     title: "Audio";
-                    Field {
+                    // STEP6:6e: the detected input devices as a menu next to the editable name (typing keeps
+                    // working: the emulator also accepts a name the system doesn't list).
+                    FormRow {
                         label: "Microphone";
-                        placeholder: "None (or the device name)";
-                        text <=> root.microphone;
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "None (or the device name)";
+                            text <=> root.microphone;
+                        }
+                        mic-button := Button {
+                            text: "Detected…";
+                            enabled: Devices.audio-inputs.length > 0;
+                            clicked => {
+                                mic-menu.show({ x: mic-button.absolute-position.x - mic-menu.absolute-position.x,
+                                                y: mic-button.absolute-position.y + mic-button.height - mic-menu.absolute-position.y });
+                            }
+                        }
+                        mic-menu := ContextMenuArea {
+                            width: 0px;
+                            height: 0px;
+                            Menu {
+                                MenuItem {
+                                    title: "Default";
+                                    activated => { root.microphone = ""; }
+                                }
+                                for input in Devices.audio-inputs: MenuItem {
+                                    title: input;
+                                    activated => { root.microphone = input; }
+                                }
+                            }
+                        }
+                    }
+                    Hint {
+                        text: "The detected input devices. A name that is not listed can still be typed in.";
                     }
                 }
                 if !root.game-mode: Card {
@@ -781,10 +849,35 @@ export component SettingsPage inherits VerticalLayout {
                             current-index <=> root.shader-opt;
                         }
                     }
-                    Field {
+                    // STEP6:6e: the Vulkan devices as a picker ("Auto" = the emulator's default, -1); a typed
+                    // index stays possible while nothing was detected.
+                    if Devices.gpu-choices.length > 1: FormRow {
                         label: "GPU";
-                        placeholder: "Auto";
-                        text <=> root.gpu-text;
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: Devices.gpu-choices;
+                            current-index <=> Devices.gpu-choice;
+                            selected => {
+                                // 0 = Auto (-1); the device at index N is the emulator's --gpu index N - 1.
+                                root.gpu-text = self.current-index <= 0 ? "" : "\{self.current-index - 1}";
+                            }
+                        }
+                        Button {
+                            text: "Refresh";
+                            clicked => { Devices.rescan(); }
+                        }
+                    }
+                    if Devices.gpu-choices.length <= 1: FormRow {
+                        label: "GPU";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "Auto";
+                            text <=> root.gpu-text;
+                        }
+                        Button {
+                            text: "Refresh";
+                            clicked => { Devices.rescan(); }
+                        }
                     }
                     ToggleRow {
                         indent: true;
@@ -826,6 +919,43 @@ export component SettingsPage inherits VerticalLayout {
                         label: "Extra arguments";
                         placeholder: "e.g. --no-async-pipelines";
                         text <=> root.extra-args;
+                    }
+                }
+                // STEP6:6e: the env table of the emulator process (kyty.json "emu" / "env"), in global and
+                // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
+                Card {
+                    title: "Environment variables";
+                    for v[i] in EnvEditor.vars: HorizontalLayout {
+                        spacing: 8px;
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "NAME";
+                            text: v.name;
+                            edited(text) => { EnvEditor.edited(i, text, v.value); }
+                        }
+                        ThemedEdit {
+                            horizontal-stretch: 2;
+                            placeholder: "value";
+                            text: v.value;
+                            edited(text) => { EnvEditor.edited(i, v.name, text); }
+                        }
+                        Button {
+                            text: "Remove";
+                            clicked => { EnvEditor.removed(i); }
+                        }
+                    }
+                    if EnvEditor.vars.length == 0: Hint {
+                        text: "No variables yet: the emulator inherits the launcher's environment.";
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: "Add variable";
+                            clicked => { EnvEditor.added(); }
+                        }
+                    }
+                    Hint {
+                        text: "Empty value removes the variable. Names: letters, digits, underscore.";
                     }
                 }
                 if !root.game-mode: Card {
@@ -1101,6 +1231,14 @@ export component SettingsPage inherits VerticalLayout {
                 text: "Set Emu…";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
                 clicked => { root.pick-game-emu(root.games-selected); }
+            }
+            // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
+            // confirmation. Games without a title id (a .zar archive, for one) have no save folder.
+            Button {
+                text: "Delete save data…";
+                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
+                    && root.game-configs[root.games-selected].serial != "" && !root.running;
+                clicked => { GameActions.delete-save-data(root.games-selected); }
             }
         }
     }

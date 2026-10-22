@@ -409,6 +409,12 @@ void ReadApp(const JsonValue& root, Settings& s)
 	}
 	r.str("addons_dir", s.addons_dir);
 	r.str("columns", s.columns);
+	// STEP6:6e app keys: begin
+	r.num("window_x", s.window_x);
+	r.num("window_y", s.window_y);
+	r.num("window_w", s.window_w);
+	r.num("window_h", s.window_h);
+	// STEP6:6e app keys: end
 	r.str("versions_dir", s.versions_dir);
 	r.list("custom_builds", s.custom_builds);
 	r.list("sources", s.sources);
@@ -1012,7 +1018,7 @@ bool save_game_overrides(const Paths& paths, const std::string& title_id, const 
 	const EmuEntries now = EmuKeys(edited);
 	for (size_t i = 0; i < now.size(); i++)
 	{
-		// "env" has no editor in the UI: whatever the file holds stays.
+		// "env" is written below, as its differences (see the comment in settings.h).
 		if (std::string(now[i].first) != "env" && now[i].second != was[i].second)
 		{
 			if (!JsonParser(now[i].second).Parse(emu.o[now[i].first]))
@@ -1021,11 +1027,58 @@ bool save_game_overrides(const Paths& paths, const std::string& title_id, const 
 			}
 		}
 	}
+	// The file's own env object, kept as it is unless the page changed a variable.
+	JsonValue file_env;
+	file_env.type = JsonValue::Type::Object;
 	if (const auto* old = Section(root, "emu"))
 	{
 		if (auto env = old->o.find("env"); env != old->o.end() && env->second.type == JsonValue::Type::Object)
 		{
-			emu.o["env"] = env->second;
+			file_env = env->second;
+		}
+	}
+	// STEP6:6e: only the differences go into the file: a variable the page added or changed gets its value, a
+	// variable it removed gets an empty value (removed from the child's environment). Values inherited from
+	// the global table or a build config are never baked in.
+	bool env_changed = false;
+	for (const auto& [name, value]: edited.env)
+	{
+		const auto it = baseline.env.find(name);
+		if (it != baseline.env.end() && it->second == value)
+		{
+			continue;
+		}
+		if (value.empty())
+		{
+			file_env.o.erase(name);
+		} else
+		{
+			JsonValue v;
+			v.type           = JsonValue::Type::String;
+			v.s              = value;
+			file_env.o[name] = std::move(v);
+		}
+		env_changed = true;
+	}
+	for (const auto& entry: baseline.env)
+	{
+		if (edited.env.count(entry.first) != 0)
+		{
+			continue;
+		}
+		JsonValue v;
+		v.type                  = JsonValue::Type::String; // empty: unset it in the child's environment
+		file_env.o[entry.first] = std::move(v);
+		env_changed             = true;
+	}
+	if (env_changed)
+	{
+		emu.o["env"] = std::move(file_env);
+	} else if (const auto* old = Section(root, "emu"))
+	{
+		if (auto it = old->o.find("env"); it != old->o.end() && it->second.type == JsonValue::Type::Object)
+		{
+			emu.o["env"] = it->second;
 		}
 	}
 	root.o["emu"] = std::move(emu);
@@ -1090,6 +1143,12 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	out += "    \"game_dirs\": " + QuoteList(SplitList(s.game_dirs)) + ",\n";
 	out += "    \"addons_dir\": " + Quote(s.addons_dir) + ",\n";
 	out += "    \"columns\": " + Quote(s.columns) + ",\n";
+	// STEP6:6e app keys: begin
+	out += "    \"window_x\": " + std::to_string(s.window_x) + ",\n";
+	out += "    \"window_y\": " + std::to_string(s.window_y) + ",\n";
+	out += "    \"window_w\": " + std::to_string(s.window_w) + ",\n";
+	out += "    \"window_h\": " + std::to_string(s.window_h) + ",\n";
+	// STEP6:6e app keys: end
 	out += "    \"versions_dir\": " + Quote(s.versions_dir) + ",\n";
 	out += "    \"custom_builds\": " + QuoteList(s.custom_builds) + ",\n";
 	out += "    \"sources\": " + QuoteList(s.sources) + ",\n";

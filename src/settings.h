@@ -92,7 +92,8 @@ struct Settings
 	std::string                 cmd_dump_folder; // empty = emulator default
 	// Extra environment for the emulator process only (the launcher's own environment is untouched). Saved
 	// as the "env" object under "emu" in kyty.json: {"NAME": "value"}; an empty value removes NAME from the
-	// child's environment. There is no editor in the UI yet, edit kyty.json by hand.
+	// child's environment. Edited on Settings > Advanced (global and per-game mode): a row with an empty value
+	// leaves the variable out of the table.
 	std::map<std::string, std::string> env;
 	// Keyboard/pad bindings, one `--keymap <entry>` each ("Pad:Cross=South", "Keyboard=Disabled"), as the Qt launcher's
 	// input mapping dialog wrote them to host_input_mapping. Saved as the "host_input_mapping" array under "emu".
@@ -108,6 +109,15 @@ struct Settings
 	std::vector<std::string> menu_hidden;   // build exes unticked in the Version Manager (not in the toolbar menu)
 	std::vector<std::string> source_names;  // "owner/repo|name" tab names given with Rename
 	std::vector<std::string> hidden_games;  // title ids (eboot path for a game without one) taken off the library (files stay on disk)
+	// STEP6:6e app keys: begin
+	// The launcher window's last geometry. Not the emulator's window size (width/height above are that).
+	// window_x/window_y are the screen position (-1: let the window manager place it); window_w/window_h
+	// 0 means the Slint default (the page's preferred-width/height).
+	int window_x = -1;
+	int window_y = -1;
+	int window_w = 0;
+	int window_h = 0;
+	// STEP6:6e app keys: end
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
 	// which keys the user layer sets (written back on save, winning over cfgGlobal.json in resolve_for_launch).
 	std::set<std::string> user_keys;
@@ -140,7 +150,10 @@ Settings resolve_for_launch(const Settings& user, const Paths& paths, const std:
 // (the functions below return false).
 std::string read_game_emulator(const Paths& paths, const std::string& title_id); // "" = no pin (use the default emulator)
 bool        set_game_emulator(const Paths& paths, const std::string& title_id, const std::string& exe); // "" removes the pin
-// Writes only the "emu" keys of `edited` that differ from `baseline`; keeps the pin and the file's "env".
+// Writes only the "emu" keys of `edited` that differ from `baseline`; keeps the pin. The "env" table is
+// written as its differences too: a variable the page changed gets its new value, one it removed gets an
+// empty value ("unset in the child's environment"), and values inherited from another layer are never
+// baked into the file (variables the page did not touch are left exactly as the file held them).
 bool save_game_overrides(const Paths& paths, const std::string& title_id, const Settings& baseline, const Settings& edited);
 bool reset_game_overrides(const Paths& paths, const std::string& title_id); // drops "emu", keeps the pin
 
