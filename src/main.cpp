@@ -18,15 +18,19 @@
 #include <cctype>
 #include <cmath>
 #include <algorithm>
+#include <condition_variable> // STEP6:6c: the image decoder pool
 #include <cstdio>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <deque> // STEP6:6c
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <list> // STEP6:6c: the icon LRU
 #include <map>
 #include <memory>
+#include <mutex> // STEP6:6c
 #include <optional>
 #include <set>
 #include <string>
@@ -146,7 +150,132 @@ slint::Color ParseHexColor(const std::string& text)
 	return slint::Color::from_rgb_uint8(static_cast<uint8_t>(v >> 16), static_cast<uint8_t>(v >> 8), static_cast<uint8_t>(v));
 }
 
-GameRow MakeRow(const GameEntry& g)
+// STEP6:6c: a small fixed-size worker pool. Images are decoded here, never on the UI thread, and the pool
+// keeps its threads for the whole session: `bg_threads` used to add one thread per image and join them only
+// at exit. Jobs that are still queued when the pool stops are dropped.
+class WorkPool
+{
+public:
+	explicit WorkPool(size_t threads)
+	{
+		for (size_t i = 0; i < threads; i++)
+		{
+			workers_.emplace_back([this] { Run(); });
+		}
+	}
+	~WorkPool() { Stop(); }
+	WorkPool(const WorkPool&)            = delete;
+	WorkPool& operator=(const WorkPool&) = delete;
+
+	void Post(std::function<void()> job)
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			if (stopping_)
+			{
+				return;
+			}
+			jobs_.push_back(std::move(job));
+		}
+		wake_.notify_one();
+	}
+
+	// Stops taking work and joins the workers; safe to call twice.
+	void Stop()
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			stopping_ = true;
+		}
+		wake_.notify_all();
+		for (auto& t: workers_)
+		{
+			if (t.joinable())
+			{
+				t.join();
+			}
+		}
+		workers_.clear();
+	}
+
+private:
+	void Run()
+	{
+		for (;;)
+		{
+			std::function<void()> job;
+			{
+				std::unique_lock<std::mutex> lock(mutex_);
+				wake_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
+				if (stopping_)
+				{
+					return;
+				}
+				job = std::move(jobs_.front());
+				jobs_.pop_front();
+			}
+			job();
+		}
+	}
+
+	std::mutex                        mutex_;
+	std::condition_variable           wake_;
+	std::deque<std::function<void()>> jobs_;
+	std::vector<std::thread>          workers_;
+	bool                              stopping_ = false;
+};
+
+// STEP6:6c: the decoded icons kept in memory, least recently used one evicted past `capacity`. Only touched
+// on the UI thread (requests and completions are posted there), so it needs no lock.
+class IconCache
+{
+public:
+	explicit IconCache(size_t capacity): capacity_(capacity) {}
+
+	// The cached image, or nullptr. A hit moves the icon to the front of the eviction order.
+	const slint::Image* Get(const std::string& path)
+	{
+		auto it = slots_.find(path);
+		if (it == slots_.end())
+		{
+			return nullptr;
+		}
+		order_.splice(order_.begin(), order_, it->second.second);
+		return &it->second.first;
+	}
+
+	bool Contains(const std::string& path) const { return slots_.find(path) != slots_.end(); }
+
+	void Put(const std::string& path, slint::Image image)
+	{
+		if (auto it = slots_.find(path); it != slots_.end())
+		{
+			it->second.first = std::move(image);
+			order_.splice(order_.begin(), order_, it->second.second);
+			return;
+		}
+		order_.push_front(path);
+		slots_.emplace(path, std::make_pair(std::move(image), order_.begin()));
+		while (slots_.size() > capacity_)
+		{
+			slots_.erase(order_.back());
+			order_.pop_back();
+		}
+	}
+
+private:
+	size_t capacity_;
+	std::list<std::string> order_; // front = most recently used
+	std::map<std::string, std::pair<slint::Image, std::list<std::string>::iterator>> slots_;
+};
+
+// Icons are decoded at this edge: sharp in the 46 px list row and in the grid card, never full size.
+constexpr int kIconPixels = 128;
+
+// STEP6:6c: builds one library row. The icon is never decoded here: the row starts with an empty placeholder
+// and `request_icon` asks the decoder pool for it (the completion patches that one row in the model).
+GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
+                const std::function<void(const std::string&)>& request_icon = {})
 {
 	GameRow r;
 	r.name         = slint::SharedString(g.name);
@@ -158,9 +287,11 @@ GameRow MakeRow(const GameEntry& g)
 	r.status       = slint::SharedString(status_text(g.status));
 	r.status_code  = static_cast<int>(g.status);
 	r.comment      = slint::SharedString(g.comment);
-	if (!g.icon.empty())
+	r.play_time    = slint::SharedString(g.play_time);
+	r.pinned       = pinned_keys.count(favourite_key(g)) != 0;
+	if (!g.icon.empty() && request_icon)
 	{
-		r.icon = slint::Image::load_from_path(slint::SharedString(g.icon));
+		request_icon(g.icon);
 	}
 	return r;
 }
@@ -449,6 +580,10 @@ int main(int argc, char** argv)
 		s.run_dir    = ToStd(ui->get_run_dir());
 		s.game_dirs  = ToStd(ui->get_game_dirs());
 		s.addons_dir = ToStd(ui->get_addons_dir());
+		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
+		s.library_sort      = ToStd(ui->get_sort_key());
+		s.library_sort_desc = ui->get_sort_desc();
+		s.library_grid      = ui->get_library_grid();
 		// In per-game mode the page holds one game's values, not the user's settings.
 		if (game_mode_tid.empty())
 		{
@@ -513,13 +648,89 @@ int main(int argc, char** argv)
 	}
 
 	// Game library: scanned off the UI thread; results are posted back to the event loop.
-	auto games       = std::make_shared<std::vector<GameEntry>>();
-	auto games_model = std::make_shared<slint::VectorModel<GameRow>>();
-	auto size_cache  = std::make_shared<SizeCache>();
-	auto scan_active = std::make_shared<std::atomic<bool>>(false);
-	auto games_changed = std::make_shared<std::function<void()>>(); // refreshes the Games tab (set once the Version Manager exists)
+	auto        games        = std::make_shared<std::vector<GameEntry>>();
+	auto        games_model  = std::make_shared<slint::VectorModel<GameRow>>();
+	auto        grid_model   = std::make_shared<slint::VectorModel<GridRow>>(); // grid view: rows of indices into `games`
+	auto        grid_columns = std::make_shared<int>(4);
+	auto        size_cache   = std::make_shared<SizeCache>();
+	auto        scan_active  = std::make_shared<std::atomic<bool>>(false);
+	auto        games_changed = std::make_shared<std::function<void()>>(); // refreshes the Games tab (set once the Version Manager exists)
 	std::thread scan_thread;
 	ui->set_games(games_model);
+	ui->set_grid_rows(grid_model);
+
+	// STEP6:6c: the library order. Pinned games come first, then the saved sort key; both views use this one
+	// order, because the grid rows only hold indices into `games`.
+	auto favourite_keys = std::make_shared<std::set<std::string>>();
+	auto favourite_list = std::make_shared<std::vector<std::string>>(s.favourite_games);
+	for (const auto& key: *favourite_list)
+	{
+		favourite_keys->insert(path_key(key));
+	}
+	auto sort_key  = std::make_shared<GameSortKey>(game_sort_key_from_string(s.library_sort));
+	auto sort_desc = std::make_shared<bool>(s.library_sort_desc);
+	s.library_sort = game_sort_key_name(*sort_key); // keep only a key the code knows
+	auto resort    = [games, sort_key, sort_desc, favourite_keys] { sort_games(*games, *sort_key, *sort_desc, *favourite_keys); };
+	// The window shows the saved view state; the callbacks below write changes back to the app keys.
+	ui->set_library_grid(s.library_grid);
+	ui->set_sort_key(slint::SharedString(s.library_sort));
+	ui->set_sort_desc(*sort_desc);
+
+	// STEP6:6c: icons and backdrop art are decoded by this one bounded pool: never on the UI thread, and never
+	// with a thread per image (the backdrop threads used to grow for the whole session).
+	auto pool       = std::make_shared<WorkPool>(2);
+	auto icon_cache = std::make_shared<IconCache>(200);
+	auto icon_jobs  = std::make_shared<std::set<std::string>>(); // icons the pool is decoding right now
+
+	// STEP6:6c: asks for one game's icon. The result comes back on the event loop and is matched to the game by
+	// eboot path, because sorting may have moved its row since the request; nothing is changed for a game that
+	// is no longer in the list.
+	auto request_icon = std::make_shared<std::function<void(const std::string&)>>();
+	*request_icon     = [pool, icon_cache, icon_jobs, games, games_model, favourite_keys,
+	                     weak_ui = slint::ComponentWeakHandle<AppWindow>(ui)](const std::string& path)
+	{
+		if (path.empty() || icon_cache->Contains(path) || !icon_jobs->insert(path).second)
+		{
+			return;
+		}
+		pool->Post(
+		    [icon_cache, icon_jobs, games, games_model, favourite_keys, weak_ui, path]
+		    {
+			    std::vector<uint8_t> rgba;
+			    int                  w   = 0;
+			    int                  hgt = 0;
+			    const bool           ok  = load_image_rgba(path, kIconPixels, kIconPixels, rgba, w, hgt);
+			    slint::invoke_from_event_loop(
+			        [=, rgba = std::move(rgba)]
+			        {
+				        icon_jobs->erase(path);
+				        if (!weak_ui.lock())
+				        {
+					        return;
+				        }
+				        const size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(hgt) * 4;
+				        slint::Image img;
+				        if (ok && w > 0 && hgt > 0 && rgba.size() >= bytes)
+				        {
+					        slint::SharedPixelBuffer<slint::Rgba8Pixel> buf(static_cast<uint32_t>(w), static_cast<uint32_t>(hgt));
+					        std::memcpy(buf.begin(), rgba.data(), bytes);
+					        img = slint::Image(std::move(buf));
+				        }
+				        // A failed decode stays cached as an empty image, so it is not retried on every rebuild.
+				        icon_cache->Put(path, img);
+				        for (size_t i = 0; i < games->size(); i++)
+				        {
+					        if ((*games)[i].icon != path)
+					        {
+						        continue;
+					        }
+					        GameRow row = MakeRow((*games)[i], *favourite_keys);
+					        row.icon    = img;
+					        games_model->set_row_data(static_cast<int>(i), row);
+				        }
+			        });
+		    });
+	};
 
 	// Backdrop art: decoded and downscaled off the UI thread, kept in memory, crossfaded in Slint.
 	using BgBuffer = slint::SharedPixelBuffer<slint::Rgba8Pixel>;
@@ -527,10 +738,9 @@ int main(int argc, char** argv)
 	auto bg_loading = std::make_shared<std::set<std::string>>();
 	auto bg_wanted  = std::make_shared<std::string>();
 	auto bg_shown   = std::make_shared<std::string>();
-	auto bg_threads = std::make_shared<std::vector<std::thread>>();
 	auto want_bg    = std::make_shared<std::function<void(const std::string&)>>();
-	*want_bg = [weak_ui = slint::ComponentWeakHandle<AppWindow>(ui), bg_cache, bg_loading, bg_wanted, bg_shown,
-	            bg_threads](const std::string& path)
+	*want_bg = [pool, weak_ui = slint::ComponentWeakHandle<AppWindow>(ui), bg_cache, bg_loading, bg_wanted,
+	            bg_shown](const std::string& path)
 	{
 		auto h = weak_ui.lock();
 		if (!h)
@@ -561,7 +771,8 @@ int main(int argc, char** argv)
 		{
 			return;
 		}
-		bg_threads->emplace_back(
+		// STEP6:6c: the same bounded pool decodes the backdrop; the "still wanted" check below survives.
+		pool->Post(
 		    [path, weak_ui, bg_cache, bg_loading, bg_wanted, bg_shown]
 		    {
 			    std::vector<uint8_t> rgba;
@@ -595,8 +806,68 @@ int main(int argc, char** argv)
 
 	const std::string compat_cache = path_utf8(paths.compat_cache_file());
 
-	auto publish = [games, games_model, size_cache, scan_active, want_bg, games_changed, weak = slint::ComponentWeakHandle<AppWindow>(ui)](
-	                   std::vector<GameEntry> list, SizeCache sizes, bool done)
+	// STEP6:6c: builds both models from `games`, which is already in display order. The grid rows hold indices,
+	// so the list and the grid can never disagree; an icon that is already decoded is put in without a request.
+	auto rebuild = [games, games_model, grid_model, grid_columns, icon_cache, favourite_keys, request_icon]()
+	{
+		std::vector<GameRow> rows;
+		rows.reserve(games->size());
+		for (const auto& g: *games)
+		{
+			GameRow row = MakeRow(g, *favourite_keys, *request_icon);
+			if (!g.icon.empty())
+			{
+				if (const slint::Image* cached = icon_cache->Get(g.icon))
+				{
+					row.icon = *cached;
+				}
+			}
+			rows.push_back(std::move(row));
+		}
+		games_model->set_vector(rows);
+
+		std::vector<GridRow> grid;
+		const size_t         columns = static_cast<size_t>(std::max(1, *grid_columns));
+		for (size_t i = 0; i < games->size(); i += columns)
+		{
+			GridRow row;
+			for (size_t k = i; k < games->size() && k < i + columns; k++)
+			{
+				row.cells.push_back(static_cast<int>(k));
+			}
+			grid.push_back(std::move(row));
+		}
+		grid_model->set_vector(grid);
+	};
+
+	// A rescan, a re-sort or a pin keeps the user's pick; at startup nothing is selected.
+	auto restore_selection = [games, want_bg, weak = slint::ComponentWeakHandle<AppWindow>(ui)]()
+	{
+		auto h = weak.lock();
+		if (!h)
+		{
+			return;
+		}
+		int               selected = -1;
+		const bool        keep     = (*h)->get_selected() >= 0;
+		const std::string current  = path_key(ToStd((*h)->get_game()));
+		if (keep)
+		{
+			for (size_t i = 0; i < games->size(); i++)
+			{
+				if (path_key((*games)[i].eboot) == current)
+				{
+					selected = static_cast<int>(i);
+					break;
+				}
+			}
+		}
+		(*h)->set_selected(selected);
+		(*want_bg)(selected >= 0 ? (*games)[static_cast<size_t>(selected)].background : std::string());
+	};
+
+	auto publish = [games, size_cache, scan_active, games_changed, resort, rebuild, restore_selection,
+	                weak = slint::ComponentWeakHandle<AppWindow>(ui)](std::vector<GameEntry> list, SizeCache sizes, bool done)
 	{
 		auto h = weak.lock();
 		if (!h)
@@ -605,27 +876,14 @@ int main(int argc, char** argv)
 		}
 		*size_cache = std::move(sizes);
 		*games      = std::move(list);
-		std::vector<GameRow> rows;
-		rows.reserve(games->size());
-		// A rescan keeps the user's pick; at startup nothing is selected.
-		int               selected = -1;
-		const bool        keep     = (*h)->get_selected() >= 0;
-		const std::string current  = path_key(ToStd((*h)->get_game()));
-		for (size_t i = 0; i < games->size(); i++)
-		{
-			rows.push_back(MakeRow((*games)[i]));
-			if (keep && path_key((*games)[i].eboot) == current)
-			{
-				selected = static_cast<int>(i);
-			}
-		}
-		games_model->set_vector(rows);
+		// A rescan and a header click sort with the same comparator, before the rows are built.
+		resort();
+		rebuild();
 		if (*games_changed)
 		{
 			(*games_changed)();
 		}
-		(*h)->set_selected(selected);
-		(*want_bg)(selected >= 0 ? (*games)[static_cast<size_t>(selected)].background : std::string());
+		restore_selection();
 		if (done)
 		{
 			(*h)->set_scanning(false);
@@ -690,6 +948,64 @@ int main(int argc, char** argv)
 			    ui->set_game(slint::SharedString((*games)[static_cast<size_t>(i)].eboot));
 			    (*want_bg)((*games)[static_cast<size_t>(i)].background);
 		    }
+	    });
+
+	// STEP6:6c: a header click (or a flip of the sorted column) re-sorts the library and saves the order.
+	ui->on_sort_by(
+	    [&, resort, rebuild, restore_selection, sort_key, sort_desc](slint::SharedString key, bool desc)
+	    {
+		    *sort_key           = game_sort_key_from_string(ToStd(key));
+		    *sort_desc          = desc;
+		    s.library_sort      = game_sort_key_name(*sort_key);
+		    s.library_sort_desc = desc;
+		    resort();
+		    rebuild();
+		    restore_selection();
+		    save();
+	    });
+	// STEP6:6c: "Pin to top" / "Unpin". Keyed by title id (by eboot path for a game without one); the pinned
+	// games keep their place in the chosen sort.
+	ui->on_pin_game(
+	    [&, resort, rebuild, restore_selection, favourite_keys, favourite_list](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size())
+		    {
+			    return;
+		    }
+		    const GameEntry&  g   = (*games)[static_cast<size_t>(i)];
+		    const std::string key = favourite_key(g);
+		    if (favourite_keys->erase(key) == 0)
+		    {
+			    favourite_keys->insert(key);
+			    favourite_list->push_back(g.title_id.empty() ? g.eboot : g.title_id);
+		    } else
+		    {
+			    std::erase_if(*favourite_list, [&](const std::string& item) { return path_key(item) == key; });
+		    }
+		    s.favourite_games = *favourite_list;
+		    resort();
+		    rebuild();
+		    restore_selection();
+		    save();
+	    });
+	// STEP6:6c: how many cards the grid fits per row; Slint debounces the library box width and calls this.
+	ui->on_grid_columns_changed(
+	    [grid_columns, rebuild](int columns)
+	    {
+		    const int n = std::max(1, columns);
+		    if (n == *grid_columns)
+		    {
+			    return;
+		    }
+		    *grid_columns = n;
+		    rebuild();
+	    });
+	// STEP6:6c: list/grid toggle. The mode is one of the app keys.
+	ui->on_library_view_changed(
+	    [&](bool grid)
+	    {
+		    s.library_grid = grid;
+		    save();
 	    });
 	// Game folders list: the ';'-separated game-dirs shown one per row.
 	auto game_dir_model = std::make_shared<slint::VectorModel<slint::SharedString>>();
@@ -855,7 +1171,7 @@ int main(int argc, char** argv)
 		    open_in_system(path_utf8(dir));
 	    });
 	ui->on_remove_game(
-	    [&, want_bg]
+	    [&, want_bg, rebuild]
 	    {
 		    const int i = ui->get_selected();
 		    if (i < 0 || static_cast<size_t>(i) >= games->size())
@@ -866,7 +1182,8 @@ int main(int argc, char** argv)
 		    const GameEntry& hide = (*games)[static_cast<size_t>(i)];
 		    s.hidden_games.push_back(hide.title_id.empty() ? hide.eboot : hide.title_id);
 		    games->erase(games->begin() + i);
-		    games_model->erase(static_cast<size_t>(i));
+		    // STEP6:6c: rebuilds both models, so the grid does not keep the removed game's card.
+		    rebuild();
 		    ui->set_selected(-1);
 		    (*want_bg)(std::string());
 		    save();
@@ -1340,10 +1657,8 @@ int main(int argc, char** argv)
 	{
 		scan_thread.join();
 	}
-	for (auto& t: *bg_threads)
-	{
-		t.join();
-	}
+	// STEP6:6c: the image pool had its threads for the whole session; join them before the window goes.
+	pool->Stop();
 	// Closing stopped the game; wait for its output to finish (into last-run.log).
 	child.Wait();
 	return 0;

@@ -108,6 +108,12 @@ struct Settings
 	std::vector<std::string> menu_hidden;   // build exes unticked in the Version Manager (not in the toolbar menu)
 	std::vector<std::string> source_names;  // "owner/repo|name" tab names given with Rename
 	std::vector<std::string> hidden_games;  // title ids (eboot path for a game without one) taken off the library (files stay on disk)
+	// STEP6:6c app keys: begin
+	std::string              library_sort      = "name"; // library sort key: name, status, serial, firmware, size, version, playtime, path, comment
+	bool                     library_sort_desc = false;  // descending instead of ascending
+	bool                     library_grid      = false;  // grid view instead of the table
+	std::vector<std::string> favourite_games;            // "Pin to top": title ids (eboot path for a game without one)
+	// STEP6:6c app keys: end
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
 	// which keys the user layer sets (written back on save, winning over cfgGlobal.json in resolve_for_launch).
 	std::set<std::string> user_keys;

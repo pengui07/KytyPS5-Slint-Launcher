@@ -252,6 +252,134 @@ std::string path_key(const std::string& path)
 	return k;
 }
 
+namespace {
+
+// Case-insensitive form of a text column.
+std::string LowerKey(std::string s)
+{
+	for (auto& c: s)
+	{
+		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	}
+	return s;
+}
+
+int CompareText(const std::string& a, const std::string& b)
+{
+	const int c = LowerKey(a).compare(LowerKey(b));
+	return c < 0 ? -1 : c > 0 ? 1 : 0;
+}
+
+} // namespace
+
+GameSortKey game_sort_key_from_string(const std::string& key)
+{
+	if (key == "status")
+	{
+		return GameSortKey::Status;
+	}
+	if (key == "serial")
+	{
+		return GameSortKey::Serial;
+	}
+	if (key == "firmware")
+	{
+		return GameSortKey::Firmware;
+	}
+	if (key == "size")
+	{
+		return GameSortKey::Size;
+	}
+	if (key == "version")
+	{
+		return GameSortKey::Version;
+	}
+	if (key == "playtime")
+	{
+		return GameSortKey::Playtime;
+	}
+	if (key == "path")
+	{
+		return GameSortKey::Path;
+	}
+	if (key == "comment")
+	{
+		return GameSortKey::Comment;
+	}
+	return GameSortKey::Name;
+}
+
+const char* game_sort_key_name(GameSortKey key)
+{
+	switch (key)
+	{
+		case GameSortKey::Name: return "name";
+		case GameSortKey::Status: return "status";
+		case GameSortKey::Serial: return "serial";
+		case GameSortKey::Firmware: return "firmware";
+		case GameSortKey::Size: return "size";
+		case GameSortKey::Version: return "version";
+		case GameSortKey::Playtime: return "playtime";
+		case GameSortKey::Path: return "path";
+		case GameSortKey::Comment: return "comment";
+	}
+	return "name";
+}
+
+std::string favourite_key(const GameEntry& game)
+{
+	return path_key(game.title_id.empty() ? game.eboot : game.title_id);
+}
+
+void sort_games(std::vector<GameEntry>& games, GameSortKey key, bool descending, const std::set<std::string>& favourites)
+{
+	auto pinned  = [&favourites](const GameEntry& g) { return favourites.count(favourite_key(g)) != 0; };
+	auto compare = [key](const GameEntry& a, const GameEntry& b)
+	{
+		switch (key)
+		{
+			case GameSortKey::Name: return CompareText(a.name, b.name);
+			case GameSortKey::Status: return a.status < b.status ? -1 : a.status > b.status ? 1 : 0;
+			case GameSortKey::Serial: return CompareText(a.title_id, b.title_id);
+			case GameSortKey::Firmware: return CompareText(a.firmware_version, b.firmware_version);
+			case GameSortKey::Size: return a.size < b.size ? -1 : a.size > b.size ? 1 : 0;
+			case GameSortKey::Version: return CompareText(a.game_version, b.game_version);
+			// Play time is a display string ("12h 30m") and empty until it is tracked: the name tie-break orders it.
+			case GameSortKey::Playtime: return CompareText(a.play_time, b.play_time);
+			case GameSortKey::Path: return CompareText(a.dir, b.dir);
+			case GameSortKey::Comment: return CompareText(a.comment, b.comment);
+		}
+		return 0;
+	};
+	std::stable_sort(games.begin(), games.end(),
+	                 [&](const GameEntry& a, const GameEntry& b)
+	                 {
+		                 // Pinned games stay on top in both directions.
+		                 const bool pa = pinned(a);
+		                 const bool pb = pinned(b);
+		                 if (pa != pb)
+		                 {
+			                 return pa;
+		                 }
+		                 int c = compare(a, b);
+		                 if (descending)
+		                 {
+			                 c = -c;
+		                 }
+		                 if (c != 0)
+		                 {
+			                 return c < 0;
+		                 }
+		                 // Ties always break ascending, so the order is deterministic.
+		                 c = CompareText(a.name, b.name);
+		                 if (c != 0)
+		                 {
+			                 return c < 0;
+		                 }
+		                 return a.title_id < b.title_id;
+	                 });
+}
+
 std::string read_text_file(const std::string& path)
 {
 	std::ifstream f(utf8_path(path), std::ios::binary);
