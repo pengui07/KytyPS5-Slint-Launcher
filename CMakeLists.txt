@@ -90,6 +90,9 @@ add_executable(kyty_slint_launcher WIN32
 	src/launch.h
 	src/library.cpp
 	src/library.h
+	# STEP6:6f: the Controls page (bindings, capture, host_input_mapping)
+	src/input_mapping.cpp
+	src/input_mapping.h
 	src/versions.cpp
 	src/versions.h
 	src/version_manager.cpp

@@ -97,7 +97,7 @@ struct Settings
 	std::map<std::string, std::string> env;
 	// Keyboard/pad bindings, one `--keymap <entry>` each ("Pad:Cross=South", "Keyboard=Disabled"), as the Qt launcher's
 	// input mapping dialog wrote them to host_input_mapping. Saved as the "host_input_mapping" array under "emu".
-	// There is no editor in the UI yet.
+	// Edited on the Controls page (src/input_mapping.*).
 	std::vector<std::string> host_input_mapping;
 	// Version Manager
 	std::string versions_dir;  // downloaded builds; empty = <data root>\versions
