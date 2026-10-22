@@ -330,7 +330,14 @@ LaunchPlan make_launch_plan(const Settings& user, const Paths& paths)
 	{
 		layers.push_back("emulator pin: " + launch.emulator);
 	}
-	LaunchPlan plan = make_plan(resolve_for_launch(launch, paths, title, &layers));
+	std::vector<std::string> overridden;
+	LaunchPlan plan = make_plan(resolve_for_launch(launch, paths, title, &layers, true, &overridden));
+	// A build's config files outrank the user's values, so say so: this is the usual reason a build "ignores" a
+	// setting. Shown with the plan (--dry-run) and in the console log before the command line.
+	for (auto& w: overridden)
+	{
+		plan.warnings.push_back(std::move(w));
+	}
 	if (!pin_warning.empty())
 	{
 		plan.warnings.insert(plan.warnings.begin(), pin_warning);

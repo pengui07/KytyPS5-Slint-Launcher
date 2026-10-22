@@ -920,7 +920,7 @@ int apply_qt_emu_value(Settings& s, const std::string& key, const std::string& t
 }
 
 Settings resolve_for_launch(const Settings& user, const Paths& paths, const std::string& title_id, std::vector<std::string>* report,
-                            bool with_game_file)
+                            bool with_game_file, std::vector<std::string>* overrides)
 {
 	auto note = [&](const char* kind, const std::filesystem::path& file, const std::string& status)
 	{
@@ -929,58 +929,94 @@ Settings resolve_for_launch(const Settings& user, const Paths& paths, const std:
 			report->push_back(std::string(kind) + " " + path_utf8(file) + ": " + status);
 		}
 	};
+	auto join = [](const std::vector<std::string>& names)
+	{
+		std::string text;
+		for (size_t i = 0; i < names.size(); i++)
+		{
+			text += (i == 0 ? std::string() : ", ") + names[i];
+		}
+		return text;
+	};
 
-	// defaults + build config: what a key resolves to when the user layer does not set it.
-	Settings    base = default_settings();
-	std::string st;
+	// The user's kyty.json is the base. A build's config files are requirements, not defaults: they add and
+	// overwrite on top of it. Nothing here is written back - this Settings only becomes the command line - so a
+	// build without those files, or any other build, brings the user's own values back.
+	Settings              r        = user;
+	const EmuEntries      defaults = EmuKeys(default_settings());
+	const EmuEntries      mine     = EmuKeys(user);
+	std::set<std::string> build_touched; // keys a build config file set (whatever the value)
+
+	// Applies one sparse layer, then names the keys it changed.
+	auto apply = [&](const char* kind, const std::filesystem::path& file, bool is_build)
+	{
+		const EmuEntries before = EmuKeys(r);
+		std::string      st;
+		if (!apply_layer_file(file, r, &st))
+		{
+			note(kind, file, st);
+			return;
+		}
+		const EmuEntries         after = EmuKeys(r);
+		std::vector<std::string> changed;
+		for (size_t i = 0; i < before.size() && i < after.size(); i++)
+		{
+			if (before[i].second == after[i].second)
+			{
+				continue;
+			}
+			changed.emplace_back(after[i].first);
+			if (is_build)
+			{
+				build_touched.emplace(after[i].first);
+			}
+		}
+		std::string text = st;
+		if (!changed.empty())
+		{
+			text += ", " + std::to_string(changed.size()) + " key(s) set: " + join(changed);
+		}
+		note(kind, file, text);
+	};
+
+	std::error_code ec;
+	note("user ", paths.settings_file(), std::filesystem::exists(paths.settings_file(), ec) ? "loaded" : "not found");
+
+	// Build config: requirements of the build the emulator pin chose, so they go over the user's values.
 	if (!user.emulator.empty())
 	{
 		const auto dir = utf8_path(user.emulator).parent_path();
-		for (const auto& name: {std::string("cfgGlobal.json"), title_id.empty() ? std::string() : "cfg" + title_id + ".json"})
+		apply("build", dir / "cfgGlobal.json", true);
+		if (!title_id.empty())
 		{
-			if (!name.empty())
-			{
-				apply_layer_file(dir / name, base, &st);
-				note("build", dir / name, st);
-			}
+			apply("build", dir / ("cfg" + title_id + ".json"), true);
 		}
-	} else if (report != nullptr)
+	}
+	else if (report != nullptr)
 	{
 		report->push_back("build: no emulator set, no build config looked for");
 	}
 
-	// user layer: keep the user's values for keys it sets, take the base value for the rest.
-	Settings         r        = user;
-	const EmuEntries defaults = EmuKeys(default_settings());
-	const EmuEntries mine     = EmuKeys(user);
-	const EmuEntries inherit  = EmuKeys(base);
-	std::string      text     = "{";
-	for (size_t i = 0; i < mine.size(); i++)
-	{
-		if (std::string(mine[i].first) != "env" && !UserSet(user, mine, defaults, i) && inherit[i].second != defaults[i].second)
-		{
-			text += (text.size() > 1 ? ", " : "") + Quote(mine[i].first) + ": " + inherit[i].second;
-		}
-	}
-	JsonValue inherited;
-	if (JsonParser(text + "}").Parse(inherited))
-	{
-		ReadEmu(inherited, r, nullptr);
-	}
-	r.env = base.env;
-	for (const auto& [k, v]: user.env)
-	{
-		r.env[k] = v;
-	}
-	std::error_code ec;
-	note("user ", paths.settings_file(), std::filesystem::exists(paths.settings_file(), ec) ? "loaded" : "not found");
-
-	// per-game override
+	// Per-game file last: a choice made for this game outranks the build's files too.
 	if (!title_id.empty() && with_game_file)
 	{
-		const auto file = paths.game_config_file(title_id);
-		apply_layer_file(file, r, &st);
-		note("game ", file, st);
+		apply("game ", paths.game_config_file(title_id), false);
+	}
+
+	// Only warn where the value the emulator gets really differs from the saved one: a per-game file that sets
+	// the key back means the build did not win after all.
+	const EmuEntries         final_state = EmuKeys(r);
+	std::vector<std::string> took;
+	for (size_t i = 0; i < final_state.size() && i < mine.size(); i++)
+	{
+		if (final_state[i].second != mine[i].second && build_touched.count(final_state[i].first) != 0 && UserSet(user, mine, defaults, i))
+		{
+			took.emplace_back(final_state[i].first);
+		}
+	}
+	if (!took.empty() && overrides != nullptr)
+	{
+		overrides->push_back("this build's config files set " + join(took) + " over the saved value");
 	}
 	return r;
 }

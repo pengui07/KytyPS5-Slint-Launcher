@@ -130,7 +130,8 @@ struct Settings
 	std::vector<std::string> favourite_games;            // "Pin to top": title ids (eboot path for a game without one)
 	// STEP6:6c app keys: end
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
-	// which keys the user layer sets (written back on save, winning over cfgGlobal.json in resolve_for_launch).
+	// which keys the user layer sets (written back on save; a build's config files may still override them at
+	// launch - see resolve_for_launch).
 	std::set<std::string> user_keys;
 };
 
@@ -147,12 +148,16 @@ bool save_settings(const std::filesystem::path& path, const Settings& s);
 // ("not found", "unreadable, ignored", "newer version N, ignored") or "applied".
 bool apply_layer_file(const std::filesystem::path& path, Settings& s, std::string* status = nullptr);
 
-// The settings the emulator is started with: defaults < build config (cfgGlobal.json, cfg<TITLEID>.json next
-// to the emulator) < `user` (only the keys it sets, see Settings::user_keys) < configs/games/<TITLEID>.json.
-// `report` gets one line per layer file looked at. `with_game_file` false leaves the per-game layer out: what the
-// game would get without its file (the baseline the per-game settings page saves its differences from).
+// The settings the emulator is started with: `user` (kyty.json) < build config (cfgGlobal.json, cfg<TITLEID>.json
+// next to the emulator) < configs/games/<TITLEID>.json. A build's config files are requirements, not defaults:
+// they add and overwrite on top of the user's own values, for the launches that use that build only. Nothing is
+// written back, so another build (or one without those files) brings the user's values back.
+// `report` gets one line per layer file looked at, naming the keys a layer set and the ones it took from the user.
+// `overrides` gets one sentence per build layer that beat a saved value (the launcher shows those as warnings).
+// `with_game_file` false leaves the per-game layer out: what the game would get without its file (the baseline
+// the per-game settings page saves its differences from).
 Settings resolve_for_launch(const Settings& user, const Paths& paths, const std::string& title_id, std::vector<std::string>* report = nullptr,
-                            bool with_game_file = true);
+                            bool with_game_file = true, std::vector<std::string>* overrides = nullptr);
 
 // Per-game file configs/games/<TITLEID>.json:
 //   { "version": 1, "emulator": "<exe path>", "emu": { ...sparse keys, as in kyty.json "emu"... } }
