@@ -1,11 +1,15 @@
 import { Button, ComboBox, LineEdit, ListView, ScrollView } from "std-widgets.slint";
 import { Theme, TextCell, HeaderCell, IconButton } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
-import { SettingsPage, GameConfigRow, BuildChoice } from "settings.slint";
+// STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
+// pickers and the Games tab's delete-save action).
+import { SettingsPage, GameConfigRow, BuildChoice, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
 
 // The generated C++ header needs these.
-export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice }
+// STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
+// and the Games tab's delete-save action).
+export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, EnvVar, EnvEditor, Devices, GameActions }
 
 export struct GameRow {
     name: string,
@@ -341,6 +345,9 @@ export component AppWindow inherits Window {
     in property <bool> is-windows: false; // Windows-only options are hidden elsewhere
     in-out property <bool> close-prompt-open; // closing the window while a game runs
     in-out property <bool> delete-cache-prompt-open; // Settings > Versions > Delete cache
+    // STEP6:6e: "Delete save data…" of the selected game (bottom bar and Settings > Games).
+    in-out property <bool> delete-save-prompt-open;
+    in-out property <int> delete-save-row: -1; // library index
     in-out property <bool> import-summary-open; // the Kyty.ini import finished: shows import-summary-text once
     in property <string> import-summary-text;
     callback confirm-close();
@@ -360,6 +367,7 @@ export component AppWindow inherits Window {
     callback remove-game();
     callback open-game-trophies(int); // library index: the Trophies page on that game
     callback open-save-folder(int); // <run folder>\_SaveData\<serial>
+    callback delete-save-data(int); // STEP6:6e: wipes <run folder>\_SaveData\<serial> (the dialog confirms)
     callback play();
     callback stop();
     callback dry-run();
@@ -754,6 +762,20 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+            // STEP6:6e: delete the selected game's save data (<run folder>/_SaveData/<serial>); the
+            // confirmation dialog below asks first. Off while a game runs, and for entries without a title id.
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: @image-url("icons/remove-configuration.svg");
+                    enabled: !root.running && root.selected >= 0 && root.selected < root.games.length
+                        && root.games[root.selected].serial != "";
+                    clicked => {
+                        root.delete-save-row = root.selected;
+                        root.delete-save-prompt-open = true;
+                    }
+                }
+            }
         }
     }
 
@@ -1073,6 +1095,62 @@ export component AppWindow inherits Window {
                         text: "Cancel";
                         primary: true;
                         clicked => { root.delete-cache-prompt-open = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // STEP6:6e: "Delete save data…" asks first; it wipes <run folder>/_SaveData/<serial> for good.
+    if root.delete-save-prompt-open: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #000000a6;
+        TouchArea { }
+        Rectangle {
+            width: min(460px, root.width - 48px);
+            height: save-box.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 3;
+            background: Theme.card;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            save-box := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                Text {
+                    text: "Delete save data";
+                    color: Theme.text;
+                    font-size: 15px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+                Text {
+                    text: (root.delete-save-row >= 0 && root.delete-save-row < root.games.length
+                            ? root.games[root.delete-save-row].name + (root.games[root.delete-save-row].serial != ""
+                                ? " (" + root.games[root.delete-save-row].serial + ")" : "")
+                            : "")
+                        + " - its save folder in _SaveData will be deleted. This can't be undone.";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Button {
+                        text: "Delete";
+                        clicked => {
+                            root.delete-save-prompt-open = false;
+                            root.delete-save-data(root.delete-save-row);
+                        }
+                    }
+                    Button {
+                        text: "Cancel";
+                        primary: true;
+                        clicked => { root.delete-save-prompt-open = false; }
                     }
                 }
             }

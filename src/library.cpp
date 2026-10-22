@@ -406,11 +406,54 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		games.push_back(std::move(g));
 	};
 
+	// STEP6:6e: a .zar file as a game root (case-insensitive extension). Nothing inside the archive is read:
+	// name, serial and icon can't come from it without zarchive, so none are invented.
+	auto add_archive = [&](const fs::path& file)
+	{
+		std::string ext = path_utf8(file.extension());
+		for (auto& c: ext)
+		{
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		}
+		if (ext != ".zar")
+		{
+			return;
+		}
+		const std::string path = path_utf8(file);
+		if (!seen.insert(path_key(path)).second)
+		{
+			return;
+		}
+		GameEntry g;
+		g.name    = path_utf8(file.stem());
+		if (g.name.empty())
+		{
+			g.name = path_utf8(file.filename());
+		}
+		g.dir     = path;
+		g.eboot   = path;
+		g.archive = true;
+		std::error_code sec;
+		g.size = static_cast<uint64_t>(fs::file_size(file, sec));
+		if (sec)
+		{
+			g.size = 0;
+		}
+		games.push_back(std::move(g));
+	};
+
 	for (const auto& root_text: SplitRoots(roots))
 	{
 		const fs::path root = utf8_path(root_text);
 		if (!fs::is_directory(root, ec))
 		{
+			// STEP6:6e: a .zar archive listed as a root is a game of its own. The emulator reads ZArchive
+			// files directly, but the launcher can't look inside one: the name is the file stem and there is
+			// no title id, version or icon (that would need zarchive).
+			if (fs::is_regular_file(root, ec))
+			{
+				add_archive(root);
+			}
 			continue;
 		}
 		if (fs::exists(root / "eboot.bin", ec))
