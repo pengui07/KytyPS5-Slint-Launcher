@@ -28,6 +28,9 @@ struct LaunchPlan
 	std::vector<std::string> args;
 	std::string              extra_args; // appended to the command line as typed
 	std::string              cwd;
+	// Where the emulator's output is teed: <root>/logs/last-run.log. Empty means cwd/last-run.log (make_launch_plan
+	// always fills it; make_plan alone does not know the paths).
+	std::string              log_file;
 	std::vector<EnvChange>   env;
 	std::vector<std::string> warnings;
 	std::vector<std::string> layers; // config layer files looked at, one line each (shown by the dry run)
@@ -56,7 +59,8 @@ std::string command_line(const LaunchPlan& plan);
 // The command, the env changes and the resulting child env.
 std::string describe(const LaunchPlan& plan);
 
-// Runs one emulator; stdout+stderr are teed to <cwd>/last-run.log and handed to on_output
+// Runs one emulator; stdout+stderr are teed to plan.log_file (the launcher's logs folder, created as needed) or to
+// <cwd>/last-run.log when the plan has none, and handed to on_output
 // from a reader thread.
 class ChildProcess
 {

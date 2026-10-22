@@ -64,15 +64,12 @@ fs::path exe_dir(const char* argv0)
 	return ExePath(argv0).parent_path();
 }
 
-Paths compute_paths(const char* argv0)
+fs::path portable_root(const char* argv0)
 {
-	Paths p;
-	p.exe_dir = exe_dir(argv0);
-
 	// portable.txt sits next to the exe; on macOS next to the .app bundle (<bundle>/Contents/MacOS/<exe>).
-	fs::path beside = p.exe_dir;
+	fs::path beside = exe_dir(argv0);
 #ifdef __APPLE__
-	for (fs::path q = p.exe_dir; q.has_parent_path() && q != q.parent_path(); q = q.parent_path())
+	for (fs::path q = beside; q.has_parent_path() && q != q.parent_path(); q = q.parent_path())
 	{
 		if (q.extension() == ".app")
 		{
@@ -81,6 +78,15 @@ Paths compute_paths(const char* argv0)
 		}
 	}
 #endif
+	return beside;
+}
+
+Paths compute_paths(const char* argv0)
+{
+	Paths p;
+	p.exe_dir = exe_dir(argv0);
+
+	const fs::path beside = portable_root(argv0);
 	std::error_code ec;
 	p.portable = fs::exists(beside / "portable.txt", ec);
 
@@ -95,7 +101,7 @@ Paths compute_paths(const char* argv0)
 		PWSTR local = nullptr;
 		if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)) && local != nullptr)
 		{
-			p.root = fs::path(local) / "Kyty";
+			p.root = fs::path(local) / "KytyPS5";
 		}
 		if (local != nullptr)
 		{
@@ -104,15 +110,15 @@ Paths compute_paths(const char* argv0)
 		if (p.root.empty())
 		{
 			// Never expected; stay usable by keeping everything next to the exe.
-			p.root = beside / "KytyData";
+			p.root = beside / "KytyPS5Data";
 		}
 		config_root = p.root / "configs";
 #elif defined(__APPLE__)
-		p.root      = Home() / "Library" / "Application Support" / "Kyty";
+		p.root      = Home() / "Library" / "Application Support" / "KytyPS5";
 		config_root = p.root / "configs";
 #else
-		p.root      = EnvDir("XDG_DATA_HOME", Home() / ".local" / "share") / "kyty";
-		config_root = EnvDir("XDG_CONFIG_HOME", Home() / ".config") / "kyty";
+		p.root      = EnvDir("XDG_DATA_HOME", Home() / ".local" / "share") / "kytyps5";
+		config_root = EnvDir("XDG_CONFIG_HOME", Home() / ".config") / "kytyps5";
 #endif
 	}
 	p.config_dir       = config_root;

@@ -6,12 +6,16 @@ import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager
 import { SettingsPage, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
 import { ControlsPage, Controls, ControlRow } from "controls.slint";
+// The first-launch setup: a window of its own, shown before the main one (see main.cpp).
+import { FirstRunWindow } from "first_run.slint";
 
 // The generated C++ header needs these.
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
 export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow }
+// The setup window is exported so C++ can create it before AppWindow (main.cpp includes only this header).
+export { FirstRunWindow }
 
 export struct GameRow {
     name: string,

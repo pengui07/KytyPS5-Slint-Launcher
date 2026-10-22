@@ -343,6 +343,9 @@ LaunchPlan make_launch_plan(const Settings& user, const Paths& paths)
 		plan.warnings.insert(plan.warnings.begin(), pin_warning);
 	}
 	plan.layers = std::move(layers);
+	// The output of the run lives in the launcher's logs folder, not in the saves folder: a run dir pointed at
+	// Documents or at the Qt launcher's folder must not grow a log file.
+	plan.log_file = path_utf8(paths.logs_dir / "last-run.log");
 	return plan;
 }
 
@@ -444,6 +447,7 @@ std::string describe(const LaunchPlan& plan)
 	}
 	out += "exe: " + plan.exe + "\n";
 	out += "cwd: " + plan.cwd + "\n";
+	out += "log: " + (plan.log_file.empty() ? path_utf8(utf8_path(plan.cwd) / "last-run.log") : plan.log_file) + "\n";
 	out += "cmd: " + command_line(plan) + "\n";
 	out += "env changes:\n";
 	for (const auto& c: plan.env)
@@ -561,7 +565,13 @@ bool ChildProcess::Start(const LaunchPlan& plan, OutputFn on_output, ExitFn on_e
 	m_impl->read    = rd;
 	m_impl->running = true;
 
-	fs::path log_path = utf8_path(plan.cwd) / "last-run.log";
+	// <root>/logs/last-run.log (set by make_launch_plan); cwd/last-run.log when the plan has no log path.
+	fs::path log_path = plan.log_file.empty() ? utf8_path(plan.cwd) / "last-run.log" : utf8_path(plan.log_file);
+	std::error_code log_ec;
+	if (!log_path.parent_path().empty())
+	{
+		fs::create_directories(log_path.parent_path(), log_ec);
+	}
 	m_reader          = std::thread(
         [impl = m_impl, log_path, on_output = std::move(on_output), on_exit = std::move(on_exit)]
         {
@@ -700,7 +710,13 @@ bool ChildProcess::Start(const LaunchPlan& plan, OutputFn on_output, ExitFn on_e
 	m_impl->read = fds[0];
 	m_impl->running = true;
 
-	fs::path log_path = utf8_path(plan.cwd) / "last-run.log";
+	// <root>/logs/last-run.log (set by make_launch_plan); cwd/last-run.log when the plan has no log path.
+	fs::path log_path = plan.log_file.empty() ? utf8_path(plan.cwd) / "last-run.log" : utf8_path(plan.log_file);
+	std::error_code log_ec;
+	if (!log_path.parent_path().empty())
+	{
+		fs::create_directories(log_path.parent_path(), log_ec);
+	}
 	m_reader          = std::thread(
         [impl = m_impl, log_path, on_output = std::move(on_output), on_exit = std::move(on_exit)]
         {

@@ -10,14 +10,15 @@ namespace kyty_launcher {
 //
 // Portable mode (a file named portable.txt next to the launcher exe; on macOS next to the .app bundle):
 //   everything under <exe dir>\ (the bundle's parent on macOS).
-// Otherwise a per-user root: Windows %LOCALAPPDATA%\Kyty, macOS ~/Library/Application Support/Kyty,
-//   Linux $XDG_CONFIG_HOME/kyty (configs) and $XDG_DATA_HOME/kyty (the rest).
+// Otherwise a per-user root: Windows %LOCALAPPDATA%\KytyPS5, macOS ~/Library/Application Support/KytyPS5,
+//   Linux $XDG_CONFIG_HOME/kytyps5 (configs) and $XDG_DATA_HOME/kytyps5 (the rest).
 //
 //   <config_dir>\kyty.json              user config
 //   <config_dir>\games\<TITLEID>.json   per-game overrides
 //   <root>\playtime.json                per-game play time totals (see PlayTimeDb)
 //   <root>\versions\  <root>\cache\  <root>\logs\  <root>\run\
-// where config_dir is <root>\configs, except on Linux (non-portable) where it is $XDG_CONFIG_HOME/kyty itself.
+// where config_dir is <root>\configs, except on Linux (non-portable) where it is $XDG_CONFIG_HOME/kytyps5 itself.
+// The Qt launcher's own paths (%ProgramData%\Kyty\Kyty.ini, ~/.config/Kyty) are not these: see qt_import.cpp.
 struct Paths
 {
 	bool                  portable = false;
@@ -43,6 +44,10 @@ struct Paths
 
 // The folder holding the launcher executable.
 std::filesystem::path exe_dir(const char* argv0);
+
+// The folder portable.txt sits in: the exe's own folder, or the .app bundle's parent on macOS. Portable mode keeps
+// everything here, and the first-launch setup offers it as the portable data root.
+std::filesystem::path portable_root(const char* argv0);
 
 // The Linux and macOS branches are untested.
 Paths compute_paths(const char* argv0);

@@ -385,22 +385,188 @@ RemovedGameRow RemovedRow(const std::string& key)
 	return row;
 }
 
+// True when a file can be created in `dir` right now; the probe file is removed again. The first-launch setup
+// uses it to turn the portable choice off (with the reason) instead of failing when Continue is pressed.
+bool folder_writable(const fs::path& dir)
+{
+	std::error_code ec;
+	if (!fs::is_directory(dir, ec))
+	{
+		return false;
+	}
+	const fs::path probe = dir / ".kytyps5-write-probe";
+	{
+		std::ofstream f(probe, std::ios::binary | std::ios::trunc);
+		if (!f)
+		{
+			return false;
+		}
+		f << "probe";
+		if (!f)
+		{
+			f.close();
+			fs::remove(probe, ec);
+			return false;
+		}
+	}
+	fs::remove(probe, ec);
+	return true;
+}
+
+// Two folder strings naming the same folder: an empty run dir means the default one, so it has to be told apart.
+bool same_path(const std::string& a, const std::string& b)
+{
+	if (a.empty() || b.empty())
+	{
+		return false;
+	}
+	return utf8_path(a).lexically_normal() == utf8_path(b).lexically_normal();
+}
+
+#ifdef _WIN32
+constexpr const char* kEmulatorExe = "kyty_emulator.exe";
+#else
+constexpr const char* kEmulatorExe = "kyty_emulator";
+#endif
+
+// What the first-launch setup wrote down; `note` says what went wrong, if anything.
+struct FirstRunOutcome
+{
+	bool         portable = false; // portable.txt was written: the data root is the launcher's folder now
+	bool         imported = false;
+	ImportReport import;
+	std::string  note;
+};
+
+// The first launch: ask where the data root and the saves go, and whether to bring over the Qt launcher's settings,
+// then write the answers down so the setup never shows again. `paths` arrives as the per-user root and leaves as the
+// root the answers imply. Nothing is written before Continue or the window being closed.
+FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
+{
+	FirstRunOutcome   out;
+	const fs::path    portable_dir = portable_root(argv0);
+	const std::string ini          = find_qt_ini(paths);
+
+	// The Qt launcher's emulator folder: where its _SaveData and _Trophies already are.
+	fs::path        qt_run_dir;
+	std::error_code ec;
+	if (!ini.empty())
+	{
+		const fs::path dir = utf8_path(ini).parent_path();
+		if (fs::exists(dir / kEmulatorExe, ec))
+		{
+			qt_run_dir = dir;
+		}
+	}
+
+	const bool portable_ok = folder_writable(portable_dir);
+
+	auto setup = FirstRunWindow::create();
+	setup->set_app_data_root(slint::SharedString(path_utf8(paths.root)));
+	setup->set_portable_root(slint::SharedString(path_utf8(portable_dir)));
+	setup->set_portable_enabled(portable_ok);
+	setup->set_portable_disabled_reason(slint::SharedString(portable_ok ? std::string() : "This folder can't be written to."));
+	setup->set_portable_selected(false);
+	setup->set_app_data_run_dir(slint::SharedString(path_utf8(paths.run_dir)));
+	setup->set_portable_run_dir(slint::SharedString(path_utf8(portable_dir / "run")));
+	// No Kyty.ini: no import checkbox, and no Qt folder to offer for the saves.
+	setup->set_qt_found(!ini.empty());
+	setup->set_qt_ini_path(slint::SharedString(ini));
+	setup->set_qt_run_dir(slint::SharedString(qt_run_dir.empty() ? std::string() : path_utf8(qt_run_dir)));
+	setup->set_qt_run_dir_available(!qt_run_dir.empty());
+	// Those users' saves are already in the Qt launcher's folder, so that is the preselected answer for them.
+	setup->set_run_choice(qt_run_dir.empty() ? 0 : 1);
+	setup->set_picked_run_dir(slint::SharedString(std::string()));
+	setup->set_import_qt(!ini.empty());
+	setup->on_pick_run_dir(
+	    [&] {
+		    const std::string picked = PickPath(ToStd(setup->get_chosen_run_dir()), true, nullptr, nullptr);
+		    if (!picked.empty())
+		    {
+			    setup->set_picked_run_dir(slint::SharedString(picked));
+			    setup->set_run_choice(2);
+		    }
+	    });
+	setup->on_continue_clicked([&] { setup->hide(); });
+	// Closing the window ends this too: what it shows is the answer either way.
+	setup->run();
+
+	const bool        portable_chosen = setup->get_portable_selected() && portable_ok;
+	const std::string chosen_run      = ToStd(setup->get_chosen_run_dir());
+	const bool        do_import       = setup->get_import_qt() && !ini.empty();
+
+	// Portable: the marker is what compute_paths looks for, so it is written before the paths are recomputed.
+	if (portable_chosen)
+	{
+		std::ofstream marker(portable_dir / "portable.txt", std::ios::binary | std::ios::trunc);
+		if (marker)
+		{
+			marker << "KytyPS5 keeps its files in this folder.\n";
+			out.portable = marker.good();
+		}
+		if (!out.portable)
+		{
+			out.note = "Could not write " + path_utf8(portable_dir / "portable.txt") + ": the app data folder is used";
+		}
+	}
+	paths = compute_paths(argv0);
+
+	Settings s = default_settings();
+	if (do_import)
+	{
+		out.import   = import_qt_ini(ini, paths, s, true);
+		out.imported = out.import.ok;
+		if (!out.import.ok && out.note.empty())
+		{
+			out.note = out.import.text() + " (defaults kept)";
+		}
+	}
+	// An empty run dir means the default (root/run), as everywhere else; anything else is a folder the user chose.
+	s.run_dir = chosen_run.empty() || same_path(chosen_run, path_utf8(paths.run_dir)) ? std::string() : chosen_run;
+	if (!save_settings(paths.settings_file(), s) && out.note.empty())
+	{
+		out.note = "Could not save " + path_utf8(paths.settings_file());
+	}
+	return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
+	const char* const argv0 = argc > 0 && argv[0] != nullptr ? argv[0] : "";
 	// Every launcher file lives under these folders (see paths.h); they are created when first written.
-	const Paths    paths         = compute_paths(argc > 0 ? argv[0] : "");
-	const fs::path settings_path = paths.settings_file();
-
-	Settings s = default_settings();
+	Paths       paths = compute_paths(argv0);
+	Settings    s     = default_settings();
 	std::string startup_note; // shown in the status line and the console, and by --dry-run
-	const bool had_settings = load_settings(settings_path, s, &startup_note);
+
+	// First launch: no portable.txt beside the exe and no kyty.json in the per-user root. The windowed launcher asks
+	// where the data and the saves go before it reads anything; --dry-run and --play stay unattended, as before.
+	const bool      headless = argc >= 2 && (std::string(argv[1]) == "--dry-run" || std::string(argv[1]) == "--play");
+	std::error_code first_ec;
+	const bool      first_start = !paths.portable && !fs::exists(paths.settings_file(), first_ec);
+	ImportReport    import_report;
+	bool            imported = false;
+	std::string     setup_note;
+	if (!headless && first_start)
+	{
+		const FirstRunOutcome first = run_first_run_setup(argv0, paths);
+		import_report                = first.import;
+		imported                     = first.imported;
+		setup_note                   = first.note;
+	}
+	const fs::path settings_path = paths.settings_file();
+	const bool     had_settings  = load_settings(settings_path, s, &startup_note);
+	if (!setup_note.empty())
+	{
+		// The setup's own problem (a folder it could not write) outranks what loading the settings says.
+		startup_note = setup_note;
+	}
 	// The monitor: its size is the recommended window size, and the first run starts with it.
 	int monitor_w = 0;
 	int monitor_h = 0;
 	const bool have_monitor = detect_primary_monitor(&monitor_w, &monitor_h);
-	if (have_monitor && !had_settings)
+	if (have_monitor && (!had_settings || first_start))
 	{
 		s.width  = monitor_w;
 		s.height = monitor_h;
@@ -433,9 +599,8 @@ int main(int argc, char** argv)
 #endif
 	}
 
-	// First run (no kyty.json yet): bring over the Qt launcher's Kyty.ini, saved right away; the summary is shown once.
-	ImportReport import_report;
-	bool         imported = false;
+	// First run with no kyty.json yet, and nothing was asked (--dry-run, --play): bring over the Qt launcher's
+	// Kyty.ini, saved right away; the summary is shown once. The windowed first launch did this in its own setup.
 	{
 		std::error_code ec;
 		if (!fs::exists(settings_path, ec))
@@ -492,7 +657,7 @@ int main(int argc, char** argv)
 
 	if (argc >= 2 && std::string(argv[1]) == "--play")
 	{
-		// Same launch as the Play button, without a window; output goes to last-run.log only.
+		// Same launch as the Play button, without a window; output goes to the log file only.
 		ChildProcess child;
 		std::string  error;
 		int          exit_code = -1;
@@ -2399,7 +2564,8 @@ int main(int argc, char** argv)
 			    }
 			    ui->set_running_name(slint::SharedString(name));
 		    }
-		    ui->set_status(slint::SharedString("Running - output is also in " + path_utf8(utf8_path(plan.cwd) / "last-run.log")));
+		    const std::string log_file = plan.log_file.empty() ? path_utf8(utf8_path(plan.cwd) / "last-run.log") : plan.log_file;
+		    ui->set_status(slint::SharedString("Running - output is also in " + log_file));
 	};
 	ui->on_play(play);
 	ui->on_play_game(
@@ -2495,7 +2661,7 @@ int main(int argc, char** argv)
 	}
 	// STEP6:6c: the image pool had its threads for the whole session; join them before the window goes.
 	pool->Stop();
-	// Closing stopped the game; wait for its output to finish (into last-run.log).
+	// Closing stopped the game; wait for its output to finish (into the log file).
 	child.Wait();
 	return 0;
 }
