@@ -22,6 +22,9 @@ export global Theme {
     out property <color> log-bg: #0b0d12;
 }
 
+export // Which sort arrow a sortable table header shows.
+enum SortState { none, ascending, descending }
+
 export // One fixed-width table cell; long text is cut with an ellipsis.
 component TextCell inherits HorizontalLayout {
     in property <length> w;
@@ -43,22 +46,61 @@ component TextCell inherits HorizontalLayout {
     }
 }
 
-export // Header cell with a drag grip on its right edge.
+export // Header cell with a drag grip on its right edge; clicking the label sorts by it.
 component HeaderCell inherits Rectangle {
     in property <string> text;
     in-out property <length> w;
     in property <string> tooltip; // shown after hovering for a moment
+    in property <bool> sortable: false;
+    in property <SortState> sort-state: SortState.none;
+    callback clicked(); // a click on the label; the 6 px resize grip does not count as one
     width: root.w;
+    background: head-touch.has-hover && root.sortable ? Theme.row-hover : transparent;
     Text {
         x: 8px;
-        width: parent.width - 16px;
+        width: parent.width - (root.sortable ? 26px : 16px);
         height: parent.height;
         text: root.text;
-        color: Theme.muted;
+        color: root.sort-state == SortState.none ? Theme.muted : Theme.text;
         font-size: 12px;
         font-weight: 600;
         vertical-alignment: center;
         overflow: elide;
+    }
+    // The sorted column's arrow: up for ascending, down for descending.
+    if root.sort-state == SortState.ascending: Path {
+        x: parent.width - 18px;
+        y: parent.height / 2 - 3px;
+        width: 7px;
+        height: 6px;
+        viewbox-width: 7;
+        viewbox-height: 6;
+        fill: Theme.text;
+        MoveTo { x: 0; y: 6; }
+        LineTo { x: 3.5; y: 0; }
+        LineTo { x: 7; y: 6; }
+    }
+    if root.sort-state == SortState.descending: Path {
+        x: parent.width - 18px;
+        y: parent.height / 2 - 3px;
+        width: 7px;
+        height: 6px;
+        viewbox-width: 7;
+        viewbox-height: 6;
+        fill: Theme.text;
+        MoveTo { x: 0; y: 0; }
+        LineTo { x: 7; y: 0; }
+        LineTo { x: 3.5; y: 6; }
+    }
+    head-touch := TouchArea {
+        x: 0px;
+        width: parent.width - 6px;
+        mouse-cursor: root.sortable ? pointer : default;
+        clicked => {
+            if (root.sortable) {
+                root.clicked();
+            }
+        }
     }
     Rectangle {
         x: parent.width - 1px;

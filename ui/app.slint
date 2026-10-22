@@ -1,5 +1,5 @@
 import { Button, ComboBox, LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, IconButton } from "common.slint";
+import { Theme, TextCell, HeaderCell, IconButton, SortState } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
 // pickers and the Games tab's delete-save action).
@@ -22,7 +22,13 @@ export struct GameRow {
     status-code: int,
     comment: string,
     play-time: string, // e.g. "12h 30m"; empty until play time is tracked
+    pinned: bool,      // "Pin to top": listed before the others in both views
     icon: image,
+}
+
+// STEP6:6c: one grid row: indices into `games`, so the list and the grid always show the same order.
+export struct GridRow {
+    cells: [int],
 }
 
 // Column widths; the header grips resize them and every row follows.
@@ -46,15 +52,22 @@ component TableHeader inherits HorizontalLayout {
     spacing: 0px;
     padding-left: Cols.inset;
     padding-right: Cols.inset;
-    HeaderCell { text: "Game"; w <=> Cols.name; }
-    HeaderCell { text: "Status"; w <=> Cols.status; }
-    HeaderCell { text: "Serial"; w <=> Cols.serial; }
-    HeaderCell { text: "Firmware"; w <=> Cols.firmware; }
-    HeaderCell { text: "Size"; w <=> Cols.size; }
-    HeaderCell { text: "Game Version"; w <=> Cols.version; }
-    HeaderCell { text: "Play Time"; w <=> Cols.playtime; }
-    HeaderCell { text: "Path"; w <=> Cols.path; }
-    HeaderCell { text: "Comments"; w <=> Cols.comment; }
+    // STEP6:6c: the sorted column, and what a click on a header does (the C++ side re-sorts the library).
+    in property <string> sort-key: "name";
+    in property <bool> sort-desc: false;
+    callback header-clicked(string);
+    pure function sort-state(key: string) -> SortState {
+        return key != root.sort-key ? SortState.none : (root.sort-desc ? SortState.descending : SortState.ascending);
+    }
+    HeaderCell { text: "Game"; w <=> Cols.name; sortable: true; sort-state: root.sort-state("name"); clicked => { root.header-clicked("name"); } }
+    HeaderCell { text: "Status"; w <=> Cols.status; sortable: true; sort-state: root.sort-state("status"); clicked => { root.header-clicked("status"); } }
+    HeaderCell { text: "Serial"; w <=> Cols.serial; sortable: true; sort-state: root.sort-state("serial"); clicked => { root.header-clicked("serial"); } }
+    HeaderCell { text: "Firmware"; w <=> Cols.firmware; sortable: true; sort-state: root.sort-state("firmware"); clicked => { root.header-clicked("firmware"); } }
+    HeaderCell { text: "Size"; w <=> Cols.size; sortable: true; sort-state: root.sort-state("size"); clicked => { root.header-clicked("size"); } }
+    HeaderCell { text: "Game Version"; w <=> Cols.version; sortable: true; sort-state: root.sort-state("version"); clicked => { root.header-clicked("version"); } }
+    HeaderCell { text: "Play Time"; w <=> Cols.playtime; sortable: true; sort-state: root.sort-state("playtime"); clicked => { root.header-clicked("playtime"); } }
+    HeaderCell { text: "Path"; w <=> Cols.path; sortable: true; sort-state: root.sort-state("path"); clicked => { root.header-clicked("path"); } }
+    HeaderCell { text: "Comments"; w <=> Cols.comment; sortable: true; sort-state: root.sort-state("comment"); clicked => { root.header-clicked("comment"); } }
 }
 
 component GameRowView inherits Rectangle {
@@ -101,6 +114,16 @@ component GameRowView inherits Rectangle {
                 overflow: elide;
                 vertical-alignment: center;
             }
+            // STEP6:6c: "Pin to top" mark (not the per-game emulator pin).
+            if root.game.pinned: VerticalLayout {
+                alignment: center;
+                Image {
+                    source: @image-url("icons/pin.svg");
+                    colorize: Theme.accent;
+                    width: 12px;
+                    height: 12px;
+                }
+            }
         }
         HorizontalLayout {
             width: Cols.status;
@@ -136,6 +159,81 @@ component GameRowView inherits Rectangle {
     }
 
     touch := TouchArea {
+        clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+                root.clicked();
+                root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+}
+
+// STEP6:6c: one game in the grid view: art, name, serial and version, with the pin badge on top.
+component GameCard inherits Rectangle {
+    in property <GameRow> game;
+    in property <bool> selected;
+    callback clicked();
+    callback double-clicked();
+    callback menu(length, length); // right-click, in window coordinates
+    width: 208px;
+    height: 190px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.row-outline : Theme.card-border;
+    background: root.selected ? Theme.row-selected : card-touch.has-hover ? Theme.row-hover : Theme.card;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+        // The game's art (icon0.png), kept whole.
+        Rectangle {
+            height: 116px;
+            background: Theme.log-bg;
+            border-radius: 4px;
+            clip: true;
+            Image {
+                source: root.game.icon;
+                image-fit: contain;
+                width: 100%;
+                height: 100%;
+            }
+        }
+        Text {
+            text: root.game.name;
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.game.serial + (root.game.game-version == "" ? "" : "  ·  " + root.game.game-version);
+            color: Theme.muted;
+            font-size: 11px;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+
+    // "Pin to top" badge (the per-game emulator pin is a different thing).
+    if root.game.pinned: Rectangle {
+        x: parent.width - 26px;
+        y: 6px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: #0b0e14cc;
+        Image {
+            source: @image-url("icons/pin.svg");
+            colorize: Theme.accent;
+            width: 12px;
+            height: 12px;
+        }
+    }
+
+    card-touch := TouchArea {
         clicked => { root.clicked(); }
         double-clicked => { root.double-clicked(); }
         pointer-event(event) => {
@@ -297,6 +395,20 @@ export component AppWindow inherits Window {
     in-out property <int> settings-tab: 0;
     in-out property <int> selected: -1;
     in property <[GameRow]> games;
+    // STEP6:6c: library view state. The settings' app keys keep it across restarts.
+    in-out property <bool> library-grid: false;
+    in property <[GridRow]> grid-rows;     // grid view: rows of indices into `games`
+    in-out property <int> grid-columns: 4; // cards per row, recomputed from the library box width
+    in-out property <string> sort-key: "name";
+    in-out property <bool> sort-desc: false;
+    callback sort-by(string, bool);    // a header was clicked: sort by that key, in that direction
+    callback pin-game(int);            // "Pin to top" / "Unpin" for a library index
+    callback library-view-changed(bool); // the list/grid toggle (the C++ side saves it)
+    callback grid-columns-changed(int);  // cards per row changed: the C++ side rebuilds grid-rows
+    // How many 208 px cards with 12 px gaps fit in the library box.
+    public pure function grid-columns-for(box-width: length) -> int {
+        return max(1, int(box-width / 1px) / 220);
+    }
     in property <bool> scanning;
     in property <int> recommended-size: -1; // the Window size preset that matches the monitor
     in-out property <string> width-text;
@@ -529,6 +641,12 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+            // STEP6:6c: favourites ("Pin to top"), not the per-game emulator pin of the Settings page.
+            MenuItem {
+                title: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].pinned ? "Unpin" : "Pin to top";
+                enabled: root.selected >= 0 && root.selected < root.games.length;
+                activated => { root.pin-game(root.selected); }
+            }
             MenuItem {
                 title: "Remove from list";
                 enabled: !root.running;
@@ -611,7 +729,15 @@ export component AppWindow inherits Window {
                 clicked => { root.refresh-library(); }
             }
             Rectangle { horizontal-stretch: 1; }
-            IconButton { icon: @image-url("icons/grid-view.svg"); enabled: false; }
+            // STEP6:6c: list/grid toggle (the icon shows the view a click switches to).
+            IconButton {
+                icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
+                tooltip: root.library-grid ? "List view" : "Grid view";
+                clicked => {
+                    root.library-grid = !root.library-grid;
+                    root.library-view-changed(root.library-grid);
+                }
+            }
             // Which emulator build runs the game (the Version Manager's installed list).
             VerticalLayout {
                 alignment: center;
@@ -644,6 +770,18 @@ export component AppWindow inherits Window {
             border-width: 1px;
             border-color: Theme.card-border;
             clip: true;
+            // STEP6:6c: the grid's cards per row follow the box width. The timer debounces a resize, so a
+            // drag does not rebuild the grid rows on every pixel.
+            grid-timer := Timer {
+                interval: 120ms;
+                triggered => {
+                    self.running = false;
+                    root.grid-columns = root.grid-columns-for(library-box.width);
+                    root.grid-columns-changed(root.grid-columns);
+                }
+            }
+            init => { grid-timer.restart(); }
+            changed width => { grid-timer.restart(); }
             Image {
                 width: parent.width;
                 height: parent.height;
@@ -664,14 +802,27 @@ export component AppWindow inherits Window {
 
             VerticalLayout {
                 padding: 1px;
-                // The header follows the rows' horizontal scroll.
+                // The header follows the rows' horizontal scroll; the grid view has no header.
                 Rectangle {
+                    visible: !root.library-grid;
                     height: 28px;
                     background: #0b0e14d9;
                     clip: true;
                     TableHeader {
                         x: table.content-x;
                         width: Cols.total;
+                        sort-key: root.sort-key;
+                        sort-desc: root.sort-desc;
+                        header-clicked(key) => {
+                            // Clicking the sorted column flips the direction; another column starts ascending.
+                            if (root.sort-key == key) {
+                                root.sort-desc = !root.sort-desc;
+                            } else {
+                                root.sort-key = key;
+                                root.sort-desc = false;
+                            }
+                            root.sort-by(root.sort-key, root.sort-desc);
+                        }
                     }
                     Rectangle {
                         y: parent.height - 1px;
@@ -680,6 +831,7 @@ export component AppWindow inherits Window {
                     }
                 }
                 table := ListView {
+                    visible: !root.library-grid;
                     vertical-stretch: 1;
                     content-width: max(self.visible-width, Cols.total);
                     for game[index] in root.games: GameRowView {
@@ -693,6 +845,31 @@ export component AppWindow inherits Window {
                         double-clicked => { root.play-game(index); }
                         menu(x, y) => {
                             game-menu.show({ x: x - game-menu.absolute-position.x, y: y - game-menu.absolute-position.y });
+                        }
+                    }
+                }
+                // STEP6:6c: grid view. A ListView row is one line of cards (indices into `games`), so the
+                // list and the grid always show the same games in the same order.
+                grid-list := ListView {
+                    visible: root.library-grid;
+                    vertical-stretch: 1;
+                    for row in root.grid-rows: Rectangle {
+                        height: 200px;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            spacing: 12px;
+                            for cell in row.cells: GameCard {
+                                game: root.games[cell];
+                                selected: cell == root.selected;
+                                clicked => {
+                                    search.unfocus();
+                                    root.select-game(cell);
+                                }
+                                double-clicked => { root.play-game(cell); }
+                                menu(x, y) => {
+                                    game-menu.show({ x: x - game-menu.absolute-position.x, y: y - game-menu.absolute-position.y });
+                                }
+                            }
                         }
                     }
                 }

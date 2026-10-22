@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ struct GameEntry
 	// stem, and the title id, versions and icon are unknown (they live inside the archive, which the launcher
 	// cannot read: that needs zarchive).
 	bool archive = false;
+	std::string play_time; // e.g. "12h 30m"; empty until play time is tracked (the Play Time column)
 };
 
 struct CompatEntry
@@ -65,5 +67,21 @@ std::string format_size(uint64_t bytes);
 
 // Lower-cased, forward-slash form for comparing paths typed in different styles.
 std::string path_key(const std::string& path);
+
+// STEP6:6c: the library's sort keys, in header order.
+enum class GameSortKey { Name, Status, Serial, Firmware, Size, Version, Playtime, Path, Comment };
+
+// "size" -> GameSortKey::Size; anything unknown -> Name (the default order).
+GameSortKey game_sort_key_from_string(const std::string& key);
+// The saved form of a key ("size"), never null.
+const char* game_sort_key_name(GameSortKey key);
+
+// The key a game is pinned ("Pin to top") by: its title id, or the eboot path for a game without one.
+// Normalised with path_key, so it compares the same however the user typed it.
+std::string favourite_key(const GameEntry& game);
+
+// Orders the library: games whose favourite_key is in `favourites` first, then `key`. Descending only flips
+// `key`: the pinned group stays on top and ties always break by name, then title id, so the order is stable.
+void sort_games(std::vector<GameEntry>& games, GameSortKey key, bool descending, const std::set<std::string>& favourites);
 
 } // namespace kyty_launcher

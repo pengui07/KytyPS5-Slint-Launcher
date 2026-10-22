@@ -428,6 +428,12 @@ void ReadApp(const JsonValue& root, Settings& s)
 	r.str("vm_sort", s.vm_sort);
 	r.flag("vm_sort_desc", s.vm_sort_desc);
 	// STEP6:6d app keys: end
+	// STEP6:6c app keys: begin
+	r.str("library_sort", s.library_sort);
+	r.flag("library_sort_desc", s.library_sort_desc);
+	r.flag("library_grid", s.library_grid);
+	r.list("favourite_games", s.favourite_games);
+	// STEP6:6c app keys: end
 }
 
 // The "emu" keys, the ones every config layer may carry (keys follow the official launcher's Kyty.ini
@@ -1165,8 +1171,14 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	// STEP6:6d app keys: begin
 	out += "    \"pinned_builds\": " + QuoteList(s.pinned_builds) + ",\n";
 	out += "    \"vm_sort\": " + Quote(s.vm_sort) + ",\n";
-	out += "    \"vm_sort_desc\": " + std::string(s.vm_sort_desc ? "true" : "false") + "\n";
+	out += "    \"vm_sort_desc\": " + std::string(s.vm_sort_desc ? "true" : "false") + ",\n";
 	// STEP6:6d app keys: end
+	// STEP6:6c app keys: begin
+	out += "    \"library_sort\": " + Quote(s.library_sort) + ",\n";
+	out += "    \"library_sort_desc\": " + std::string(s.library_sort_desc ? "true" : "false") + ",\n";
+	out += "    \"library_grid\": " + std::string(s.library_grid ? "true" : "false") + ",\n";
+	out += "    \"favourite_games\": " + QuoteList(s.favourite_games) + "\n";
+	// STEP6:6c app keys: end
 	out += "  },\n";
 	out += "  \"emu\": {";
 	const EmuEntries defaults = EmuKeys(default_settings());

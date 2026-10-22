@@ -123,6 +123,12 @@ struct Settings
 	int window_w = 0;
 	int window_h = 0;
 	// STEP6:6e app keys: end
+	// STEP6:6c app keys: begin
+	std::string              library_sort      = "name"; // library sort key: name, status, serial, firmware, size, version, playtime, path, comment
+	bool                     library_sort_desc = false;  // descending instead of ascending
+	bool                     library_grid      = false;  // grid view instead of the table
+	std::vector<std::string> favourite_games;            // "Pin to top": title ids (eboot path for a game without one)
+	// STEP6:6c app keys: end
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
 	// which keys the user layer sets (written back on save, winning over cfgGlobal.json in resolve_for_launch).
 	std::set<std::string> user_keys;
