@@ -417,6 +417,11 @@ void ReadApp(const JsonValue& root, Settings& s)
 	r.list("source_names", s.source_names);
 	r.list("menu_hidden", s.menu_hidden);
 	r.list("build_names", s.build_names);
+	// STEP6:6d app keys: begin
+	r.list("pinned_builds", s.pinned_builds);
+	r.str("vm_sort", s.vm_sort);
+	r.flag("vm_sort_desc", s.vm_sort_desc);
+	// STEP6:6d app keys: end
 }
 
 // The "emu" keys, the ones every config layer may carry (keys follow the official launcher's Kyty.ini
@@ -1097,7 +1102,12 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	out += "    \"hidden_games\": " + QuoteList(s.hidden_games) + ",\n";
 	out += "    \"source_names\": " + QuoteList(s.source_names) + ",\n";
 	out += "    \"menu_hidden\": " + QuoteList(s.menu_hidden) + ",\n";
-	out += "    \"build_names\": " + QuoteList(s.build_names) + "\n";
+	out += "    \"build_names\": " + QuoteList(s.build_names) + ",\n";
+	// STEP6:6d app keys: begin
+	out += "    \"pinned_builds\": " + QuoteList(s.pinned_builds) + ",\n";
+	out += "    \"vm_sort\": " + Quote(s.vm_sort) + ",\n";
+	out += "    \"vm_sort_desc\": " + std::string(s.vm_sort_desc ? "true" : "false") + "\n";
+	// STEP6:6d app keys: end
 	out += "  },\n";
 	out += "  \"emu\": {";
 	const EmuEntries defaults = EmuKeys(default_settings());

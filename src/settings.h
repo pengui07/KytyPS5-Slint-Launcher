@@ -107,6 +107,11 @@ struct Settings
 	std::vector<std::string> build_names;   // "exe|name" display names given with Rename
 	std::vector<std::string> menu_hidden;   // build exes unticked in the Version Manager (not in the toolbar menu)
 	std::vector<std::string> source_names;  // "owner/repo|name" tab names given with Rename
+	// STEP6:6d app keys: begin
+	std::vector<std::string> pinned_builds;  // build exes pinned to the top of the Installed table, in pin order
+	std::string              vm_sort      = "name"; // Installed table sort: name, codename, date, tracked, path
+	bool                     vm_sort_desc = false;
+	// STEP6:6d app keys: end
 	std::vector<std::string> hidden_games;  // title ids (eboot path for a game without one) taken off the library (files stay on disk)
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
 	// which keys the user layer sets (written back on save, winning over cfgGlobal.json in resolve_for_launch).

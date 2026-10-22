@@ -2,6 +2,7 @@
 
 #include "library.h"
 #include "net.h"
+#include "platform.h"
 #include "secret_store.h"
 #include "versions.h"
 
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <filesystem>
 #include <set>
 #include <thread>
 #include <utility>
@@ -54,6 +56,9 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	std::string                 anchor_key;
 	std::vector<ReleaseInfo>    releases; // of the current source
 	bool                        busy = false;
+	// The build whose About dialog is open: its exe ("Go to file") and release page ("Open link").
+	std::string                 about_path;
+	std::string                 about_url;
 
 	// "<tab>-latest" builds and the source each is downloaded from.
 	using LatestTarget = std::pair<std::string, InstalledBuild>; // repo, build
@@ -78,43 +83,74 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	// Every installed build for the pin picker: not filtered by the search box or the kind selector (unlike installed_model).
 	std::shared_ptr<slint::VectorModel<BuildChoice>>         pin_model      = std::make_shared<slint::VectorModel<BuildChoice>>();
 
-	// Worker threads, joined in Shutdown; each gets a token that CancelAll sets. Started from the UI thread only.
-	std::vector<std::thread>                      workers;
-	std::vector<std::weak_ptr<std::atomic<bool>>> tokens;
+	// Worker threads, joined in Shutdown; each gets a token that CancelAll sets. Started from the UI
+	// thread only. Finished ones are joined and dropped before the next one starts, so an hourly
+	// update check does not pile threads up for the whole session.
+	struct Worker
+	{
+		std::thread                        thread;
+		std::shared_ptr<std::atomic<bool>> token;
+		std::shared_ptr<std::atomic<bool>> done;
+	};
+	std::vector<Worker> workers;
+
+	// Joins the workers that returned, and forgets them (and their tokens).
+	void ReapFinished()
+	{
+		for (auto& w: workers)
+		{
+			if (w.done->load() && w.thread.joinable())
+			{
+				w.thread.join();
+			}
+		}
+		std::erase_if(workers, [](const Worker& w) { return w.done->load(); });
+	}
 
 	// Runs fn(token) on a new thread; the work polls *token to stop early.
 	template<class F>
 	void Spawn(F fn)
 	{
-		auto token = std::make_shared<std::atomic<bool>>(false);
-		tokens.push_back(token);
-		workers.emplace_back([fn = std::move(fn), token]() mutable { fn(token); });
+		ReapFinished();
+		Worker w;
+		w.token = std::make_shared<std::atomic<bool>>(false);
+		w.done  = std::make_shared<std::atomic<bool>>(false);
+		const auto token = w.token;
+		const auto done  = w.done;
+		w.thread         = std::thread(
+		    [fn = std::move(fn), token, done]() mutable
+		    {
+			    fn(token);
+			    done->store(true);
+		    });
+		workers.push_back(std::move(w));
 	}
 
 	void CancelAll()
 	{
-		for (const auto& t: tokens)
+		for (const auto& w: workers)
 		{
-			if (auto token = t.lock())
+			if (w.token)
 			{
-				token->store(true);
+				w.token->store(true);
 			}
 		}
 	}
 
-	// The launcher is closing: stop the workers and wait for them (a request in flight ends within its timeout).
+	// The launcher is closing: stop the hourly check and the workers, and wait for them (a request in
+	// flight ends within its timeout).
 	void Shutdown()
 	{
+		update_timer.stop();
 		CancelAll();
 		for (auto& w: workers)
 		{
-			if (w.joinable())
+			if (w.thread.joinable())
 			{
-				w.join();
+				w.thread.join();
 			}
 		}
 		workers.clear();
-		tokens.clear();
 	}
 
 	// Display name of a build: the name given with Rename, else its folder name.
@@ -129,6 +165,124 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 			}
 		}
 		return b.name;
+	}
+
+	// The default KytyPS5-main build is always the first installed row. Rename may change its name, so
+	// the folder it was downloaded into identifies it; a path without a folder falls back to the name.
+	static bool IsMainLatest(const InstalledBuild& b)
+	{
+		const std::string folder = path_utf8(utf8_path(b.exe).parent_path().filename());
+		return path_key(folder.empty() ? b.name : folder) == path_key("KytyPS5-main-latest");
+	}
+
+	static std::string Lower(std::string v)
+	{
+		std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return v;
+	}
+
+	static int CompareText(const std::string& a, const std::string& b)
+	{
+		const std::string la = Lower(a);
+		const std::string lb = Lower(b);
+		return la < lb ? -1 : la > lb ? 1 : 0;
+	}
+
+	// The persisted Installed table sort key; anything unknown means the display name.
+	static std::string SortKeyName(const std::string& key)
+	{
+		return key == "codename" || key == "date" || key == "tracked" || key == "path" ? key : "name";
+	}
+
+	bool IsPinned(const InstalledBuild& b) const
+	{
+		return std::any_of(s.pinned_builds.begin(), s.pinned_builds.end(),
+		                   [&](const std::string& p) { return path_key(p) == path_key(b.exe); });
+	}
+
+	size_t PinPosition(const std::string& exe) const
+	{
+		for (size_t i = 0; i < s.pinned_builds.size(); i++)
+		{
+			if (path_key(s.pinned_builds[i]) == path_key(exe))
+			{
+				return i;
+			}
+		}
+		return s.pinned_builds.size();
+	}
+
+	// Main-latest first, then the pinned builds in their saved order, then the chosen sort. The
+	// tie-break (display name, then path) keeps the order deterministic for equal keys.
+	void SortInstalled()
+	{
+		const std::string key  = SortKeyName(s.vm_sort);
+		const bool        desc = s.vm_sort_desc;
+		auto              by_key = [&](const InstalledBuild& a, const InstalledBuild& b) -> int
+		{
+			if (key == "codename")
+			{
+				return CompareText(a.codename, b.codename);
+			}
+			if (key == "date")
+			{
+				return CompareText(a.date, b.date);
+			}
+			if (key == "tracked")
+			{
+				return a.managed == b.managed ? 0 : a.managed ? -1 : 1;
+			}
+			if (key == "path")
+			{
+				return CompareText(path_key(a.exe), path_key(b.exe));
+			}
+			return CompareText(DisplayName(a), DisplayName(b));
+		};
+		std::stable_sort(
+		    installed.begin(), installed.end(),
+		    [&](const InstalledBuild& a, const InstalledBuild& b)
+		    {
+			    const bool a_main = IsMainLatest(a);
+			    const bool b_main = IsMainLatest(b);
+			    if (a_main != b_main)
+			    {
+				    return a_main;
+			    }
+			    // Main-latest cannot be pinned (it is always first anyway); its pins are left alone.
+			    if (!a_main)
+			    {
+				    const bool a_pin = IsPinned(a);
+				    const bool b_pin = IsPinned(b);
+				    if (a_pin != b_pin)
+				    {
+					    return a_pin;
+				    }
+				    if (a_pin && b_pin)
+				    {
+					    const size_t a_pos = PinPosition(a.exe);
+					    const size_t b_pos = PinPosition(b.exe);
+					    if (a_pos != b_pos)
+					    {
+						    return a_pos < b_pos;
+					    }
+				    }
+			    }
+			    int c = by_key(a, b);
+			    if (desc)
+			    {
+				    c = -c;
+			    }
+			    if (c != 0)
+			    {
+				    return c < 0;
+			    }
+			    c = CompareText(DisplayName(a), DisplayName(b));
+			    if (c != 0)
+			    {
+				    return c < 0;
+			    }
+			    return path_key(a.exe) < path_key(b.exe);
+		    });
 	}
 
 	// The KytyPS5-main that comes by default (the default emulator path) keeps its name.
@@ -326,6 +480,8 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	// Any / Tracked / Untracked selector applied to the table.
 	void ApplyInstalled()
 	{
+		// The order is the table order, the toolbar menu order and what RealIndex maps into.
+		SortInstalled();
 		std::string query;
 		int         kind = 0;
 		WithUi(
@@ -333,6 +489,8 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 		    {
 			    query = ToStd(vm.get_installed_filter());
 			    kind  = vm.get_installed_kind();
+			    vm.set_sort_key(slint::SharedString(SortKeyName(s.vm_sort)));
+			    vm.set_sort_desc(s.vm_sort_desc);
 		    });
 		std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		auto matches = [&](const InstalledBuild& b)
@@ -369,6 +527,9 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 			v.active   = path_key(b.exe) == path_key(s.emulator);
 			v.shown    = std::none_of(unticked.begin(), unticked.end(), [&](const std::string& u) { return path_key(u) == path_key(b.exe); });
 			v.selected = selected.count(path_key(b.exe)) != 0;
+			const bool main_latest = IsMainLatest(b);
+			v.pinned               = !main_latest && IsPinned(b);
+			v.main_latest          = main_latest;
 			if (matches(b))
 			{
 				rows.push_back(v);
@@ -445,6 +606,188 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 		save();
 		RefreshInstalled();
 		Status("Using " + DisplayName(b));
+	}
+
+	// A click on an Installed header: the same key flips the direction, a new key sorts ascending.
+	void SortBy(const std::string& key)
+	{
+		const std::string name = SortKeyName(key);
+		if (name == s.vm_sort)
+		{
+			s.vm_sort_desc = !s.vm_sort_desc;
+		} else
+		{
+			s.vm_sort      = name;
+			s.vm_sort_desc = false;
+		}
+		save();
+		ApplyInstalled();
+	}
+
+	// Right-click > Pin to top / Unpin. Pins only change the Installed order (main-latest stays first).
+	void TogglePin(int index)
+	{
+		if (index < 0 || static_cast<size_t>(index) >= installed.size())
+		{
+			return;
+		}
+		const InstalledBuild b = installed[static_cast<size_t>(index)];
+		if (IsMainLatest(b))
+		{
+			Status(DisplayName(b) + " always stays first.");
+			return;
+		}
+		auto&      pins  = s.pinned_builds;
+		const auto it    = std::find_if(pins.begin(), pins.end(), [&](const std::string& p) { return path_key(p) == path_key(b.exe); });
+		const bool unpin = it != pins.end();
+		if (unpin)
+		{
+			pins.erase(it);
+		} else
+		{
+			pins.push_back(b.exe);
+		}
+		save();
+		ApplyInstalled();
+		Status((unpin ? "Unpinned " : "Pinned ") + DisplayName(b));
+	}
+
+	// ---- About of one build: size and config files next to its exe
+
+	// Total size of the build folder; an unreadable folder counts as 0.
+	static uint64_t FolderSize(const std::filesystem::path& dir)
+	{
+		std::error_code ec;
+		if (!std::filesystem::is_directory(dir, ec))
+		{
+			return 0;
+		}
+		uint64_t total = 0;
+		std::filesystem::recursive_directory_iterator it(dir, std::filesystem::directory_options::skip_permission_denied, ec);
+		const std::filesystem::recursive_directory_iterator end;
+		while (it != end)
+		{
+			if (ec)
+			{
+				ec.clear();
+			} else
+			{
+				std::error_code file_ec;
+				if (it->is_regular_file(file_ec))
+				{
+					total += it->file_size(file_ec);
+				}
+			}
+			it.increment(ec);
+		}
+		return total;
+	}
+
+	// The repo a managed build came from: its "-latest" source when known, else the default repo for a
+	// tagged build under the versions folder. "" for a local build.
+	std::string AboutRepo(const InstalledBuild& b) const
+	{
+		if (!b.managed)
+		{
+			return {};
+		}
+		const std::string latest = LatestRepo(b);
+		if (!latest.empty())
+		{
+			return latest;
+		}
+		return b.tag.empty() ? std::string() : std::string(kDefaultRepo);
+	}
+
+	void ShowAbout(int row)
+	{
+		const int index = RealIndex(row);
+		if (index < 0 || static_cast<size_t>(index) >= installed.size())
+		{
+			return;
+		}
+		const InstalledBuild b    = installed[static_cast<size_t>(index)];
+		const auto          dir   = utf8_path(b.exe).parent_path();
+		const std::string   repo  = AboutRepo(b);
+		BuildAbout          about;
+		about.title  = slint::SharedString(DisplayName(b));
+		about.author = slint::SharedString(repo.empty() ? std::string() : repo.substr(0, repo.find('/')));
+		about.date   = slint::SharedString(b.date);
+		about.path   = slint::SharedString(b.exe);
+		about.size   = slint::SharedString(format_size(FolderSize(dir)));
+		// The build's config files: cfgGlobal.json and the cfg<TITLEID>.json files the loader reads.
+		std::error_code ec;
+		if (!dir.empty() && std::filesystem::is_regular_file(dir / "cfgGlobal.json", ec))
+		{
+			about.global_config = "cfgGlobal.json";
+		}
+		std::vector<std::string> configs;
+		if (!dir.empty())
+		{
+			std::filesystem::directory_iterator it(dir, ec);
+			const std::filesystem::directory_iterator end;
+			for (; !ec && it != end; it.increment(ec))
+			{
+				std::error_code file_ec;
+				if (!it->is_regular_file(file_ec))
+				{
+					continue;
+				}
+				const std::string name = path_utf8(it->path().filename());
+				const std::string low  = Lower(name);
+				if (low.starts_with("cfg") && low.ends_with(".json") && low != "cfgglobal.json")
+				{
+					configs.push_back(name);
+				}
+			}
+		}
+		std::sort(configs.begin(), configs.end(), [](const std::string& a, const std::string& c) { return Lower(a) < Lower(c); });
+		const size_t max_configs = 50;
+		const size_t total       = configs.size();
+		if (configs.size() > max_configs)
+		{
+			configs.resize(max_configs);
+		}
+		std::vector<slint::SharedString> cfg_names;
+		for (const auto& cfg: configs)
+		{
+			cfg_names.emplace_back(cfg);
+		}
+		auto model = std::make_shared<slint::VectorModel<slint::SharedString>>();
+		model->set_vector(std::move(cfg_names));
+		about.serial_configs = model;
+		if (!repo.empty() && !b.tag.empty())
+		{
+			about.github = slint::SharedString("https://github.com/" + repo + "/releases/tag/" + b.tag);
+		}
+		about_path = b.exe;
+		about_url  = ToStd(about.github);
+		WithUi([&](AppWindow&, const VM& vm) { vm.set_about(about); });
+		if (total > max_configs)
+		{
+			Status("Showing the first " + std::to_string(max_configs) + " serial configs of " + std::to_string(total) + ".", true);
+		}
+	}
+
+	// Right-click > About > Go to file: the folder holding the exe, never the emulator itself.
+	void ShowAboutFile()
+	{
+		if (about_path.empty())
+		{
+			return;
+		}
+		const auto dir = utf8_path(about_path).parent_path();
+		open_in_system(path_utf8(dir.empty() ? utf8_path(about_path) : dir));
+	}
+
+	void OpenAboutLink()
+	{
+		if (about_url.empty())
+		{
+			return;
+		}
+		const std::string url = about_url;
+		WithUi([&](AppWindow& w, const VM&) { w.invoke_open_url(slint::SharedString(url)); });
 	}
 
 	// Lists the current source's releases in the background (from the disk cache while it is fresh; `force`
@@ -1360,6 +1703,11 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 			        });
 			    vm.on_stop_tracking([self](int index) { self->StopTracking(index); });
 			    vm.on_rename_version([self](int row, const slint::SharedString& name) { self->Rename(self->RealIndex(row), ToStd(name)); });
+			    vm.on_sort_by([self](const slint::SharedString& key) { self->SortBy(ToStd(key)); });
+			    vm.on_toggle_pin([self](int row) { self->TogglePin(self->RealIndex(row)); });
+			    vm.on_about_requested([self](int row) { self->ShowAbout(row); });
+			    vm.on_about_show_file([self] { self->ShowAboutFile(); });
+			    vm.on_about_open_link([self] { self->OpenAboutLink(); });
 			    vm.on_filter_changed([self] { self->ApplyInstalled(); });
 			    vm.on_opened([self] { self->Opened(); });
 			    vm.on_cancel_busy([self] { self->CancelAll(); });
