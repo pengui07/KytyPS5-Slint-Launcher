@@ -3,7 +3,7 @@ import { Theme, TextCell, HeaderCell, IconButton, SortState } from "common.slint
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
 // pickers and the Games tab's delete-save action).
-import { SettingsPage, GameConfigRow, BuildChoice, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
+import { SettingsPage, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
 import { ControlsPage, Controls, ControlRow } from "controls.slint";
 
@@ -11,7 +11,7 @@ import { ControlsPage, Controls, ControlRow } from "controls.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
-export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow }
+export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow }
 
 export struct GameRow {
     name: string,
@@ -382,6 +382,15 @@ export component AppWindow inherits Window {
     // Games tab of Settings, one row per library game, and the "Set Emu..." picker.
     in property <[GameConfigRow]> game-configs;
     in property <[BuildChoice]> pin-builds; // every installed build, unfiltered
+    // STEP7:2: the games taken off the library, listed in Settings > Games with a Restore button.
+    in property <[RemovedGameRow]> removed-games;
+    in-out property <int> removed-selected: -1;
+    // STEP7:1: the build the selected game is pinned to, shown in brackets after its name in the bottom bar
+    // (empty when the game has no pin); `selected-emu-missing` = the pinned exe is gone, so it shows in red.
+    in property <string> selected-emu;
+    in property <bool> selected-emu-missing;
+    // STEP7:3: the Version Manager's automatic check for newer builds (Settings > General).
+    in-out property <bool> check-updates: true;
     in-out property <bool> pin-dialog-open;
     in-out property <int> pin-dialog-row: -1;
     in-out property <int> pin-pick: -1;
@@ -390,6 +399,7 @@ export component AppWindow inherits Window {
     callback leave-game-settings();
     callback reset-game-settings();
     callback set-game-emu(int, int);        // library index, index in pin-builds (-1: None)
+    callback restore-game(int);             // STEP7:2: Settings > Games: put a removed game back on the library
     changed show-settings => {
         // Leaving the page by any way (menu, toolbar) also leaves per-game mode.
         if (!self.show-settings && self.game-mode) {
@@ -903,12 +913,30 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
-                Text {
-                    text: root.selected >= 0 && root.selected < root.games.length ? root.games[root.selected].name : "No game selected";
-                    color: Theme.text;
-                    font-size: 14px;
-                    font-weight: 600;
-                    overflow: elide;
+                // STEP7:1: the selected game's name, then the build it is pinned to in brackets.
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    alignment: start;
+                    spacing: 6px;
+                    Text {
+                        text: root.selected >= 0 && root.selected < root.games.length ? root.games[root.selected].name : "No game selected";
+                        color: Theme.text;
+                        font-size: 14px;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    if root.selected-emu != "": Text {
+                        text: "(" + root.selected-emu + ")";
+                        color: root.selected-emu-missing ? Theme.danger : Theme.muted;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        Tooltip {
+                            text: root.selected-emu-missing
+                                ? @markdown("This game is pinned to a build whose exe is missing: it runs with the library's build instead")
+                                : @markdown("The build this game is pinned to (Settings > Games)");
+                        }
+                    }
                 }
                 Text {
                     text: root.status;
@@ -992,6 +1020,10 @@ export component AppWindow inherits Window {
         game-mode-name: root.game-mode-name;
         game-mode-serial: root.game-mode-serial;
         game-configs: root.game-configs;
+        // STEP7:2 and STEP7:3: the Removed games list and the update check setting.
+        removed-games: root.removed-games;
+        removed-selected <=> root.removed-selected;
+        check-updates <=> root.check-updates;
         microphone <=> root.microphone;
         present-mode <=> root.present-mode;
         printf-dir <=> root.printf-dir;
@@ -1043,6 +1075,7 @@ export component AppWindow inherits Window {
         games-opened => { root.games-opened(); }
         open-game-settings(i) => { root.open-game-settings(i, false); }
         clear-game-emu(i) => { root.set-game-emu(i, -1); }
+        restore-game(i) => { root.restore-game(i); }
         pick-game-emu(i) => {
             root.pin-dialog-row = i;
             root.pin-pick = -1;

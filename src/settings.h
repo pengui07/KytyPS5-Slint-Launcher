@@ -114,6 +114,11 @@ struct Settings
 	bool                     vm_sort_desc = false;
 	// STEP6:6d app keys: end
 	std::vector<std::string> hidden_games;  // title ids (eboot path for a game without one) taken off the library (files stay on disk)
+	// STEP7:3 app keys: begin
+	// Look for newer "-latest" builds when the launcher starts and every hour while it is open. Off: only the
+	// Version Manager's own Update buttons fetch anything.
+	bool check_updates = true;
+	// STEP7:3 app keys: end
 	// STEP6:6e app keys: begin
 	// The launcher window's last geometry. Not the emulator's window size (width/height above are that).
 	// window_x/window_y are the screen position (-1: let the window manager place it); window_w/window_h

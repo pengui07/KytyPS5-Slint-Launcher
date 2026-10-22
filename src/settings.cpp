@@ -420,6 +420,9 @@ void ReadApp(const JsonValue& root, Settings& s)
 	r.list("sources", s.sources);
 	r.list("hidden_builds", s.hidden_builds);
 	r.list("hidden_games", s.hidden_games);
+	// STEP7:3 app keys: begin
+	r.flag("check_updates", s.check_updates);
+	// STEP7:3 app keys: end
 	r.list("source_names", s.source_names);
 	r.list("menu_hidden", s.menu_hidden);
 	r.list("build_names", s.build_names);
@@ -1201,6 +1204,9 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	out += "    \"sources\": " + QuoteList(s.sources) + ",\n";
 	out += "    \"hidden_builds\": " + QuoteList(s.hidden_builds) + ",\n";
 	out += "    \"hidden_games\": " + QuoteList(s.hidden_games) + ",\n";
+	// STEP7:3 app keys: begin
+	out += "    \"check_updates\": " + std::string(s.check_updates ? "true" : "false") + ",\n";
+	// STEP7:3 app keys: end
 	out += "    \"source_names\": " + QuoteList(s.source_names) + ",\n";
 	out += "    \"menu_hidden\": " + QuoteList(s.menu_hidden) + ",\n";
 	out += "    \"build_names\": " + QuoteList(s.build_names) + ",\n";

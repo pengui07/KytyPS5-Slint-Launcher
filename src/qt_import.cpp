@@ -49,7 +49,6 @@ bool IsGameInfoKey(const std::string& k)
 const std::pair<const char*, const char*> kKnownUnsupported[] = {
     {"MainDialog/geometry", "main window size and position"},
     {"MainDialog/theme", "theme"},
-    {"MainDialog/check_updates_on_startup", "check for updates on startup"},
     {"ConfigurationEditDialog/geometry", "settings window size and position"},
     {"Launcher/grid_view", "grid view"},
     {"Launcher/grid_icon_width", "grid icon size"},
@@ -240,6 +239,19 @@ ImportReport import_qt_ini(const std::string& ini_path, const Paths& paths, Sett
 		if (ini.get(std::string(kLauncher) + "/addons_dir", addons) && !addons.empty())
 		{
 			s.addons_dir = addons;
+			r.settings++;
+		}
+	}
+
+	// [MainDialog]: the Qt launcher's own "check for updates on startup" (a launcher setting, not the emulator's).
+	// STEP7:3.
+	{
+		const std::string key = "MainDialog/check_updates_on_startup";
+		use(key);
+		std::string text;
+		if (ini.get(key, text))
+		{
+			s.check_updates = IsTrue(text);
 			r.settings++;
 		}
 	}

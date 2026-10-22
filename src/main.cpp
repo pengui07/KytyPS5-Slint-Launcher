@@ -335,6 +335,54 @@ bool PathIsUnder(const fs::path& child, const fs::path& parent)
 	return true;
 }
 
+// STEP7:1: the build the selected game is pinned to, for the bottom bar (the pin saved in
+// configs/games/<TITLEID>.json). Empty when the game has no pin: the bar says nothing, since the library's own
+// build is already shown by the toolbar's build list. `missing` says the pinned exe is gone (shown in red).
+void UpdateSelectedEmu(const slint::ComponentHandle<AppWindow>& ui, const Settings& s, const Paths& paths, const std::vector<GameEntry>& games)
+{
+	std::string name;
+	bool        missing = false;
+	const int   index   = ui->get_selected();
+	if (index >= 0 && static_cast<size_t>(index) < games.size())
+	{
+		const std::string& title_id = games[static_cast<size_t>(index)].title_id;
+		if (!title_id.empty())
+		{
+			if (const std::string pin = read_game_emulator(paths, title_id); !pin.empty())
+			{
+				name = build_display_name(s, pin);
+				std::error_code ec;
+				missing = !fs::exists(utf8_path(pin), ec);
+			}
+		}
+	}
+	ui->set_selected_emu(slint::SharedString(name));
+	ui->set_selected_emu_missing(missing);
+}
+
+// STEP7:2: one row of Settings > Games' "Removed games" list. The saved key is a title id, or the start file
+// (eboot.bin, a .bin/.elf or a .zar) of a game without one; the label is what the user recognises, the detail
+// the saved key itself.
+RemovedGameRow RemovedRow(const std::string& key)
+{
+	RemovedGameRow row;
+	row.label  = slint::SharedString(key);
+	row.detail = slint::SharedString(key);
+	// A path (drive letter or separator) rather than a title id.
+	if (key.find('/') == std::string::npos && key.find('\\') == std::string::npos && key.find(':') == std::string::npos)
+	{
+		return row;
+	}
+	const fs::path path = utf8_path(key);
+	// A game without a title id is saved by its start file, so its name is the folder's; an archive is the game.
+	const fs::path label = IsArchivePath(key) ? path.filename() : path.parent_path().filename();
+	if (!label.empty())
+	{
+		row.label = slint::SharedString(path_utf8(label));
+	}
+	return row;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -629,6 +677,8 @@ int main(int argc, char** argv)
 		ui->set_game(slint::SharedString(v.game));
 		ui->set_run_dir(slint::SharedString(v.run_dir));
 		ui->set_addons_dir(slint::SharedString(v.addons_dir));
+		// STEP7:3: the update check is a launcher setting, not an emulator one.
+		ui->set_check_updates(v.check_updates);
 		push_columns(v.columns);
 		push_emu(v);
 	};
@@ -757,6 +807,8 @@ int main(int argc, char** argv)
 		s.run_dir    = ToStd(ui->get_run_dir());
 		s.game_dirs  = ToStd(ui->get_game_dirs());
 		s.addons_dir = ToStd(ui->get_addons_dir());
+		// STEP7:3
+		s.check_updates = ui->get_check_updates();
 		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
 		s.library_sort      = ToStd(ui->get_sort_key());
 		s.library_sort_desc = ui->get_sort_desc();
@@ -1063,7 +1115,7 @@ int main(int argc, char** argv)
 	};
 
 	// A rescan, a re-sort or a pin keeps the user's pick; at startup nothing is selected.
-	auto restore_selection = [games, want_bg, weak = slint::ComponentWeakHandle<AppWindow>(ui)]()
+	auto restore_selection = [games, want_bg, &s, &paths, weak = slint::ComponentWeakHandle<AppWindow>(ui)]()
 	{
 		auto h = weak.lock();
 		if (!h)
@@ -1086,6 +1138,8 @@ int main(int argc, char** argv)
 		}
 		(*h)->set_selected(selected);
 		(*want_bg)(selected >= 0 ? (*games)[static_cast<size_t>(selected)].background : std::string());
+		// STEP7:1: the same pick decides the build named in the bottom bar.
+		UpdateSelectedEmu(*h, s, paths, *games);
 	};
 
 	auto publish = [games, size_cache, scan_active, games_changed, resort, rebuild, restore_selection,
@@ -1180,7 +1234,7 @@ int main(int argc, char** argv)
 		    {
 			    const std::string status = ToStd(ui->get_status());
 			    for (const char* prefix: {"No save data yet", "Game settings saved for", "Could not save the settings of",
-			                              "Removed "})
+			                              "Removed ", "Restored "})
 			    {
 				    if (status.rfind(prefix, 0) == 0)
 				    {
@@ -1196,6 +1250,8 @@ int main(int argc, char** argv)
 				                                         "metadata needs zarchive, which the launcher doesn't have"));
 			    }
 		    }
+		    // STEP7:1: the build this game starts with, named after it in the bottom bar.
+		    UpdateSelectedEmu(ui, s, paths, *games);
 	    });
 
 	// STEP6:6c: a header click (or a flip of the sorted column) re-sorts the library and saves the order.
@@ -1767,6 +1823,8 @@ int main(int argc, char** argv)
 			    return;
 		    }
 		    const bool ok = save();
+		    // STEP7:1: Save can change the emulator the whole library runs, so the bottom bar's build name follows.
+		    UpdateSelectedEmu(ui, s, paths, *games);
 		    // STEP6:6e: same for the env table (save() ran collect(), which fills env_error).
 		    ui->set_status(slint::SharedString(!env_error.empty() ? env_error
 		                                         : ok                 ? std::string("Settings saved")
@@ -1796,6 +1854,42 @@ int main(int argc, char** argv)
 		                  : PickPath(current, false, L"Emulator (kyty_emulator.exe)", L"*.exe");
 	    });
 
+	// STEP7:2: Settings > Games' "Removed games" list: the keys saved in hidden_games, in their saved order, with
+	// a Restore that drops the key and rescans (the game's files were never touched).
+	auto removed_model = std::make_shared<slint::VectorModel<RemovedGameRow>>();
+	ui->set_removed_games(removed_model);
+	auto refresh_removed_games = [&, removed_model]
+	{
+		std::vector<RemovedGameRow> rows;
+		rows.reserve(s.hidden_games.size());
+		for (const auto& key: s.hidden_games)
+		{
+			rows.push_back(RemovedRow(key));
+		}
+		removed_model->set_vector(rows);
+		// The selection is an index into the list before it was rebuilt.
+		if (ui->get_removed_selected() >= static_cast<int>(rows.size()))
+		{
+			ui->set_removed_selected(rows.empty() ? -1 : static_cast<int>(rows.size()) - 1);
+		}
+	};
+	ui->on_restore_game(
+	    [&, refresh_removed_games](int row)
+	    {
+		    if (row < 0 || static_cast<size_t>(row) >= s.hidden_games.size())
+		    {
+			    return;
+		    }
+		    // The list is built from hidden_games in order, so the row is the entry (checked again above).
+		    const std::string label = ToStd(removed_model->row_data(static_cast<size_t>(row))->label);
+		    s.hidden_games.erase(s.hidden_games.begin() + row);
+		    ui->set_removed_selected(-1);
+		    refresh_removed_games();
+		    const bool ok = save();
+		    ui->set_status(slint::SharedString("Restored " + label + (ok ? "" : ", but the list could not be saved")));
+		    refresh(); // the rescan puts the game back on the library
+	    });
+
 	// Games tab (emulator pins) and per-game settings, both keyed by title id.
 	auto game_config_model = std::make_shared<slint::VectorModel<GameConfigRow>>();
 	ui->set_game_configs(game_config_model);
@@ -1823,6 +1917,10 @@ int main(int argc, char** argv)
 			rows.push_back(r);
 		}
 		game_config_model->set_vector(rows);
+		// STEP7:1 and STEP7:2: a rescan, a pin or a build change moves the Removed list and the bottom bar's build
+		// name as well (this runs from games_changed and from the Games tab being opened).
+		refresh_removed_games();
+		UpdateSelectedEmu(ui, s, paths, *games);
 	};
 	*games_changed = refresh_game_configs;
 	version_manager.SetOnBuildsChanged(refresh_game_configs);

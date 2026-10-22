@@ -27,6 +27,13 @@ export struct BuildChoice {
     path: string,
 }
 
+// STEP7:2: one row of the Games tab's "Removed games" list: a game taken off the library with
+// "Remove from list" (its files are still on disk, and it stays in the saved list until restored).
+export struct RemovedGameRow {
+    label: string,  // the game's folder or file name, or its title id when the entry has no path
+    detail: string, // the saved key: the title id, or the path it was removed by
+}
+
 // STEP6:6e: one row of the environment variable table (Settings > Advanced, global and per-game mode).
 export struct EnvVar {
     name: string,
@@ -359,6 +366,11 @@ export component SettingsPage inherits VerticalLayout {
     // Games tab.
     in property <[GameConfigRow]> game-configs;
     in-out property <int> games-selected: -1;
+    // STEP7:2: the games taken off the library ("Remove from list"), and the row selected here.
+    in property <[RemovedGameRow]> removed-games;
+    in-out property <int> removed-selected: -1;
+    // STEP7:3: check for newer "-latest" builds at startup and every hour (Settings > General).
+    in-out property <bool> check-updates: true;
     in-out property <length> gw-name: 300px;
     in-out property <length> gw-serial: 110px;
     in-out property <length> gw-version: 110px;
@@ -415,6 +427,7 @@ export component SettingsPage inherits VerticalLayout {
     callback open-game-settings(int);        // Games tab row -> per-game mode
     callback clear-game-emu(int);            // pin "None"
     callback pick-game-emu(int);             // "Set Emu..." (the window shows the picker)
+    callback restore-game(int);              // STEP7:2: Games tab: put a removed game back on the library
     callback reset-game();                   // per-game mode: drop the game's overrides
 
     changed settings-tab => {
@@ -627,6 +640,17 @@ export component SettingsPage inherits VerticalLayout {
                             enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dir-list.length;
                             clicked => { root.remove-game-dir(root.game-dir-selected); }
                         }
+                    }
+                }
+                // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
+                if !root.game-mode: Card {
+                    title: "Updates";
+                    ToggleRow {
+                        item: { env: "check_updates", label: "Check for updates on startup", hint: "", on: root.check-updates };
+                        toggled(on) => { root.check-updates = on; }
+                    }
+                    Hint {
+                        text: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.";
                     }
                 }
 
@@ -1239,6 +1263,79 @@ export component SettingsPage inherits VerticalLayout {
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
                     && root.game-configs[root.games-selected].serial != "" && !root.running;
                 clicked => { GameActions.delete-save-data(root.games-selected); }
+            }
+        }
+
+        // STEP7:2: what "Remove from list" took off the library. Nothing was deleted from disk; restoring puts the
+        // game back in the library (the rescan finds it again).
+        Text {
+            text: root.removed-games.length == 0 ? "Removed games" : "Removed games (" + root.removed-games.length + ")";
+            color: Theme.muted;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        if root.removed-games.length == 0: Hint {
+            text: "Nothing removed. \"Remove from list\" only hides a game: its files stay where they are and it is listed here until restored.";
+        }
+        if root.removed-games.length > 0: Rectangle {
+            height: 110px;
+            background: Theme.bg;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            clip: true;
+            ListView {
+                for game[i] in root.removed-games: Rectangle {
+                    height: 28px;
+                    background: i == root.removed-selected ? Theme.row-selected : removed-touch.has-hover ? Theme.row-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        Text {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            text: game.label;
+                            color: Theme.text;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            width: min(self.preferred-width, 320px);
+                            text: game.detail;
+                            color: Theme.faint;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    removed-touch := TouchArea {
+                        clicked => { root.removed-selected = i; }
+                        // Straight to the library, like the Restore button.
+                        double-clicked => {
+                            root.removed-selected = i;
+                            root.restore-game(i);
+                        }
+                    }
+                }
+            }
+        }
+        if root.removed-games.length > 0: HorizontalLayout {
+            alignment: start;
+            spacing: 8px;
+            Button {
+                text: "Restore";
+                enabled: root.removed-selected >= 0 && root.removed-selected < root.removed-games.length;
+                clicked => { root.restore-game(root.removed-selected); }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: "The game goes back on the library. A double-click on a row does the same.";
+                color: Theme.faint;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
             }
         }
     }
