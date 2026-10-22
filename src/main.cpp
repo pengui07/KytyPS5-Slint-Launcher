@@ -469,19 +469,56 @@ int main(int argc, char** argv)
 
 	// View > Console window: created on first use, shows the emulator output.
 	auto console = std::make_shared<std::optional<slint::ComponentHandle<ConsoleWindow>>>();
-	auto append_lines = [log_model, console](const std::vector<std::string>& lines)
+	// STEP6:6a: output is coalesced into 30 ms batches, trimmed once per batch and pinned only while following.
+	auto pending_lines = std::make_shared<std::vector<std::string>>();
+	auto flush_timer   = std::make_shared<slint::Timer>();
+	auto flush         = std::make_shared<std::function<void()>>();
+	*flush             = [log_model, console, pending_lines]
 	{
-		for (const auto& l: lines)
+		if (pending_lines->empty())
 		{
-			log_model->push_back(slint::SharedString(l));
+			return;
 		}
-		while (log_model->row_count() > kMaxLogLines)
+		std::vector<std::string> lines;
+		lines.swap(*pending_lines);
+		const size_t total = log_model->row_count() + lines.size();
+		if (total > kMaxLogLines)
 		{
-			log_model->erase(0);
+			// One model reset for the whole batch: keep the tail of the old model plus the new lines.
+			const size_t                     drop     = total - kMaxLogLines;
+			const size_t                     skip_new = drop > log_model->row_count() ? drop - log_model->row_count() : 0;
+			std::vector<slint::SharedString> kept;
+			kept.reserve(kMaxLogLines);
+			for (size_t i = drop; i < log_model->row_count(); i++)
+			{
+				if (auto row = log_model->row_data(i))
+				{
+					kept.push_back(*row);
+				}
+			}
+			for (size_t i = skip_new; i < lines.size(); i++)
+			{
+				kept.push_back(slint::SharedString(lines[i]));
+			}
+			log_model->set_vector(std::move(kept));
+		} else
+		{
+			for (const auto& l: lines)
+			{
+				log_model->push_back(slint::SharedString(l));
+			}
 		}
 		if (console->has_value())
 		{
-			(**console)->invoke_scroll_to_end();
+			(**console)->invoke_pin();
+		}
+	};
+	auto append_lines = [pending_lines, flush_timer, flush](const std::vector<std::string>& lines)
+	{
+		pending_lines->insert(pending_lines->end(), lines.begin(), lines.end());
+		if (!flush_timer->running())
+		{
+			flush_timer->start(slint::TimerMode::SingleShot, std::chrono::milliseconds(30), [flush] { (*flush)(); });
 		}
 	};
 	auto append_text = [append_lines](const std::string& text)
@@ -1279,17 +1316,27 @@ int main(int argc, char** argv)
 	    });
 
 	ui->on_open_console(
-	    [console, log_model]
+	    [console, log_model, pending_lines]
 	    {
 		    if (!console->has_value())
 		    {
 			    auto c = ConsoleWindow::create();
 			    c->set_log_lines(log_model);
-			    c->on_clear([log_model] { log_model->clear(); });
+			    // STEP6:6a: clear drops queued lines too and starts following again.
+			    c->on_clear(
+			        [log_model, pending_lines, weak_console = slint::ComponentWeakHandle<ConsoleWindow>(c)]
+			        {
+				        log_model->clear();
+				        pending_lines->clear();
+				        if (auto h = weak_console.lock())
+				        {
+					        (*h)->invoke_scroll_to_end();
+				        }
+			        });
 			    *console = c;
 		    }
-		    (**console)->invoke_scroll_to_end();
 		    (**console)->show();
+		    (**console)->invoke_scroll_to_end();
 	    });
 
 	ui->on_open_url(
@@ -1344,17 +1391,18 @@ int main(int argc, char** argv)
 			    }
 			    slint::invoke_from_event_loop([append_text, clean] { append_text(clean); });
 		    };
-		    auto on_exit = [partial, append_text, weak, trophy_after_exit](int code)
+		    auto on_exit = [partial, append_text, weak, trophy_after_exit, flush](int code)
 		    {
 			    std::string rest = *partial;
 			    slint::invoke_from_event_loop(
-			        [append_text, weak, rest, code, trophy_after_exit]
+			        [append_text, weak, rest, code, trophy_after_exit, flush]
 			        {
 				        if (!rest.empty())
 				        {
 					        append_text(rest);
 				        }
 				        append_text("---- emulator exited, code " + std::to_string(code) + " ----");
+				        (*flush)(); // STEP6:6a: show the last lines now, not in 30 ms
 				        if (auto h = weak.lock())
 				        {
 					        (*h)->set_running(false);
