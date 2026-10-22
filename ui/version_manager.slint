@@ -18,6 +18,8 @@ export struct EmuVersion {
     shown: bool,   // ticked: listed in the toolbar's build menu
     active: bool,  // the build the launcher runs
     selected: bool, // highlighted in the Installed table (one of possibly several)
+    pinned: bool,   // kept at the top of the Installed table (not the same as shown or active)
+    main-latest: bool, // the default KytyPS5-main-latest build: always first, can not be pinned
 }
 
 // Right-click > About on an installed build (the C++ side fills it before the dialog opens).
@@ -67,6 +69,68 @@ component Panel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.card-border;
     clip: true;
+}
+
+// A sortable header cell of the Installed table: click sorts by the column, the active one shows
+// the direction. The grip on the right edge resizes it like HeaderCell does.
+component SortHeader inherits Rectangle {
+    in property <string> text;
+    in-out property <length> w;
+    in property <string> sort-key;   // the VM.sort-key this column sorts by
+    in property <string> active-key;
+    in property <bool> desc;
+    in property <string> tooltip;
+    callback clicked();
+    property <bool> active: root.active-key == root.sort-key;
+    width: root.w;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 14px;
+        spacing: 3px;
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            text: root.text;
+            color: root.active ? Theme.text : Theme.muted;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            visible: root.active;
+            text: root.desc ? "▼" : "▲";
+            color: Theme.accent;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+    // Above the label; the resize grip, declared last, gets the pointer on the right edge.
+    header-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    Rectangle {
+        x: parent.width - 1px;
+        y: 5px;
+        width: 1px;
+        height: parent.height - 10px;
+        background: grip.has-hover || grip.pressed ? Theme.accent : Theme.card-border;
+    }
+    grip := TouchArea {
+        x: parent.width - 6px;
+        width: 6px;
+        mouse-cursor: col-resize;
+        // The grip moves with the edge, so each move adds the delta since the last one.
+        moved => {
+            if (self.pressed) {
+                root.w = max(40px, root.w + self.mouse-x - self.pressed-x);
+            }
+        }
+    }
+    if root.tooltip != "": Tooltip {
+        text: @markdown("\{root.tooltip}");
+    }
 }
 
 // One tab of a tab strip; the active one has an accent underline. Sized by its text.
@@ -194,7 +258,31 @@ component VersionRowView inherits Rectangle {
                 toggled => { root.toggled(self.checked); }
             }
         }
-        if !root.renaming: TextCell { w: root.col-version; text: root.version.active ? "● " + root.version.name : root.version.name; bold: root.version.active; color: root.version.active ? Theme.accent : root.cell-color; }
+        if !root.renaming: Rectangle {
+            width: root.col-version;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 4px;
+                // A compact pin marker, distinct from the blue dot of the running build.
+                if root.version.pinned: Image {
+                    width: 11px;
+                    height: 11px;
+                    source: @image-url("icons/pin.svg");
+                    colorize: Theme.muted;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    text: root.version.active ? "● " + root.version.name : root.version.name;
+                    color: root.version.active ? Theme.accent : root.cell-color;
+                    font-size: 13px;
+                    font-weight: root.version.active ? 700 : 400;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
         if root.renaming: Rectangle {
             width: root.col-version;
             InlineEdit {
@@ -250,6 +338,10 @@ export global VM {
     // Search box and Any / Tracked / Local selector over the Installed table.
     in-out property <string> installed-filter;
     in-out property <int> installed-kind: 0;
+    // Installed table sorting: the header key and direction, persisted in the app settings.
+    in property <string> sort-key: "name";
+    in property <bool> sort-desc: false;
+    callback sort-by(string);
     callback filter-changed();
     in-out property <int> current-available: -1;
     in property <string> status: "Double-click a version to download it.";
@@ -290,6 +382,7 @@ export global VM {
     callback browse-path();
     callback select-version(int, bool); // Show checkbox: list the build in the toolbar menu
     callback activate-version(int);      // double-click: the launcher runs this build
+    callback toggle-pin(int);            // Pin to top / Unpin the build at this table row
     callback add-custom();
     callback request-remove();          // asks about the selected builds
     callback confirm-remove(bool);      // also delete the files
@@ -352,6 +445,14 @@ export component VersionManagerPage inherits Rectangle {
                 activated => {
                     VM.renaming-build = VM.current-installed;
                 }
+            }
+            // Pins keep a build at the top of the Installed table. This is not Show (the toolbar's
+            // build list) and not the per-game emulator pin.
+            MenuItem {
+                title: VM.installed[VM.current-installed].pinned ? "Unpin" : "Pin to top";
+                enabled: VM.selected-count == 1 && VM.current-installed >= 0 && VM.current-installed < VM.installed.length
+                    && !VM.installed[VM.current-installed].main-latest;
+                activated => { VM.toggle-pin(VM.current-installed); }
             }
             // The build the launcher runs. It can be set while it is not shown in the list.
             MenuItem {
@@ -675,11 +776,51 @@ export component VersionManagerPage inherits Rectangle {
                                 width: root.cols-total + max(0px, build-list.visible-width - root.cols-total);
                                 spacing: 0px;
                                 HeaderCell { text: "Show"; w <=> root.col-selected; tooltip: "Listed in the toolbar's build list. The build the launcher runs is always listed."; }
-                                HeaderCell { text: "Version"; w <=> root.col-version; }
-                                HeaderCell { text: "Codename"; w <=> root.col-codename; }
-                                HeaderCell { text: "Date"; w <=> root.col-date; }
-                                HeaderCell { text: "Tracked?"; w <=> root.col-tracked; }
-                                HeaderCell { text: "Path"; w: root.col-path-eff; }
+                                SortHeader {
+                                    text: "Version";
+                                    w <=> root.col-version;
+                                    sort-key: "name";
+                                    active-key: VM.sort-key;
+                                    desc: VM.sort-desc;
+                                    tooltip: "Sort by display name";
+                                    clicked => { VM.sort-by("name"); }
+                                }
+                                SortHeader {
+                                    text: "Codename";
+                                    w <=> root.col-codename;
+                                    sort-key: "codename";
+                                    active-key: VM.sort-key;
+                                    desc: VM.sort-desc;
+                                    tooltip: "Sort by codename";
+                                    clicked => { VM.sort-by("codename"); }
+                                }
+                                SortHeader {
+                                    text: "Date";
+                                    w <=> root.col-date;
+                                    sort-key: "date";
+                                    active-key: VM.sort-key;
+                                    desc: VM.sort-desc;
+                                    tooltip: "Sort by release date";
+                                    clicked => { VM.sort-by("date"); }
+                                }
+                                SortHeader {
+                                    text: "Tracked?";
+                                    w <=> root.col-tracked;
+                                    sort-key: "tracked";
+                                    active-key: VM.sort-key;
+                                    desc: VM.sort-desc;
+                                    tooltip: "Sort downloaded builds first";
+                                    clicked => { VM.sort-by("tracked"); }
+                                }
+                                SortHeader {
+                                    text: "Path";
+                                    w: root.col-path-eff;
+                                    sort-key: "path";
+                                    active-key: VM.sort-key;
+                                    desc: VM.sort-desc;
+                                    tooltip: "Sort by path";
+                                    clicked => { VM.sort-by("path"); }
+                                }
                                 Rectangle { horizontal-stretch: 1; }
                             }
                             Rectangle {
@@ -1311,11 +1452,18 @@ export component VersionManagerPage inherits Rectangle {
                             color: Theme.text;
                             font-size: 13px;
                         }
-                        for cfg in VM.about.serial-configs: Text {
-                            text: cfg;
-                            color: Theme.text;
-                            font-size: 13px;
-                            overflow: elide;
+                        // Many config files scroll instead of stretching the dialog (the C++ side caps the list).
+                        if VM.about.serial-configs.length > 0: ScrollView {
+                            height: min(96px, max(18px, VM.about.serial-configs.length * 18px));
+                            VerticalLayout {
+                                spacing: 2px;
+                                for cfg in VM.about.serial-configs: Text {
+                                    text: cfg;
+                                    color: Theme.text;
+                                    font-size: 13px;
+                                    overflow: elide;
+                                }
+                            }
                         }
                     }
                 }
