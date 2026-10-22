@@ -1241,10 +1241,25 @@ export component ConsoleWindow inherits Window {
     background: Theme.bg;
     in property <[string]> log-lines;
     callback clear();
+    // STEP6:6a: follow new output only while the view is at the bottom.
+    property <bool> stick: true;
+    // STEP6:6a: mirrors log-lines.length so a model change can re-pin after the content grew.
+    property <int> line-count: root.log-lines.length;
 
     // Rows are fixed at 16px, so the end is known without waiting for layout.
+    public function pin() {
+        if (root.stick) {
+            log.content-y = min(0px, log.visible-height - root.log-lines.length * 16px);
+        }
+    }
+
     public function scroll-to-end() {
-        log.content-y = min(0px, log.visible-height - root.log-lines.length * 16px);
+        root.stick = true;
+        root.pin();
+    }
+
+    changed line-count => {
+        root.pin();
     }
 
     VerticalLayout {
@@ -1280,6 +1295,13 @@ export component ConsoleWindow inherits Window {
                     font-size: 12px;
                     overflow: elide;
                     vertical-alignment: center;
+                }
+                // STEP6:6a: an upward move pauses following; at (or near) the bottom resumes it.
+                changed content-y => {
+                    root.stick = log.content-y <= min(0px, log.visible-height - root.log-lines.length * 16px) + 1px;
+                }
+                changed visible-height => {
+                    root.pin();
                 }
             }
         }
