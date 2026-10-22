@@ -79,14 +79,14 @@ component TabHeader inherits Rectangle {
 
 // Label on the left, the binding button on the right. Click binds, right-click clears (upstream's behaviour).
 component BindingRow inherits Rectangle {
-    in property <ControlRow> row;
+    in property <ControlRow> entry;
     in property <bool> pad;
     height: 30px;
     Text {
         x: 2px;
         width: max(0px, parent.width - 214px);
         height: parent.height;
-        text: root.row.label;
+        text: root.entry.label;
         color: Theme.text;
         font-size: 13px;
         vertical-alignment: center;
@@ -105,8 +105,8 @@ component BindingRow inherits Rectangle {
             x: 8px;
             width: parent.width - 16px;
             height: parent.height;
-            text: capturing ? "Press…" : root.row.binding;
-            color: capturing ? Theme.accent : root.row.binding == "None" ? Theme.faint : Theme.text;
+            text: capturing ? "Press…" : root.entry.binding;
+            color: capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
             font-size: 12px;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -117,9 +117,9 @@ component BindingRow inherits Rectangle {
             pointer-event(event) => {
                 if (event.kind == PointerEventKind.down) {
                     if (event.button == PointerEventButton.right) {
-                        Controls.clear-binding(root.row.id, root.pad);
+                        Controls.clear-binding(root.entry.id, root.pad);
                     } else if (event.button == PointerEventButton.left) {
-                        Controls.begin-capture(root.row.id, root.pad);
+                        Controls.begin-capture(root.entry.id, root.pad);
                     }
                 }
             }
@@ -130,7 +130,7 @@ component BindingRow inherits Rectangle {
         height: 1px;
         background: #ffffff0d;
     }
-    property <bool> capturing: Controls.listening && Controls.capture-id == root.row.id;
+    property <bool> capturing: Controls.listening && Controls.capture-id == root.entry.id;
 }
 
 // Section title + rows of one tab, in the order the C++ side sends them.
@@ -147,7 +147,7 @@ component TabRows inherits VerticalLayout {
             font-weight: 600;
             vertical-alignment: bottom;
         }
-        BindingRow { row: row; pad: root.pad; }
+        BindingRow { entry: row; pad: root.pad; }
     }
 }
 

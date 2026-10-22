@@ -411,7 +411,7 @@ export component AppWindow inherits Window {
     callback grid-columns-changed(int);  // cards per row changed: the C++ side rebuilds grid-rows
     // How many 208 px cards with 12 px gaps fit in the library box.
     public pure function grid-columns-for(box-width: length) -> int {
-        return max(1, int(box-width / 1px) / 220);
+        return max(1, floor(box-width / 220px));
     }
     in property <bool> scanning;
     in property <int> recommended-size: -1; // the Window size preset that matches the monitor

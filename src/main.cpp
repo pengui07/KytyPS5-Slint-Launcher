@@ -1050,11 +1050,13 @@ int main(int argc, char** argv)
 		const size_t         columns = static_cast<size_t>(std::max(1, *grid_columns));
 		for (size_t i = 0; i < games->size(); i += columns)
 		{
+			auto    cells = std::make_shared<slint::VectorModel<int>>();
 			GridRow row;
 			for (size_t k = i; k < games->size() && k < i + columns; k++)
 			{
-				row.cells.push_back(static_cast<int>(k));
+				cells->push_back(static_cast<int>(k));
 			}
+			row.cells = cells;
 			grid.push_back(std::move(row));
 		}
 		grid_model->set_vector(grid);
@@ -1371,7 +1373,7 @@ int main(int argc, char** argv)
 			publish_trophy_scan(cached_trophy_progress(*scanned, run_dir, user_id, *trophy_cache), scanned, false);
 		}
 
-		bg_threads->emplace_back(
+		pool->Post(
 		    [scanned, trophy_cache, publish_trophy_scan, run_dir, user_id, cancel, gen, trophy_scan_gen, trophy_weak]
 		    {
 			    std::vector<TrophyScanEntry> entries;
@@ -2302,11 +2304,11 @@ int main(int argc, char** argv)
 	const bool restore_size = s.window_w >= 800 && s.window_h >= 500;
 	if (restore_size)
 	{
-		ui->window().set_size(slint::LogicalSize(static_cast<float>(s.window_w), static_cast<float>(s.window_h)));
+		ui->window().set_size(slint::LogicalSize(slint::Size<float>{static_cast<float>(s.window_w), static_cast<float>(s.window_h)}));
 	}
 	if (restore_size && s.window_x >= 0 && s.window_y >= 0 && have_monitor && s.window_x < monitor_w && s.window_y < monitor_h)
 	{
-		ui->window().set_position(slint::LogicalPosition(static_cast<float>(s.window_x), static_cast<float>(s.window_y)));
+		ui->window().set_position(slint::LogicalPosition(slint::Point<float>{static_cast<float>(s.window_x), static_cast<float>(s.window_y)}));
 	}
 	refresh();
 	ui->run();
