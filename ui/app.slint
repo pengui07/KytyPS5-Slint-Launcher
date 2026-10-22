@@ -23,7 +23,7 @@ export struct GameRow {
     status: string,
     status-code: int,
     comment: string,
-    play-time: string, // e.g. "12h 30m"; empty until play time is tracked
+    play-time: string, // e.g. "12h 30m"; empty when the game has never been played (format_play_time)
     pinned: bool,      // "Pin to top": listed before the others in both views
     icon: image,
 }

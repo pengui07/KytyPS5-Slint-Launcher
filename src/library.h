@@ -27,8 +27,8 @@ struct GameEntry
 	// STEP6:6e: a .zar archive listed as the game itself: `dir` and `eboot` are the file, the name is the file
 	// stem, and the title id, versions and icon are unknown (they live inside the archive, which the launcher
 	// cannot read: that needs zarchive).
-	bool archive = false;
-	std::string play_time; // e.g. "12h 30m"; empty until play time is tracked (the Play Time column)
+	bool     archive      = false;
+	uint64_t play_seconds = 0; // total run time; 0 = never played (see PlayTimeDb, format_play_time)
 };
 
 struct CompatEntry
@@ -79,6 +79,34 @@ const char* game_sort_key_name(GameSortKey key);
 // The key a game is pinned ("Pin to top") by: its title id, or the eboot path for a game without one.
 // Normalised with path_key, so it compares the same however the user typed it.
 std::string favourite_key(const GameEntry& game);
+
+// Play time: how long each game has run, in whole seconds, kept in <root>\playtime.json. Keyed like a pin
+// (favourite_key / play_time_key), so hiding or rescanning a game keeps its total, and a game launched from a
+// path that is not in the library is counted too.
+constexpr int kPlayTimeVersion = 1;
+
+struct PlayRecord
+{
+	uint64_t seconds     = 0;
+	int64_t  last_played = 0; // unix seconds (system_clock); 0 = never recorded
+};
+using PlayTimeDb = std::map<std::string, PlayRecord>;
+
+// Missing, unreadable or newer-versioned file -> empty.
+PlayTimeDb load_play_times(const std::string& path);
+// Writes <path>.tmp and renames it over `path`, so a crash mid-write can't truncate the totals.
+bool save_play_times(const std::string& path, const PlayTimeDb& db);
+// Re-reads the file (so two launcher windows don't overwrite each other), adds one session, writes it back and
+// returns the new totals. A file from a newer launcher version is left untouched.
+PlayTimeDb record_play_session(const std::string& path, const std::string& key, uint64_t seconds, int64_t now);
+// Fills play_seconds from `db` (by favourite_key): what the Play Time column shows.
+void apply_play_times(std::vector<GameEntry>& games, const PlayTimeDb& db);
+// "" for 0, "<1m", "42m", "12h 30m", "9h"; 100 hours and up keep just the hours ("123h").
+std::string format_play_time(uint64_t seconds);
+
+// The key a session is recorded under: the title id of sce_sys/param.json, else the eboot path (favourite_key
+// uses the same one). Library and typed-path launches have to agree, so both go through this.
+std::string play_time_key(const std::string& eboot);
 
 // Orders the library: games whose favourite_key is in `favourites` first, then `key`. Descending only flips
 // `key`: the pinned group stays on top and ties always break by name, then title id, so the order is stable.

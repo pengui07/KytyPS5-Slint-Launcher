@@ -272,6 +272,8 @@ private:
 
 // Icons are decoded at this edge: sharp in the 46 px list row and in the grid card, never full size.
 constexpr int kIconPixels = 128;
+// Play time only counts a session at least this long: a game that crashes while booting is not play time.
+constexpr std::chrono::seconds kMinPlaySession{10};
 
 // STEP6:6c: builds one library row. The icon is never decoded here: the row starts with an empty placeholder
 // and `request_icon` asks the decoder pool for it (the completion patches that one row in the model).
@@ -288,7 +290,7 @@ GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
 	r.status       = slint::SharedString(status_text(g.status));
 	r.status_code  = static_cast<int>(g.status);
 	r.comment      = slint::SharedString(g.comment);
-	r.play_time    = slint::SharedString(g.play_time);
+	r.play_time    = slint::SharedString(format_play_time(g.play_seconds));
 	r.pinned       = pinned_keys.count(favourite_key(g)) != 0;
 	if (!g.icon.empty() && request_icon)
 	{
@@ -494,11 +496,20 @@ int main(int argc, char** argv)
 		ChildProcess child;
 		std::string  error;
 		int          exit_code = -1;
+		const auto   started   = std::chrono::steady_clock::now(); // from the launch: Start forks the emulator
 		if (!child.Start(make_launch_plan(s, paths), [](const std::string&) {}, [&](int code) { exit_code = code; }, &error))
 		{
 			return 1;
 		}
 		child.Wait();
+		// A headless launch is counted too: same key, same minimum and same file as the window.
+		const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
+		if (elapsed >= kMinPlaySession.count())
+		{
+			const int64_t now = static_cast<int64_t>(
+				std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+			record_play_session(path_utf8(paths.play_time_file()), play_time_key(s.game), static_cast<uint64_t>(elapsed), now);
+		}
 		return exit_code;
 	}
 
@@ -925,6 +936,9 @@ int main(int argc, char** argv)
 	auto        grid_model   = std::make_shared<slint::VectorModel<GridRow>>(); // grid view: rows of indices into `games`
 	auto        grid_columns = std::make_shared<int>(4);
 	auto        size_cache   = std::make_shared<SizeCache>();
+	// Play time totals: read once here; from now on only the UI thread writes this copy (see finish_session).
+	const std::string play_time_file = path_utf8(paths.play_time_file());
+	auto        play_times   = std::make_shared<PlayTimeDb>(load_play_times(play_time_file));
 	auto        scan_active  = std::make_shared<std::atomic<bool>>(false);
 	auto        games_changed = std::make_shared<std::function<void()>>(); // refreshes the Games tab (set once the Version Manager exists)
 	std::thread scan_thread;
@@ -1142,7 +1156,7 @@ int main(int argc, char** argv)
 		UpdateSelectedEmu(*h, s, paths, *games);
 	};
 
-	auto publish = [games, size_cache, scan_active, games_changed, resort, rebuild, restore_selection,
+	auto publish = [games, size_cache, scan_active, games_changed, resort, rebuild, restore_selection, play_times,
 	                weak = slint::ComponentWeakHandle<AppWindow>(ui)](std::vector<GameEntry> list, SizeCache sizes, bool done)
 	{
 		auto h = weak.lock();
@@ -1152,6 +1166,8 @@ int main(int argc, char** argv)
 		}
 		*size_cache = std::move(sizes);
 		*games      = std::move(list);
+		// The totals belong to the UI thread, so they go on this fresh list here and not in the scan thread.
+		apply_play_times(*games, *play_times);
 		// A rescan and a header click sort with the same comparator, before the rows are built.
 		resort();
 		rebuild();
@@ -2258,6 +2274,42 @@ int main(int argc, char** argv)
 	ChildProcess child;
 	auto         weak = slint::ComponentWeakHandle<AppWindow>(ui);
 
+	// Play time: the session running now, and the one place a finished one is written. Only the UI thread
+	// touches it, so `play_times` is always that thread's own copy; the key is taken when the game starts,
+	// because the list selection can name another game by the time it exits.
+	struct Session
+	{
+		std::string                           key;
+		std::chrono::steady_clock::time_point start;
+	};
+	auto session        = std::make_shared<std::optional<Session>>();
+	auto finish_session = std::make_shared<std::function<void()>>();
+	*finish_session     = [session, play_times, play_time_file, games, resort, rebuild, restore_selection]
+	{
+		if (!session->has_value())
+		{
+			return;
+		}
+		// Taken and reset at once: the exit callback and the close path both come here, and only one records.
+		const Session run = **session;
+		session->reset();
+		const auto elapsed =
+			std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - run.start).count();
+		// Sleeping or hibernating with the game open counts as play: steady_clock keeps running. Only a session
+		// shorter than kMinPlaySession (a crash on boot) is dropped.
+		if (elapsed < kMinPlaySession.count())
+		{
+			return;
+		}
+		const int64_t now = static_cast<int64_t>(
+			std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+		*play_times = record_play_session(play_time_file, run.key, static_cast<uint64_t>(elapsed), now);
+		apply_play_times(*games, *play_times);
+		resort();
+		rebuild();
+		restore_selection();
+	};
+
 	auto play = [&]
 	{
 		    save();
@@ -2293,11 +2345,11 @@ int main(int argc, char** argv)
 			    }
 			    slint::invoke_from_event_loop([append_text, clean] { append_text(clean); });
 		    };
-		    auto on_exit = [partial, append_text, weak, trophy_after_exit, flush](int code)
+		    auto on_exit = [partial, append_text, weak, trophy_after_exit, finish_session, flush](int code)
 		    {
 			    std::string rest = *partial;
 			    slint::invoke_from_event_loop(
-			        [append_text, weak, rest, code, trophy_after_exit, flush]
+			        [append_text, weak, rest, code, trophy_after_exit, finish_session, flush]
 			        {
 				        if (!rest.empty())
 				        {
@@ -2305,6 +2357,9 @@ int main(int argc, char** argv)
 				        }
 				        append_text("---- emulator exited, code " + std::to_string(code) + " ----");
 				        (*flush)(); // STEP6:6a: show the last lines now, not in 30 ms
+				        // The session is over: add its time to the totals. This runs even when the window handle is gone,
+				        // and is a no-op when the close path recorded it first.
+				        (*finish_session)();
 				        if (auto h = weak.lock())
 				        {
 					        (*h)->set_running(false);
@@ -2328,6 +2383,8 @@ int main(int argc, char** argv)
 			    return;
 		    }
 		    ui->set_running(true);
+		    // The launched game's key, taken now: the selection may name another game by the time it exits.
+		    session->emplace(Session{play_time_key(ToStd(ui->get_game())), std::chrono::steady_clock::now()});
 		    {
 			    // Name shown in "<game> is running": the library entry, else the game's folder.
 			    const std::string eboot = ToStd(ui->get_game());
@@ -2382,6 +2439,9 @@ int main(int argc, char** argv)
 	    [&]
 	    {
 		    child.Stop();
+		    // Stop() has ended the process, so the session is final now. The exit callback posted by on_exit may never
+		    // run once the event loop quits; finish_session is a no-op when it already did.
+		    (*finish_session)();
 		    slint::quit_event_loop();
 	    });
 

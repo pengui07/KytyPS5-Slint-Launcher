@@ -344,8 +344,9 @@ void sort_games(std::vector<GameEntry>& games, GameSortKey key, bool descending,
 			case GameSortKey::Firmware: return CompareText(a.firmware_version, b.firmware_version);
 			case GameSortKey::Size: return a.size < b.size ? -1 : a.size > b.size ? 1 : 0;
 			case GameSortKey::Version: return CompareText(a.game_version, b.game_version);
-			// Play time is a display string ("12h 30m") and empty until it is tracked: the name tie-break orders it.
-			case GameSortKey::Playtime: return CompareText(a.play_time, b.play_time);
+			// Play time is stored in seconds, so 9h ("32400") sorts before 12h 30m ("45000"). Unplayed games (0)
+			// come first ascending and last descending; ties break by name.
+			case GameSortKey::Playtime: return a.play_seconds < b.play_seconds ? -1 : a.play_seconds > b.play_seconds ? 1 : 0;
 			case GameSortKey::Path: return CompareText(a.dir, b.dir);
 			case GameSortKey::Comment: return CompareText(a.comment, b.comment);
 		}
@@ -468,6 +469,196 @@ std::string format_size(uint64_t bytes)
 		std::snprintf(buf, sizeof(buf), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
 	}
 	return buf;
+}
+
+namespace {
+
+// A JSON string: a key is a title id or a path, and a path may hold a quote or a backslash.
+std::string JsonQuote(const std::string& s)
+{
+	std::string out = "\"";
+	for (char c: s)
+	{
+		if (c == '"' || c == '\\')
+		{
+			out += '\\';
+			out += c;
+		} else if (static_cast<unsigned char>(c) < 0x20)
+		{
+			char buf[8];
+			std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+			out += buf;
+		} else
+		{
+			out += c;
+		}
+	}
+	return out + "\"";
+}
+
+// A whole number member, clamped to [0, 1e15] so a corrupted file can't overflow the cast (1e15 seconds is
+// more than any real total).
+uint64_t CountMember(const JsonValue& v, const char* key)
+{
+	const JsonValue* m = Member(v, key);
+	if (m == nullptr || m->type != JsonValue::Type::Number || !(m->n > 0))
+	{
+		return 0;
+	}
+	constexpr double kMaxCount = 1e15;
+	return m->n < kMaxCount ? static_cast<uint64_t>(m->n) : static_cast<uint64_t>(kMaxCount);
+}
+
+// Reads the file into `db`. False when it exists but must not be used (unreadable, or written by a newer
+// launcher), so a writer leaves it alone; a missing file reads as an empty db.
+bool ReadPlayTimeFile(const std::string& path, PlayTimeDb& db)
+{
+	db.clear();
+	std::error_code ec;
+	if (!fs::exists(utf8_path(path), ec))
+	{
+		return true;
+	}
+	JsonValue root;
+	if (!parse_json(read_text_file(path), root) || root.type != JsonValue::Type::Object)
+	{
+		return false;
+	}
+	const JsonValue* version = Member(root, "version");
+	if (version != nullptr && version->type == JsonValue::Type::Number && version->n > kPlayTimeVersion)
+	{
+		return false;
+	}
+	const JsonValue* games = Member(root, "games");
+	if (games == nullptr || games->type != JsonValue::Type::Object)
+	{
+		return true;
+	}
+	for (const auto& [key, entry]: games->o)
+	{
+		if (entry.type != JsonValue::Type::Object || Trim(key).empty())
+		{
+			continue;
+		}
+		PlayRecord rec;
+		rec.seconds     = CountMember(entry, "seconds");
+		rec.last_played = static_cast<int64_t>(CountMember(entry, "last_played"));
+		db[key]         = rec;
+	}
+	return true;
+}
+
+std::string PlayTimesJson(const PlayTimeDb& db)
+{
+	std::string out = "{\n  \"version\": " + std::to_string(kPlayTimeVersion) + ",\n  \"games\": {";
+	bool        first = true;
+	for (const auto& [key, rec]: db)
+	{
+		out += first ? "\n" : ",\n";
+		first = false;
+		out += "    " + JsonQuote(key) + ": {\"seconds\": " + std::to_string(rec.seconds) + ", \"last_played\": " +
+		       std::to_string(rec.last_played) + "}";
+	}
+	out += first ? "}\n}\n" : "\n  }\n}\n";
+	return out;
+}
+
+} // namespace
+
+PlayTimeDb load_play_times(const std::string& path)
+{
+	PlayTimeDb db;
+	ReadPlayTimeFile(path, db);
+	return db;
+}
+
+bool save_play_times(const std::string& path, const PlayTimeDb& db)
+{
+	const fs::path  file = utf8_path(path);
+	std::error_code ec;
+	fs::create_directories(file.parent_path(), ec);
+	fs::path tmp = file;
+	tmp += ".tmp";
+	{
+		std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+		if (!f || !(f << PlayTimesJson(db)))
+		{
+			return false;
+		}
+	}
+	fs::rename(tmp, file, ec);
+	if (ec)
+	{
+		fs::remove(tmp, ec);
+		return false;
+	}
+	return true;
+}
+
+PlayTimeDb record_play_session(const std::string& path, const std::string& key, uint64_t seconds, int64_t now)
+{
+	PlayTimeDb db;
+	if (key.empty() || !ReadPlayTimeFile(path, db))
+	{
+		return db;
+	}
+	// A hundred years of play time: far past any real total, and far from wrapping 64 bits.
+	constexpr uint64_t kMaxPlaySeconds = 100ull * 365ull * 24ull * 3600ull;
+	PlayRecord&        rec             = db[key];
+	rec.seconds                        = seconds > kMaxPlaySeconds - rec.seconds ? kMaxPlaySeconds : rec.seconds + seconds;
+	rec.last_played                    = now;
+	save_play_times(path, db);
+	return db;
+}
+
+void apply_play_times(std::vector<GameEntry>& games, const PlayTimeDb& db)
+{
+	for (auto& g: games)
+	{
+		auto it        = db.find(favourite_key(g));
+		g.play_seconds = it != db.end() ? it->second.seconds : 0;
+	}
+}
+
+std::string format_play_time(uint64_t seconds)
+{
+	if (seconds == 0)
+	{
+		return {};
+	}
+	if (seconds < 60)
+	{
+		return "<1m";
+	}
+	if (seconds < 3600)
+	{
+		return std::to_string(seconds / 60) + "m";
+	}
+	const uint64_t hours   = seconds / 3600;
+	const uint64_t minutes = (seconds % 3600) / 60;
+	if (hours >= 100 || minutes == 0)
+	{
+		return std::to_string(hours) + "h";
+	}
+	return std::to_string(hours) + "h " + std::to_string(minutes) + "m";
+}
+
+std::string play_time_key(const std::string& eboot)
+{
+	if (eboot.empty())
+	{
+		return {};
+	}
+	// Only a folder or an eboot.bin holds a param.json: a .zar archive is the game file itself, and the folder
+	// around it belongs to no game. favourite_key keys such a game by the file, so this has to do the same.
+	std::string     title_id;
+	const fs::path  path = utf8_path(eboot);
+	std::error_code ec;
+	if (fs::is_directory(path, ec) || LowerKey(path_utf8(path.filename())) == "eboot.bin")
+	{
+		title_id = read_title_id(eboot);
+	}
+	return path_key(title_id.empty() ? eboot : title_id);
 }
 
 std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)

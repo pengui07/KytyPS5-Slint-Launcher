@@ -15,6 +15,7 @@ namespace kyty_launcher {
 //
 //   <config_dir>\kyty.json              user config
 //   <config_dir>\games\<TITLEID>.json   per-game overrides
+//   <root>\playtime.json                per-game play time totals (see PlayTimeDb)
 //   <root>\versions\  <root>\cache\  <root>\logs\  <root>\run\
 // where config_dir is <root>\configs, except on Linux (non-portable) where it is $XDG_CONFIG_HOME/kyty itself.
 struct Paths
@@ -32,6 +33,8 @@ struct Paths
 	std::filesystem::path settings_file() const { return config_dir / "kyty.json"; }
 	std::filesystem::path game_config_file(const std::string& title_id) const { return games_config_dir / (title_id + ".json"); }
 	std::filesystem::path compat_cache_file() const { return cache_dir / "compat.json"; }
+	// Play time totals: user data (it can't be rebuilt), so it stays out of cache_dir and out of kyty.json.
+	std::filesystem::path play_time_file() const { return root / "playtime.json"; }
 	std::filesystem::path trophy_cache_dir(const std::string& title_id) const
 	{
 		return cache_dir / "trophies" / (title_id.empty() ? std::string("unknown") : title_id);
