@@ -1,11 +1,12 @@
 // First launch: where the launcher keeps its data, where the saves go, and whether to bring over the Qt launcher's
 // settings. Shown before the main window exists (see run_first_run_setup in main.cpp); nothing is written until
 // Continue, and closing the window keeps the choices it shows.
+// The path defaults below are only sample data for the live preview: C++ sets every property before showing it.
 
 import { Button, CheckBox } from "std-widgets.slint";
 import { Theme } from "common.slint";
 
-// One exclusive choice: a dot, a title and a detail line (the folder, or why the choice is off).
+// One exclusive choice: a radio dot, a title and the folder it means (or why the choice is off).
 component ChoiceRow inherits Rectangle {
     in property <string> title;
     in property <string> detail;
@@ -13,57 +14,50 @@ component ChoiceRow inherits Rectangle {
     in property <bool> enabled: true;
     callback picked();
 
-    height: 52px;
+    min-height: 44px;
     border-radius: 6px;
-    border-width: 1px;
-    border-color: root.selected ? Theme.accent : Theme.card-border;
-    background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : Theme.card;
-    opacity: root.enabled ? 1 : 0.55;
+    background: root.selected ? Theme.row-selected : touch.has-hover && root.enabled ? Theme.row-hover : transparent;
+    opacity: root.enabled ? 1 : 0.5;
 
     HorizontalLayout {
-        padding-left: 12px;
+        padding-left: 10px;
         padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
         spacing: 10px;
+
         VerticalLayout {
             alignment: center;
             Rectangle {
                 width: 16px;
                 height: 16px;
                 border-radius: 8px;
-                border-width: 1px;
+                // A thick accent ring reads as a filled radio dot without a second shape.
+                border-width: root.selected ? 5px : 1.5px;
                 border-color: root.selected ? Theme.accent : Theme.faint;
-                background: transparent;
-                Rectangle {
-                    x: 4px;
-                    y: 4px;
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 4px;
-                    background: Theme.accent;
-                    visible: root.selected;
-                }
             }
         }
         VerticalLayout {
             alignment: center;
-            spacing: 2px;
+            horizontal-stretch: 1;
+            spacing: 1px;
             Text {
                 text: root.title;
                 color: Theme.text;
                 font-size: 13px;
                 overflow: elide;
             }
-            Text {
+            // Only laid out when there is something to say: a hidden Text still takes its height.
+            if root.detail != "": Text {
                 text: root.detail;
                 color: Theme.muted;
                 font-size: 11px;
                 overflow: elide;
-                visible: root.detail != "";
             }
         }
     }
     touch := TouchArea {
-        mouse-cursor: pointer;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             if (root.enabled) {
                 root.picked();
@@ -72,26 +66,46 @@ component ChoiceRow inherits Rectangle {
     }
 }
 
+// A group heading: the name and, fainter, what lives there.
+component SectionLabel inherits HorizontalLayout {
+    in property <string> name;
+    in property <string> hint;
+    spacing: 8px;
+    padding-left: 10px;
+    padding-bottom: 2px;
+    Text {
+        text: root.name;
+        color: Theme.muted;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    Text {
+        text: root.hint;
+        color: Theme.faint;
+        font-size: 11px;
+        overflow: elide;
+        horizontal-stretch: 1;
+    }
+}
+
 export component FirstRunWindow inherits Window {
-    title: "KytyPS5 Launcher - first launch";
+    title: "KytyPS5 Launcher";
     icon: @image-url("icons/app-icon.png");
-    preferred-width: 700px;
-    preferred-height: 660px;
-    min-width: 620px;
-    min-height: 560px;
+    preferred-width: 620px;
+    min-width: 540px;
     background: Theme.bg;
     default-font-size: 13px;
 
     // The per-user root: configs, versions, cache and logs unless the portable one is chosen.
-    in property <string> app-data-root;
+    in property <string> app-data-root: "C:\\Users\\you\\AppData\\Local\\KytyPS5";
     // The launcher's own folder (the .app bundle's parent on macOS): the portable root, where portable.txt goes.
-    in property <string> portable-root;
+    in property <string> portable-root: "D:\\Games\\KytyPS5 Launcher";
     in property <bool> portable-enabled: true;
     in property <string> portable-disabled-reason; // a read-only folder, say: why the portable choice is off
     in-out property <bool> portable-selected: false;
     // <root>\run for each data root: the saves folder that goes with the choice above.
-    in property <string> app-data-run-dir;
-    in property <string> portable-run-dir;
+    in property <string> app-data-run-dir: "C:\\Users\\you\\AppData\\Local\\KytyPS5\\run";
+    in property <string> portable-run-dir: "D:\\Games\\KytyPS5 Launcher\\run";
     out property <string> default-run-dir: root.portable-selected ? root.portable-run-dir : root.app-data-run-dir;
     // The Qt launcher, when one of its settings files was found.
     in property <bool> qt-found: false;
@@ -111,33 +125,30 @@ export component FirstRunWindow inherits Window {
 
     VerticalLayout {
         padding: 24px;
-        spacing: 12px;
+        padding-bottom: 20px;
+        spacing: 2px;
 
         Text {
-            text: "Where should KytyPS5 keep its files?";
+            text: "Welcome to KytyPS5 Launcher";
             color: Theme.text;
-            font-size: 19px;
+            font-size: 18px;
             font-weight: 700;
         }
         Text {
-            text: "The launcher remembers this. Both folders can be changed later in Settings > Paths.";
+            text: "Choose where your files go. You can change both later in Settings > Paths.";
             color: Theme.muted;
             font-size: 12px;
             wrap: word-wrap;
         }
 
-        Text {
-            text: "Launcher data";
-            color: Theme.text;
-            font-weight: 600;
-        }
-        Text {
-            text: "Configs, downloaded versions, cache and logs.";
-            color: Theme.muted;
-            font-size: 11px;
+        Rectangle { height: 18px; }
+
+        SectionLabel {
+            name: "LAUNCHER DATA";
+            hint: "settings, downloaded versions, cache, logs";
         }
         ChoiceRow {
-            title: "This PC's app data";
+            title: "App data (recommended)";
             detail: root.app-data-root;
             selected: !root.portable-selected;
             picked => {
@@ -154,15 +165,19 @@ export component FirstRunWindow inherits Window {
             }
         }
 
-        Text {
-            text: "Saves";
-            color: Theme.text;
-            font-weight: 600;
+        Rectangle { height: 14px; }
+
+        SectionLabel {
+            name: "SAVES";
+            hint: "where games keep _SaveData and _Trophies";
         }
-        Text {
-            text: "_SaveData and _Trophies are kept in this folder (the emulator's working folder).";
-            color: Theme.muted;
-            font-size: 11px;
+        if root.qt-run-dir-available: ChoiceRow {
+            title: "Keep the Qt launcher's folder";
+            detail: root.qt-run-dir;
+            selected: root.run-choice == 1;
+            picked => {
+                root.run-choice = 1;
+            }
         }
         ChoiceRow {
             title: "With the launcher data";
@@ -172,62 +187,46 @@ export component FirstRunWindow inherits Window {
                 root.run-choice = 0;
             }
         }
-        if root.qt-run-dir-available: ChoiceRow {
-            title: "Keep using the Qt launcher's folder";
-            detail: root.qt-run-dir;
-            selected: root.run-choice == 1;
-            picked => {
-                root.run-choice = 1;
-            }
-        }
         ChoiceRow {
-            title: "Choose a folder...";
-            detail: root.run-choice == 2 && root.picked-run-dir != "" ? root.picked-run-dir : "Any folder on this PC.";
+            title: root.run-choice == 2 && root.picked-run-dir != "" ? "Another folder" : "Another folder...";
+            detail: root.run-choice == 2 ? root.picked-run-dir : "";
             selected: root.run-choice == 2;
             picked => {
                 root.pick-run-dir();
             }
         }
 
-        Rectangle {
-            height: 1px;
-            background: Theme.card-border;
-        }
-
-        if root.qt-found: VerticalLayout {
-            spacing: 2px;
-            CheckBox {
-                text: "Import the settings from the Qt launcher";
-                checked: root.import-qt;
-                toggled => {
-                    root.import-qt = self.checked;
+        if root.qt-found: HorizontalLayout {
+            padding-top: 14px;
+            padding-left: 8px;
+            VerticalLayout {
+                spacing: 1px;
+                CheckBox {
+                    text: "Import settings and games from the Qt launcher";
+                    checked: root.import-qt;
+                    toggled => {
+                        root.import-qt = self.checked;
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 28px;
+                    Text {
+                        text: root.qt-ini-path;
+                        color: Theme.faint;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
                 }
             }
-            Text {
-                text: root.qt-ini-path;
-                color: Theme.muted;
-                font-size: 11px;
-                overflow: elide;
-            }
         }
 
-        Rectangle {
-            vertical-stretch: 1;
-            background: transparent;
-        }
+        Rectangle { height: 20px; }
 
         HorizontalLayout {
             alignment: end;
-            spacing: 8px;
-            Text {
-                text: "Nothing is written until Continue.";
-                color: Theme.faint;
-                font-size: 11px;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
             Button {
                 text: "Continue";
+                primary: true;
                 clicked => {
                     root.continue-clicked();
                 }
