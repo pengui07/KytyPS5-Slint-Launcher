@@ -716,54 +716,158 @@ int main(int argc, char** argv)
 	};
 	sync_game_dirs();
 
-	// Trophies page: progress of every library game that has a trophy package.
-	auto trophy_rows = std::make_shared<std::vector<size_t>>(); // overview row -> library index
+	// STEP6:6b Trophies page: progress of every library game that has a trophy package. The overview is
+	// scanned off the UI thread (bg_threads joins the scans when the launcher exits) and cached by file stamp.
+	auto trophy_rows     = std::make_shared<std::vector<size_t>>(); // overview row -> library index
+	auto trophy_cache    = std::make_shared<TrophyCache>();
+	auto trophy_scan_gen = std::make_shared<std::atomic<uint64_t>>(0);
+	auto trophy_cancel   = std::make_shared<std::atomic<bool>>(false); // cancel token of the running scan
+	const slint::ComponentWeakHandle<AppWindow> trophy_weak(ui);
+
+	auto publish_trophy_scan = [games, trophy_rows, weak = trophy_weak](
+	                               const std::vector<TrophyScanEntry>&                  entries,
+	                               const std::shared_ptr<const std::vector<GameEntry>>& scanned, bool done)
+	{
+		auto h = weak.lock();
+		if (!h)
+		{
+			return;
+		}
+		const auto& t = (*h)->global<Trophies>();
+		// Discard a scan whose library no longer matches: the row indices would be wrong.
+		bool stale = games->size() != scanned->size();
+		for (size_t i = 0; !stale && i < scanned->size(); i++)
+		{
+			stale = path_key((*games)[i].eboot) != path_key((*scanned)[i].eboot);
+		}
+		if (stale)
+		{
+			t.set_loading(false);
+			return;
+		}
+		std::vector<TrophyGame> rows;
+		TrophyProgress          all;
+		trophy_rows->clear();
+		for (const auto& entry: entries)
+		{
+			if (entry.game_index >= games->size())
+			{
+				continue;
+			}
+			const auto& g = (*games)[entry.game_index];
+			const auto& p = entry.progress;
+			TrophyGame  r;
+			r.name     = slint::SharedString(g.name);
+			r.serial   = slint::SharedString(g.title_id);
+			r.percent  = p.Percent();
+			r.earned   = p.earned;
+			r.total    = p.total;
+			r.platinum = p.earned_grade[1];
+			r.gold     = p.earned_grade[2];
+			r.silver   = p.earned_grade[3];
+			r.bronze   = p.earned_grade[4];
+			if (!g.icon.empty())
+			{
+				r.icon = slint::Image::load_from_path(slint::SharedString(g.icon));
+			}
+			rows.push_back(r);
+			trophy_rows->push_back(entry.game_index);
+			all.earned += p.earned;
+			for (size_t k = 1; k < all.earned_grade.size(); k++)
+			{
+				all.earned_grade[k] += p.earned_grade[k];
+			}
+		}
+		t.set_games(std::make_shared<slint::VectorModel<TrophyGame>>(rows));
+		t.set_earned(all.earned);
+		t.set_platinum(all.earned_grade[1]);
+		t.set_gold(all.earned_grade[2]);
+		t.set_silver(all.earned_grade[3]);
+		t.set_bronze(all.earned_grade[4]);
+		if (done)
+		{
+			t.set_loading(false);
+		}
+	};
 	auto open_trophy_overview = [&, trophy_rows]
 	{
-		    const std::string run_dir = ToStd(ui->get_run_dir());
-		    const int         user_id = std::atoi(ToStd(ui->get_user_id_text()).c_str());
-		    std::vector<TrophyGame> rows;
-		    TrophyProgress          all;
-		    trophy_rows->clear();
-		    for (size_t gi = 0; gi < games->size(); gi++)
+		const std::string run_dir = ToStd(ui->get_run_dir());
+		const int         user_id = std::atoi(ToStd(ui->get_user_id_text()).c_str());
+
+		// One scan per open; the previous one (if still running) stops at its next check.
+		trophy_cancel->store(true);
+		auto           cancel = std::make_shared<std::atomic<bool>>(false);
+		trophy_cancel         = cancel;
+		const uint64_t gen    = trophy_scan_gen->fetch_add(1) + 1;
+
+		auto scanned = std::shared_ptr<const std::vector<GameEntry>>(std::make_shared<std::vector<GameEntry>>(*games));
+		{
+			const auto& t = ui->global<Trophies>();
+			t.set_loading(true);
+			t.set_run_dir(slint::SharedString(run_dir));
+			// Cached rows paint at once; the fresh scan replaces them when it finishes.
+			publish_trophy_scan(cached_trophy_progress(*scanned, run_dir, user_id, *trophy_cache), scanned, false);
+		}
+
+		bg_threads->emplace_back(
+		    [scanned, trophy_cache, publish_trophy_scan, run_dir, user_id, cancel, gen, trophy_scan_gen, trophy_weak]
 		    {
-			    const auto&    g = (*games)[gi];
-			    TrophyProgress p;
-			    if (!load_trophy_progress(g.dir, g.title_id, run_dir, user_id, p))
+			    std::vector<TrophyScanEntry> entries;
+			    try
 			    {
-				    continue;
+				    entries = scan_trophy_progress(*scanned, run_dir, user_id, *trophy_cache, *cancel);
 			    }
-			    TrophyGame r;
-			    r.name     = slint::SharedString(g.name);
-			    r.serial   = slint::SharedString(g.title_id);
-			    r.percent  = p.Percent();
-			    r.earned   = p.earned;
-			    r.total    = p.total;
-			    r.platinum = p.earned_grade[1];
-			    r.gold     = p.earned_grade[2];
-			    r.silver   = p.earned_grade[3];
-			    r.bronze   = p.earned_grade[4];
-			    if (!g.icon.empty())
+			    catch (...)
 			    {
-				    r.icon = slint::Image::load_from_path(slint::SharedString(g.icon));
+				    entries.clear(); // an unreadable game must still clear "Reading trophies…"
 			    }
-			    rows.push_back(r);
-			    trophy_rows->push_back(gi);
-			    all.earned += p.earned;
-			    for (size_t k = 1; k < all.earned_grade.size(); k++)
+			    if (cancel->load() || trophy_scan_gen->load() != gen)
 			    {
-				    all.earned_grade[k] += p.earned_grade[k];
+				    return;
 			    }
-		    }
-		    const auto& t = ui->global<Trophies>();
-		    t.set_games(std::make_shared<slint::VectorModel<TrophyGame>>(rows));
-		    t.set_earned(all.earned);
-		    t.set_platinum(all.earned_grade[1]);
-		    t.set_gold(all.earned_grade[2]);
-		    t.set_silver(all.earned_grade[3]);
-		    t.set_bronze(all.earned_grade[4]);
+			    slint::invoke_from_event_loop(
+			        [publish_trophy_scan, entries = std::move(entries), scanned, cancel, gen, trophy_scan_gen, trophy_weak]
+			        {
+				        if (cancel->load() || trophy_scan_gen->load() != gen)
+				        {
+					        return; // the page was reopened (or the scan was replaced)
+				        }
+				        auto h = trophy_weak.lock();
+				        if (!h)
+				        {
+					        return;
+				        }
+				        if (!(*h)->get_show_trophies())
+				        {
+					        // Closed while scanning: drop the result; the next open scans again.
+					        (*h)->global<Trophies>().set_loading(false);
+					        return;
+				        }
+				        publish_trophy_scan(entries, scanned, true);
+			        });
+		    });
 	};
 	ui->global<Trophies>().on_opened(open_trophy_overview);
+	// STEP6:6b: the emulator may have written unlocks: drop the running game's cache and refresh an open page.
+	auto trophy_after_exit = std::make_shared<std::function<void()>>();
+	*trophy_after_exit    = [&, games, trophy_cache]
+	{
+		const std::string eboot   = path_key(ToStd(ui->get_game()));
+		const std::string run_dir = ToStd(ui->get_run_dir());
+		const int         user_id = std::atoi(ToStd(ui->get_user_id_text()).c_str());
+		for (const auto& g: *games)
+		{
+			if (path_key(g.eboot) == eboot)
+			{
+				invalidate_trophy_cache(*trophy_cache, g.dir, g.title_id, run_dir, user_id);
+				break;
+			}
+		}
+		if (ui->get_show_trophies())
+		{
+			open_trophy_overview();
+		}
+	};
 	// One game's trophies, by library index.
 	auto open_game_trophies = [&](size_t gi)
 	{
@@ -775,10 +879,12 @@ int main(int argc, char** argv)
 		std::vector<TrophyInfo> list;
 		const std::string       cache = path_utf8(paths.trophy_cache_dir(g.title_id));
 		const auto&             t     = ui->global<Trophies>();
+		t.set_loading(true);
 		if (!load_trophy_list(g.dir, g.title_id, ToStd(ui->get_run_dir()), std::atoi(ToStd(ui->get_user_id_text()).c_str()),
 		                      ui->get_console_language(), cache, list))
 		{
 			t.set_detail_open(false);
+			t.set_loading(false);
 			ui->set_status(slint::SharedString(g.name + " has no trophies"));
 			return;
 		}
@@ -789,6 +895,7 @@ int main(int argc, char** argv)
 			TrophyItem item;
 			item.name      = slint::SharedString(info.name);
 			item.detail    = slint::SharedString(info.detail);
+			item.reward    = slint::SharedString(info.reward);
 			item.grade     = info.grade;
 			item.earned    = info.earned;
 			item.earned_at = slint::SharedString(info.earned_at);
@@ -819,6 +926,7 @@ int main(int argc, char** argv)
 		t.set_detail_game(header);
 		t.set_items(std::make_shared<slint::VectorModel<TrophyItem>>(items));
 		t.set_detail_open(true);
+		t.set_loading(false);
 	};
 	ui->global<Trophies>().on_open_game(
 	    [trophy_rows, open_game_trophies](int row)
@@ -1236,11 +1344,11 @@ int main(int argc, char** argv)
 			    }
 			    slint::invoke_from_event_loop([append_text, clean] { append_text(clean); });
 		    };
-		    auto on_exit = [partial, append_text, weak](int code)
+		    auto on_exit = [partial, append_text, weak, trophy_after_exit](int code)
 		    {
 			    std::string rest = *partial;
 			    slint::invoke_from_event_loop(
-			        [append_text, weak, rest, code]
+			        [append_text, weak, rest, code, trophy_after_exit]
 			        {
 				        if (!rest.empty())
 				        {
@@ -1250,6 +1358,11 @@ int main(int argc, char** argv)
 				        if (auto h = weak.lock())
 				        {
 					        (*h)->set_running(false);
+					        // STEP6:6b: the game may have written unlock files; refresh the trophy page if it is open.
+					        if (*trophy_after_exit)
+					        {
+						        (*trophy_after_exit)();
+					        }
 					        (*h)->set_status(slint::SharedString("Exited with code " + std::to_string(code)));
 					        // The game may have left the window half-painted, so repaint everything once it has exited.
 					        (*h)->window().request_redraw();

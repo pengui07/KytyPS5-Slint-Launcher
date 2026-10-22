@@ -1,6 +1,6 @@
 // Trophies page: progress of every game that has trophies.
 
-import { Button, ScrollView } from "std-widgets.slint";
+import { Button, CheckBox, ScrollView } from "std-widgets.slint";
 import { Theme } from "common.slint";
 
 export struct TrophyGame {
@@ -19,6 +19,7 @@ export struct TrophyGame {
 export struct TrophyItem {
     name: string,
     detail: string,
+    reward: string,  // package reward text, empty when it has none
     icon: image,
     grade: int,      // 1 platinum .. 4 bronze
     earned: bool,
@@ -40,6 +41,8 @@ export global Trophies {
     in property <int> silver;
     in property <int> bronze;
     in property <bool> loading;
+    // Where unlocks are read from, shown in the empty state (set when the page opens).
+    in property <string> run-dir;
     callback opened();
 }
 
@@ -79,6 +82,7 @@ global Cups {
 
 component TrophyItemRow inherits Rectangle {
     in property <TrophyItem> item;
+    in property <bool> reveal: false; // "Reveal hidden trophies": show hidden, unearned names/details
     height: 76px;
     HorizontalLayout {
         padding: 8px;
@@ -102,13 +106,13 @@ component TrophyItemRow inherits Rectangle {
             alignment: center;
             spacing: 2px;
             Text {
-                text: root.item.hidden && !root.item.earned ? "Hidden trophy" : root.item.name;
+                text: root.item.hidden && !root.item.earned && !root.reveal ? "Hidden trophy" : root.item.name;
                 color: root.item.earned ? Theme.text : Theme.muted;
                 font-size: 15px;
                 overflow: elide;
             }
             Text {
-                text: root.item.hidden && !root.item.earned ? "" : root.item.detail;
+                text: root.item.hidden && !root.item.earned && !root.reveal ? "" : root.item.detail;
                 color: Theme.muted;
                 font-size: 12px;
                 overflow: elide;
@@ -123,13 +127,25 @@ component TrophyItemRow inherits Rectangle {
                 horizontal-alignment: right;
             }
         }
-        VerticalLayout {
-            alignment: center;
-            Image {
-                source: @image-url("icons/cup.svg");
-                colorize: root.item.earned ? Cups.of(root.item.grade) : Cups.of(root.item.grade).with-alpha(0.35);
-                width: 26px;
-                height: 26px;
+        HorizontalLayout {
+            spacing: 4px;
+            VerticalLayout {
+                alignment: center;
+                Image {
+                    source: @image-url("icons/cup.svg");
+                    colorize: root.item.earned ? Cups.of(root.item.grade) : Cups.of(root.item.grade).with-alpha(0.35);
+                    width: 26px;
+                    height: 26px;
+                }
+            }
+            // Compact reward text of the package (the format has no points value).
+            if root.item.reward != "" && !(root.item.hidden && !root.item.earned && !root.reveal): Text {
+                text: root.item.reward;
+                color: Theme.faint;
+                font-size: 10px;
+                vertical-alignment: center;
+                overflow: elide;
+                max-width: 120px;
             }
         }
     }
@@ -222,6 +238,8 @@ export component TrophiesPage inherits Rectangle {
     callback back();
     background: Theme.bg;
     property <int> selected: -1;
+    // Page-local view state: hidden trophies stay hidden until revealed.
+    property <bool> reveal-hidden: false;
 
     VerticalLayout {
         padding: 18px;
@@ -257,9 +275,19 @@ export component TrophiesPage inherits Rectangle {
             GradeCount { cup: Cups.bronze; count: Trophies.detail-open ? Trophies.detail-game.bronze : Trophies.bronze; size: 24px; }
             if Trophies.detail-open: VerticalLayout {
                 alignment: center;
+                CheckBox {
+                    text: "Reveal hidden trophies";
+                    checked <=> root.reveal-hidden;
+                }
+            }
+            if Trophies.detail-open: VerticalLayout {
+                alignment: center;
                 Button {
                     text: "← All games";
-                    clicked => { Trophies.detail-open = false; }
+                    clicked => {
+                        root.reveal-hidden = false;
+                        Trophies.detail-open = false;
+                    }
                 }
             }
             VerticalLayout {
@@ -304,7 +332,7 @@ export component TrophiesPage inherits Rectangle {
                 VerticalLayout {
                     alignment: start;
                     for item in Trophies.items: VerticalLayout {
-                        TrophyItemRow { item: item; }
+                        TrophyItemRow { item: item; reveal: root.reveal-hidden; }
                         Rectangle {
                             height: 1px;
                             background: Theme.card-border;
@@ -321,6 +349,7 @@ export component TrophiesPage inherits Rectangle {
                             selected: i == root.selected;
                             clicked => {
                                 root.selected = i;
+                                root.reveal-hidden = false;
                                 Trophies.open-game(i);
                             }
                         }
@@ -331,12 +360,22 @@ export component TrophiesPage inherits Rectangle {
                     }
                 }
             }
-            if !Trophies.detail-open && Trophies.games.length == 0: Text {
-                text: Trophies.loading ? "Reading trophies…" : "No games with trophies.";
-                color: Theme.muted;
-                font-size: 13px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            if !Trophies.detail-open && Trophies.games.length == 0: VerticalLayout {
+                alignment: center;
+                spacing: 6px;
+                Text {
+                    text: Trophies.loading ? "Reading trophies…" : "No games with trophies.";
+                    color: Theme.muted;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+                if !Trophies.loading && Trophies.run-dir != "": Text {
+                    text: "Trophies appear here after you play. Unlocks are read from " + Trophies.run-dir + ".";
+                    color: Theme.faint;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
             }
         }
     }

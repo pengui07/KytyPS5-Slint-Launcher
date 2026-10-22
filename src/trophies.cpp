@@ -109,16 +109,16 @@ std::string ReadBinary(const fs::path& path)
 	return data;
 }
 
-// Calls fn(label, package files) for each sce_sys/trophy2/trophyNN.ucp of the game, by label.
-bool ForEachPackage(const std::string& game_dir, const std::function<void(int, const std::map<std::string, std::string>&)>& fn)
+// The sce_sys/trophy2/trophyNN.ucp packages of the game, by package label.
+std::map<int, fs::path> PackagePaths(const std::string& game_dir)
 {
 	std::error_code ec;
 	const fs::path  dir = utf8_path(game_dir) / "sce_sys" / "trophy2";
+	std::map<int, fs::path> packages;
 	if (game_dir.empty() || !fs::is_directory(dir, ec))
 	{
-		return false;
+		return packages;
 	}
-	std::map<int, fs::path> packages;
 	for (const auto& entry: fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec))
 	{
 		const std::string file = path_utf8(entry.path().filename());
@@ -132,8 +132,14 @@ bool ForEachPackage(const std::string& game_dir, const std::function<void(int, c
 			packages.emplace(std::stoi(digits), entry.path());
 		}
 	}
+	return packages;
+}
+
+// Calls fn(label, package files) for each sce_sys/trophy2/trophyNN.ucp of the game, by label.
+bool ForEachPackage(const std::string& game_dir, const std::function<void(int, const std::map<std::string, std::string>&)>& fn)
+{
 	bool found = false;
-	for (const auto& [label, path]: packages)
+	for (const auto& [label, path]: PackagePaths(game_dir))
 	{
 		auto files = ReadPackage(ReadBinary(path));
 		if (files.count("tropconf.json") != 0)
@@ -197,13 +203,60 @@ std::string FormatTick(uint64_t tick)
 	const auto seconds = static_cast<std::time_t>((tick - kUnixEpochTick) / 1000000);
 	std::tm    tm {};
 #ifdef _WIN32
-	gmtime_s(&tm, &seconds);
+	localtime_s(&tm, &seconds);
 #else
-	gmtime_r(&seconds, &tm);
+	localtime_r(&seconds, &tm);
 #endif
 	char buf[32];
 	std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min);
 	return buf;
+}
+
+// Cache identity: a game directory can be reached through different spellings.
+std::string TrophyKey(const std::string& game_dir, const std::string& title_id, const std::string& run_dir, int user_id)
+{
+	return path_key(game_dir) + "|" + title_id + "|" + path_key(run_dir) + "|" + std::to_string(user_id);
+}
+
+// Latest write time and total size (plus a count) of the game's trophy packages and of its unlock files.
+// Empty when the game has no trophy package; any change makes the stamp differ.
+std::string TrophyStamp(const std::string& game_dir, const std::string& title_id, const std::string& run_dir, int user_id)
+{
+	const std::map<int, fs::path> packages = PackagePaths(game_dir);
+	if (packages.empty())
+	{
+		return {};
+	}
+	uint64_t        latest = 0;
+	uint64_t        total  = 0;
+	int             count  = 0;
+	const auto      add    = [&](const fs::path& file)
+	{
+		std::error_code size_ec;
+		const auto      size = fs::file_size(file, size_ec);
+		if (size_ec)
+		{
+			return;
+		}
+		std::error_code time_ec;
+		const auto      time = fs::last_write_time(file, time_ec);
+		if (!time_ec)
+		{
+			latest = std::max(latest, static_cast<uint64_t>(time.time_since_epoch().count()));
+		}
+		total += static_cast<uint64_t>(size);
+		count++;
+	};
+	for (const auto& [label, path]: packages)
+	{
+		add(path);
+		if (!title_id.empty())
+		{
+			add(utf8_path(run_dir) / "_Trophies" / utf8_path(title_id) /
+			    ("trophies_" + std::to_string(user_id) + "_" + std::to_string(label) + ".json"));
+		}
+	}
+	return std::to_string(latest) + ":" + std::to_string(total) + ":" + std::to_string(count);
 }
 
 // "P", "G", "S", "B" -> 1..4; 0 otherwise.
@@ -288,7 +341,13 @@ bool load_trophy_list(const std::string& game_dir, const std::string& title_id, 
 		    }
 
 		    // Texts: the console language, else the package's default language.
-		    std::map<int, std::pair<std::string, std::string>> texts;
+		    struct Text
+		    {
+			    std::string name;
+			    std::string detail;
+			    std::string reward;
+		    };
+		    std::map<int, Text> texts;
 		    {
 			    const char* locale = kLocales[console_language >= 0 && console_language < 30 ? console_language : 1];
 			    auto        meta   = files.find(std::string("tropmeta_") + locale + ".json");
@@ -313,7 +372,9 @@ bool load_trophy_list(const std::string& game_dir, const std::string& title_id, 
 					    }
 					    const auto* name   = Field(t, "name", JsonValue::Type::String);
 					    const auto* detail = Field(t, "detail", JsonValue::Type::String);
-					    texts[ReadId(*id)] = {name != nullptr ? name->s : "", detail != nullptr ? detail->s : ""};
+					    const auto* reward = Field(t, "reward", JsonValue::Type::String);
+					    texts[ReadId(*id)] = {name != nullptr ? name->s : "", detail != nullptr ? detail->s : "",
+					                          reward != nullptr ? reward->s : ""};
 				    }
 			    }
 		    }
@@ -337,11 +398,24 @@ bool load_trophy_list(const std::string& game_dir, const std::string& title_id, 
 			    info.grade = grade;
 			    if (auto text = texts.find(id); text != texts.end())
 			    {
-				    info.name   = text->second.first;
-				    info.detail = text->second.second;
+				    info.name   = text->second.name;
+				    info.detail = text->second.detail;
+				    info.reward = text->second.reward;
+			    }
+			    // Stable fallback: the package trophy id, never the row index (the list may be reordered).
+			    if (info.name.empty())
+			    {
+				    info.name = "Trophy " + std::to_string(id);
 			    }
 			    const auto* hidden = Field(t, "hidden", JsonValue::Type::Bool);
 			    info.hidden        = hidden != nullptr && hidden->b;
+			    // The .ucp trophy record has a hasReward flag and a free-text reward in the metadata (there is no
+			    // points value); show the text only when the flag is set, like the emulator's trophy viewer.
+			    const auto* has_reward = Field(t, "hasReward", JsonValue::Type::Bool);
+			    if (has_reward == nullptr || !has_reward->b)
+			    {
+				    info.reward.clear();
+			    }
 			    info.earned        = unlocks.ids.count(id) != 0;
 			    if (auto tick = unlocks.ticks.find(id); info.earned && tick != unlocks.ticks.end())
 			    {
@@ -368,6 +442,78 @@ bool load_trophy_list(const std::string& game_dir, const std::string& title_id, 
 			    out.push_back(std::move(info));
 		    }
 	    });
+}
+
+std::vector<TrophyScanEntry> scan_trophy_progress(const std::vector<GameEntry>& games, const std::string& run_dir, int user_id,
+                                                  TrophyCache& cache, const std::atomic<bool>& cancel)
+{
+	std::vector<TrophyScanEntry> out;
+	for (std::size_t i = 0; i < games.size(); i++)
+	{
+		if (cancel.load())
+		{
+			return {};
+		}
+		const GameEntry&  game  = games[i];
+		const std::string stamp = TrophyStamp(game.dir, game.title_id, run_dir, user_id);
+		if (stamp.empty())
+		{
+			continue;
+		}
+		const std::string  key = TrophyKey(game.dir, game.title_id, run_dir, user_id);
+		TrophyCache::Entry entry;
+		bool               hit = false;
+		{
+			std::lock_guard<std::mutex> lock(cache.mutex);
+			if (const auto it = cache.entries.find(key); it != cache.entries.end() && it->second.stamp == stamp)
+			{
+				entry = it->second;
+				hit   = true;
+			}
+		}
+		if (!hit)
+		{
+			TrophyProgress progress;
+			const bool     has_trophies = load_trophy_progress(game.dir, game.title_id, run_dir, user_id, progress);
+			if (cancel.load())
+			{
+				return {};
+			}
+			entry.stamp        = stamp;
+			entry.progress     = progress;
+			entry.has_trophies = has_trophies;
+			std::lock_guard<std::mutex> lock(cache.mutex);
+			cache.entries[key] = entry;
+		}
+		if (entry.has_trophies)
+		{
+			out.push_back(TrophyScanEntry {i, entry.progress});
+		}
+	}
+	return out;
+}
+
+std::vector<TrophyScanEntry> cached_trophy_progress(const std::vector<GameEntry>& games, const std::string& run_dir, int user_id,
+                                                    TrophyCache& cache)
+{
+	std::vector<TrophyScanEntry> out;
+	std::lock_guard<std::mutex>  lock(cache.mutex);
+	for (std::size_t i = 0; i < games.size(); i++)
+	{
+		const auto it = cache.entries.find(TrophyKey(games[i].dir, games[i].title_id, run_dir, user_id));
+		if (it != cache.entries.end() && it->second.has_trophies)
+		{
+			out.push_back(TrophyScanEntry {i, it->second.progress});
+		}
+	}
+	return out;
+}
+
+void invalidate_trophy_cache(TrophyCache& cache, const std::string& game_dir, const std::string& title_id, const std::string& run_dir,
+                             int user_id)
+{
+	std::lock_guard<std::mutex> lock(cache.mutex);
+	cache.entries.erase(TrophyKey(game_dir, title_id, run_dir, user_id));
 }
 
 } // namespace kyty_launcher
