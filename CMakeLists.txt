@@ -59,6 +59,9 @@ FetchContent_Declare(
 	GIT_REPOSITORY https://github.com/slint-ui/slint.git
 	GIT_TAG v1.18.1
 	GIT_SHALLOW TRUE
+	# Slint has no submodules; an explicit empty list skips the submodule
+	# update step entirely (CMP0097 NEW in the FetchContent subbuild).
+	GIT_SUBMODULES ""
 	SOURCE_SUBDIR api/cpp
 )
 FetchContent_MakeAvailable(Slint)

@@ -270,8 +270,9 @@ private:
 	std::map<std::string, std::pair<slint::Image, std::list<std::string>::iterator>> slots_;
 };
 
-// Icons are decoded at this edge: sharp in the 46 px list row and in the grid card, never full size.
-constexpr int kIconPixels = 128;
+// Icons are decoded at this edge: sharp in the 46 px list row and in the 192 px
+// grid card, never full size.
+constexpr int kIconPixels = 256;
 // Play time only counts a session at least this long: a game that crashes while booting is not play time.
 constexpr std::chrono::seconds kMinPlaySession{10};
 

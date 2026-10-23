@@ -548,8 +548,8 @@ export component VersionManagerPage inherits Rectangle {
         root.mq-on = true;
         root.mq-x0 = cx;
         root.mq-y0 = cy;
-        root.mq-vx = cx + build-list.viewport-x;
-        root.mq-vy = cy + build-list.viewport-y;
+        root.mq-vx = cx + build-list.content-x;
+        root.mq-vy = cy + build-list.content-y;
         VM.marquee-begin(additive);
     }
     function mq-move(vx: length, vy: length) {
@@ -559,16 +559,16 @@ export component VersionManagerPage inherits Rectangle {
     }
     function mq-apply() {
         VM.marquee(
-            floor(min(root.mq-y0, root.mq-vy - build-list.viewport-y) / root.row-h),
-            floor(max(root.mq-y0, root.mq-vy - build-list.viewport-y) / root.row-h));
+            floor(min(root.mq-y0, root.mq-vy - build-list.content-y) / root.row-h),
+            floor(max(root.mq-y0, root.mq-vy - build-list.content-y) / root.row-h));
     }
     // Dragging above or below the list scrolls it.
     Timer {
         interval: 30ms;
         running: root.mq-on && (root.mq-vy < 0px || root.mq-vy > build-list.visible-height);
         triggered => {
-            build-list.viewport-y = max(min(0px, build-list.visible-height - build-list.viewport-height),
-                min(0px, build-list.viewport-y + (root.mq-vy < 0px ? 1 : -1) * root.row-h / 2));
+            build-list.content-y = max(min(0px, build-list.visible-height - build-list.content-height),
+                min(0px, build-list.content-y + (root.mq-vy < 0px ? 1 : -1) * root.row-h / 2));
             root.mq-apply();
         }
     }
@@ -764,7 +764,7 @@ export component VersionManagerPage inherits Rectangle {
                             if (self.pressed) {
                                 if (!self.dragging && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px)) {
                                     self.dragging = true;
-                                    root.mq-start(self.pressed-x - build-list.viewport-x, self.pressed-y - build-list.viewport-y, self.press-ctrl);
+                                    root.mq-start(self.pressed-x - build-list.content-x, self.pressed-y - build-list.content-y, self.press-ctrl);
                                 }
                                 if (self.dragging) {
                                     root.mq-move(self.mouse-x, self.mouse-y);
@@ -854,7 +854,7 @@ export component VersionManagerPage inherits Rectangle {
                                     list-keys.focus();
                                 }
                                 drag-start(x, y, ctrl) => { root.mq-start(x, i * root.row-h + y, ctrl); }
-                                drag-to(x, y) => { root.mq-move(x + build-list.viewport-x, i * root.row-h + y + build-list.viewport-y); }
+                                drag-to(x, y) => { root.mq-move(x + build-list.content-x, i * root.row-h + y + build-list.content-y); }
                                 drag-end => { root.mq-on = false; }
                                 toggled(on) => { VM.select-version(i, on); }
                                 activated => { VM.activate-version(i); }
@@ -876,10 +876,10 @@ export component VersionManagerPage inherits Rectangle {
                         height: parent.height - 24px;
                         clip: true;
                         Rectangle {
-                            x: min(root.mq-x0 + build-list.viewport-x, root.mq-vx);
-                            y: min(root.mq-y0 + build-list.viewport-y, root.mq-vy);
-                            width: abs(root.mq-vx - root.mq-x0 - build-list.viewport-x);
-                            height: abs(root.mq-vy - root.mq-y0 - build-list.viewport-y);
+                            x: min(root.mq-x0 + build-list.content-x, root.mq-vx);
+                            y: min(root.mq-y0 + build-list.content-y, root.mq-vy);
+                            width: abs(root.mq-vx - root.mq-x0 - build-list.content-x);
+                            height: abs(root.mq-vy - root.mq-y0 - build-list.content-y);
                             background: Theme.accent.with-alpha(0.18);
                             border-width: 1px;
                             border-color: Theme.accent;
@@ -964,8 +964,8 @@ export component VersionManagerPage inherits Rectangle {
                         horizontal-stretch: 0;
                         preferred-width: tabs-row.preferred-width;
                         min-width: 0px;
-                        viewport-width: tabs-row.preferred-width;
-                        viewport-height: self.height;
+                        content-width: tabs-row.preferred-width;
+                        content-height: self.height;
                         tabs-row := HorizontalLayout {
                             x: 0px;
                             spacing: 2px;
@@ -992,7 +992,7 @@ export component VersionManagerPage inherits Rectangle {
                                 }
                                 rename-cancel => { VM.renaming-source = -1; }
                                 scrolled(d) => {
-                                    tabs-flick.viewport-x = min(0px, max(tabs-flick.width - tabs-flick.viewport-width, tabs-flick.viewport-x + d));
+                                    tabs-flick.content-x = min(0px, max(tabs-flick.width - tabs-flick.content-width, tabs-flick.content-x + d));
                                 }
                             }
                         }
