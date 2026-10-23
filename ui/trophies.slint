@@ -92,7 +92,7 @@ component TrophyItemRow inherits Rectangle {
         Rectangle {
             width: 60px;
             height: 60px;
-            background: #0b0e14;
+            background: #07090c;
             Image {
                 width: parent.width;
                 height: parent.height;
@@ -170,7 +170,7 @@ component TrophyGameRow inherits Rectangle {
         Rectangle {
             width: 88px;
             height: 88px;
-            background: #0b0e14;
+            background: #07090c;
             Image {
                 width: parent.width;
                 height: parent.height;
@@ -214,12 +214,12 @@ component TrophyGameRow inherits Rectangle {
             Rectangle {
                 height: 8px;
                 background: #ffffff14;
-                border-radius: 2px;
+                border-radius: 0px;
                 Rectangle {
                     x: 0px;
                     width: parent.width * root.game.percent / 100;
                     background: Theme.accent;
-                    border-radius: 2px;
+                    border-radius: 0px;
                 }
             }
         }
@@ -295,8 +295,8 @@ export component TrophiesPage inherits Rectangle {
                 Rectangle {
                     width: 58px;
                     height: 40px;
-                    border-radius: 8px;
-                    background: back-touch.pressed ? #2c3648 : back-touch.has-hover ? #252d3c : #1a202b;
+                    border-radius: 0px;
+                    background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
                     animate background { duration: 100ms; }
                     Image {
                         x: 9px;

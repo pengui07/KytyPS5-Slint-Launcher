@@ -1,5 +1,5 @@
 import { Button, CheckBox, ComboBox, ListView, ScrollView, Slider, SpinBox } from "std-widgets.slint";
-import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell } from "common.slint";
+import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, HoverHint } from "common.slint";
 import { VM, TabButton } from "version_manager.slint";
 
 export struct ToggleItem {
@@ -72,14 +72,16 @@ global Form {
     out property <length> gap: 10px;      // between groups, and between the two columns
 }
 
-// A titled group: a thin frame with its title sitting on the top edge.
+// A titled group: a thin frame with its title sitting on the top edge. `hint` is what the title explains in the
+// description panel when the pointer is over it.
 export component Card inherits VerticalLayout {
     in property <string> title;
+    in property <string> hint;
     padding-top: 8px; // room for the title, which rises above the frame
     Rectangle {
         border-width: 1px;
-        border-color: #343b48;
-        border-radius: 4px;
+        border-color: #2b3345;
+        border-radius: 0px;
         VerticalLayout {
             padding: 12px;
             padding-top: 16px;
@@ -103,6 +105,15 @@ export component Card inherits VerticalLayout {
                 font-size: 13px;
                 vertical-alignment: center;
             }
+            if root.hint != "": TouchArea {
+                changed has-hover => {
+                    if (self.has-hover) {
+                        HoverHint.text = root.hint;
+                    } else if (HoverHint.text == root.hint) {
+                        HoverHint.text = "";
+                    }
+                }
+            }
         }
     }
 }
@@ -116,17 +127,40 @@ component Column inherits VerticalLayout {
 }
 
 // "Label:" and its control(s), which fill the rest of the row.
-component FormRow inherits HorizontalLayout {
-    in property <string> label;
-    spacing: 8px;
-    min-height: Form.row-h;
+// A label column entry. Hovering it explains the row in the description panel (`hint`, when it has one).
+component RowLabel inherits Rectangle {
+    in property <string> text;
+    in property <string> hint;
+    width: Form.label-w;
+    height: 100%;
     Text {
-        width: Form.label-w;
-        text: root.label + ":";
+        width: 100%;
+        height: 100%;
+        text: root.text;
         color: Theme.text;
         font-size: 13px;
         vertical-alignment: center;
         overflow: elide;
+    }
+    if root.hint != "": TouchArea {
+        changed has-hover => {
+            if (self.has-hover) {
+                HoverHint.text = root.hint;
+            } else if (HoverHint.text == root.hint) {
+                HoverHint.text = "";
+            }
+        }
+    }
+}
+
+component FormRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> hint;
+    spacing: 8px;
+    min-height: Form.row-h;
+    RowLabel {
+        text: root.label + ":";
+        hint: root.hint;
     }
     @children
 }
@@ -162,7 +196,7 @@ component FolderRow inherits Rectangle {
     in property <bool> selected: false;
     callback clicked();
     height: 26px;
-    border-radius: 3px;
+    border-radius: 0px;
     background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
     touch := TouchArea {
         clicked => { root.clicked(); }
@@ -176,7 +210,7 @@ component FolderRow inherits Rectangle {
             Rectangle {
                 width: 52px;
                 height: 18px;
-                border-radius: 3px;
+                border-radius: 0px;
                 background: #1f3550;
                 Text {
                     text: "Game";
@@ -293,13 +327,18 @@ component ToggleRow inherits Rectangle {
             checked: root.item.on;
             toggled => { root.toggled(self.checked); }
         }
-        Text {
+        // The trailing space explains the option in the description panel; nothing is written after the label.
+        Rectangle {
             horizontal-stretch: 1;
-            text: root.item.hint;
-            color: Theme.faint;
-            font-size: 11px;
-            vertical-alignment: center;
-            overflow: elide;
+            if root.item.hint != "": TouchArea {
+                changed has-hover => {
+                    if (self.has-hover) {
+                        HoverHint.text = root.item.hint;
+                    } else if (HoverHint.text == root.item.hint) {
+                        HoverHint.text = "";
+                    }
+                }
+            }
         }
     }
     if root.item.env != "": Tooltip {
@@ -314,8 +353,8 @@ component ActionButton inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked();
     height: 32px;
-    border-radius: 4px;
-    background: !root.enabled ? #2a303b : touch.has-hover ? root.hover : root.base;
+    border-radius: 0px;
+    background: !root.enabled ? #2b3345 : touch.has-hover ? root.hover : root.base;
     animate background { duration: 120ms; }
     Text {
         overflow: elide;
@@ -433,7 +472,12 @@ export component SettingsPage inherits VerticalLayout {
     changed settings-tab => {
         if (self.settings-tab == 4) {
             root.games-opened();
+            // The panel's resting text explains the Games tab's emulator pins.
+            HoverHint.idle = "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
+        } else {
+            HoverHint.idle = "Point your mouse at an option to display its description.";
         }
+        HoverHint.text = "";
     }
 
     // STEP6:6e: fill the microphone and GPU pickers when the page opens (their Refresh buttons redo it).
@@ -466,7 +510,7 @@ export component SettingsPage inherits VerticalLayout {
     if root.game-mode: Rectangle {
         height: 30px;
         background: #1f3550;
-        border-radius: 4px;
+        border-radius: 0px;
         Text {
             x: 12px;
             width: parent.width - 24px;
@@ -515,6 +559,7 @@ export component SettingsPage inherits VerticalLayout {
                     // working: the emulator also accepts a name the system doesn't list).
                     FormRow {
                         label: "Microphone";
+                        hint: "The detected input devices. A name that is not listed can still be typed in.";
                         ThemedEdit {
                             horizontal-stretch: 1;
                             placeholder: "None (or the device name)";
@@ -543,22 +588,19 @@ export component SettingsPage inherits VerticalLayout {
                             }
                         }
                     }
-                    Hint {
-                        text: "The detected input devices. A name that is not listed can still be typed in.";
-                    }
                 }
                 if !root.game-mode: Card {
                     title: "Paths";
+                    hint: "The folder the emulator runs in, the shared add-ons folder, and where downloaded builds are saved. Import from Kyty.ini… brings over the old Qt launcher's settings.";
                     PathField {
                         label: "Run folder";
+                        hint: "Save data, flags.ctl and the logs go in the run folder.";
                         text <=> root.run-dir;
                         browse => { root.browse-run-dir(); }
                     }
-                    Hint {
-                        text: "Save data, flags.ctl and the logs go in the run folder.";
-                    }
                     FormRow {
                         label: "Add-ons folder";
+                        hint: "One folder holding the extracted add-ons (DLC), shared by every game.";
                         ThemedEdit {
                             horizontal-stretch: 1;
                             placeholder: "None (--addcont-dir)";
@@ -574,18 +616,12 @@ export component SettingsPage inherits VerticalLayout {
                             clicked => { root.addons-dir = ""; }
                         }
                     }
-                    Hint {
-                        text: "One folder holding the extracted add-ons (DLC), shared by every game.";
-                    }
                     HorizontalLayout {
                         alignment: start;
                         Button {
                             text: "Import from Kyty.ini…";
                             clicked => { root.import-ini(); }
                         }
-                    }
-                    Hint {
-                        text: "Brings over the settings of the old Qt launcher. Only the values the file holds are replaced.";
                     }
                     FormRow {
                         label: "Save versions to";
@@ -605,9 +641,9 @@ export component SettingsPage inherits VerticalLayout {
                     title: "Game folders";
                     Rectangle {
                         height: 160px;
-                        background: #0b0e14;
+                        background: #07090c;
                         border-width: 1px;
-                        border-radius: 4px;
+                        border-radius: 0px;
                         border-color: Theme.card-border;
                         clip: true;
                         ScrollView {
@@ -646,11 +682,10 @@ export component SettingsPage inherits VerticalLayout {
                 if !root.game-mode: Card {
                     title: "Updates";
                     ToggleRow {
-                        item: { env: "check_updates", label: "Check for updates on startup", hint: "", on: root.check-updates };
+                        item: { env: "check_updates", label: "Check for updates on startup",
+                        hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
+                        on: root.check-updates };
                         toggled(on) => { root.check-updates = on; }
-                    }
-                    Hint {
-                        text: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.";
                     }
                 }
 
@@ -723,7 +758,7 @@ export component SettingsPage inherits VerticalLayout {
                             height: 24px;
                             y: (parent.height - self.height) / 2;
                             border-width: 1px;
-                            border-radius: 4px;
+                            border-radius: 0px;
                             border-color: Theme.card-border;
                             background: root.controller-swatch;
                         }
@@ -787,9 +822,6 @@ export component SettingsPage inherits VerticalLayout {
                 }
                 if !root.game-mode: Card {
                     title: "Emulator builds";
-                    Hint {
-                        text: "Downloaded and custom emulator builds are managed in the Version Manager.";
-                    }
                     HorizontalLayout {
                         alignment: start;
                         Button {
@@ -949,6 +981,7 @@ export component SettingsPage inherits VerticalLayout {
                 // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
                 Card {
                     title: "Environment variables";
+                    hint: "Empty value removes the variable. Names: letters, digits, underscore.";
                     for v[i] in EnvEditor.vars: HorizontalLayout {
                         spacing: 8px;
                         ThemedEdit {
@@ -978,18 +1011,10 @@ export component SettingsPage inherits VerticalLayout {
                             clicked => { EnvEditor.added(); }
                         }
                     }
-                    Hint {
-                        text: "Empty value removes the variable. Names: letters, digits, underscore.";
-                    }
                 }
                 if !root.game-mode: Card {
                     title: "GitHub token";
-                    Hint {
-                        text: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. "
-                            + (VM.gh-token-storable
-                                ? "A saved token is encrypted in the system credential store and can't be shown again: clear it to replace it."
-                                : "This system has no supported credential store yet, so the token lasts until the launcher closes.");
-                    }
+                    hint: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. A saved token is encrypted in the system credential store and cannot be shown again.";
                     if !VM.gh-token-set: VerticalLayout {
                         spacing: 8px;
                         FormRow {
@@ -1029,7 +1054,7 @@ export component SettingsPage inherits VerticalLayout {
                                 background: Theme.card;
                                 border-color: Theme.card-border;
                                 border-width: 1px;
-                                border-radius: 6px;
+                                border-radius: 0px;
                                 HorizontalLayout {
                                     padding-left: 10px;
                                     padding-right: 10px;
@@ -1057,9 +1082,7 @@ export component SettingsPage inherits VerticalLayout {
                 }
                 if !root.game-mode: Card {
                     title: "Release list cache";
-                    Hint {
-                        text: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
-                    }
+                    hint: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
                     HorizontalLayout {
                         alignment: start;
                         Button {
@@ -1148,13 +1171,10 @@ export component SettingsPage inherits VerticalLayout {
     if root.settings-tab == 4 && !root.game-mode: VerticalLayout {
         vertical-stretch: 1;
         spacing: 8px;
-        Hint {
-            text: "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
-        }
         games-box := Rectangle {
             vertical-stretch: 1;
             background: Theme.bg;
-            border-radius: 3px;
+            border-radius: 0px;
             border-width: 1px;
             border-color: Theme.card-border;
             clip: true;
@@ -1187,7 +1207,7 @@ export component SettingsPage inherits VerticalLayout {
                 // The header follows the rows' horizontal scroll.
                 Rectangle {
                     height: 28px;
-                    background: #0b0e14d9;
+                    background: #07090cd9;
                     clip: true;
                     HorizontalLayout {
                         x: games-table.content-x;
@@ -1280,7 +1300,7 @@ export component SettingsPage inherits VerticalLayout {
         if root.removed-games.length > 0: Rectangle {
             height: 110px;
             background: Theme.bg;
-            border-radius: 3px;
+            border-radius: 0px;
             border-width: 1px;
             border-color: Theme.card-border;
             clip: true;
@@ -1336,6 +1356,25 @@ export component SettingsPage inherits VerticalLayout {
                 font-size: 11px;
                 vertical-alignment: center;
                 overflow: elide;
+            }
+        }
+    }
+
+    // Description panel: what the pointer is over, otherwise what the tab is for.
+    Rectangle {
+        height: 44px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        background: Theme.log-bg;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            Text {
+                text: HoverHint.text != "" ? HoverHint.text : HoverHint.idle;
+                color: HoverHint.text != "" ? Theme.text : Theme.muted;
+                font-size: 12px;
+                vertical-alignment: center;
+                wrap: word-wrap;
             }
         }
     }

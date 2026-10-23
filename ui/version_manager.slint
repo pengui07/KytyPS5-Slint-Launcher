@@ -65,7 +65,7 @@ component SectionLabel inherits Text {
 
 // Bordered, square panel for lists.
 component Panel inherits Rectangle {
-    background: #0b0e14;
+    background: #07090c;
     border-width: 1px;
     border-color: Theme.card-border;
     clip: true;
@@ -625,8 +625,8 @@ export component VersionManagerPage inherits Rectangle {
             Rectangle {
                 width: 58px;
                 height: 40px;
-                border-radius: 8px;
-                background: back-touch.pressed ? #2c3648 : back-touch.has-hover ? #252d3c : #1a202b;
+                border-radius: 0px;
+                background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
                 animate background { duration: 100ms; }
                 Image {
                     x: 9px;
@@ -768,7 +768,7 @@ export component VersionManagerPage inherits Rectangle {
                     VerticalLayout {
                         Rectangle {
                             height: 24px;
-                            background: #0b0e14d9;
+                            background: #07090cd9;
                             clip: true;
                             // The header follows the rows when the list scrolls sideways.
                             HorizontalLayout {
@@ -923,9 +923,9 @@ export component VersionManagerPage inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     width: 4px;
                     height: parent.height * 0.60;
-                    border-radius: 2px;
+                    border-radius: 0px;
                     // Visible at rest (it was as dark as the box borders), accent while hovered or dragged.
-                    background: split-touch.has-hover || split-touch.pressed ? Theme.accent : #4a566a;
+                    background: split-touch.has-hover || split-touch.pressed ? Theme.accent : #3e4c66;
                     animate background { duration: 100ms; }
                 }
                 // Only the bar's height: above and below it is empty space.
@@ -1020,7 +1020,7 @@ export component VersionManagerPage inherits Rectangle {
                     VerticalLayout {
                         Rectangle {
                             height: 24px;
-                            background: #0b0e14d9;
+                            background: #07090cd9;
                             Text {
                                 overflow: elide;
                                 x: 8px;
@@ -1260,7 +1260,7 @@ export component VersionManagerPage inherits Rectangle {
             background: Theme.card;
             border-width: 1px;
             border-color: Theme.card-border;
-            border-radius: 6px;
+            border-radius: 0px;
             // Escape cancels, Enter removes.
             FocusScope {
                 x: 0px;
@@ -1344,7 +1344,7 @@ export component VersionManagerPage inherits Rectangle {
                     // Red: the destructive choice.
                     Rectangle {
                         width: 96px;
-                        border-radius: 4px;
+                        border-radius: 0px;
                         background: rm-touch.pressed ? Theme.danger.darker(0.2) : rm-touch.has-hover ? Theme.danger-hover : Theme.danger;
                         Text {
                             text: VM.remove-delete-files ? "Delete" : "Remove";
@@ -1383,7 +1383,7 @@ export component VersionManagerPage inherits Rectangle {
             background: Theme.card;
             border-width: 1px;
             border-color: Theme.card-border;
-            border-radius: 6px;
+            border-radius: 0px;
             // Clicks inside the box don't reach the overlay.
             TouchArea { }
             // Escape and Enter close it.

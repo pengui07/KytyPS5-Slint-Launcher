@@ -49,7 +49,7 @@ component TabHeader inherits Rectangle {
     callback clicked();
     width: 140px;
     height: 32px;
-    border-radius: 4px;
+    border-radius: 0px;
     background: root.active ? #ffffff14 : touch.has-hover ? #ffffff0a : transparent;
     Text {
         x: 12px;
@@ -97,10 +97,10 @@ component BindingRow inherits Rectangle {
         y: 2px;
         width: 196px;
         height: 26px;
-        border-radius: 4px;
+        border-radius: 0px;
         border-width: 1px;
         border-color: capturing ? Theme.accent : bind.has-hover ? Theme.accent : Theme.card-border;
-        background: bind.has-hover ? #1e2533 : #0b0e14;
+        background: bind.has-hover ? #1d212a : #07090c;
         Text {
             x: 8px;
             width: parent.width - 16px;
@@ -179,8 +179,8 @@ export component ControlsPage inherits Rectangle {
                 Rectangle {
                     width: 58px;
                     height: 40px;
-                    border-radius: 8px;
-                    background: back-touch.pressed ? #2c3648 : back-touch.has-hover ? #252d3c : #1a202b;
+                    border-radius: 0px;
+                    background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
                     animate background { duration: 100ms; }
                     Image {
                         x: 9px;
@@ -310,7 +310,7 @@ export component ControlsPage inherits Rectangle {
             background: Theme.card;
             border-width: 1px;
             border-color: Theme.card-border;
-            border-radius: 6px;
+            border-radius: 0px;
             HorizontalLayout {
                 padding-left: 14px;
                 padding-right: 14px;
@@ -410,7 +410,7 @@ export component ControlsPage inherits Rectangle {
             background: Theme.card;
             border-width: 1px;
             border-color: Theme.card-border;
-            border-radius: 8px;
+            border-radius: 0px;
             capture-box := VerticalLayout {
                 padding: 16px;
                 spacing: 10px;

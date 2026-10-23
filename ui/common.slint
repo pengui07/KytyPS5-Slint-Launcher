@@ -3,23 +3,31 @@
 export global Theme {
     // 0 unknown, 1 in game, 2 main menu, 3 logo, 4 doesn't boot
     public pure function status-color(code: int) -> color {
-        return code == 1 ? #30a46c : code == 2 ? #3d8bfd : code == 3 ? #f5a524 : code == 4 ? #e5484d : #5d6878;
+        return code == 1 ? #30a46c : code == 2 ? #3a86ff : code == 3 ? #f5a524 : code == 4 ? #e5484d : #565f70;
     }
     out property <color> row-hover: #ffffff0f;
     out property <color> row-selected: #ffffff1a;
     out property <color> row-outline: #e7ecf3cc;
-    out property <color> card-glass: #181c24b8;
-    out property <color> bg: #0f1218;
-    out property <color> card: #181c24;
-    out property <color> card-border: #252b36;
-    out property <color> text: #e7ecf3;
-    out property <color> muted: #8a97a8;
-    out property <color> faint: #5d6878;
-    out property <color> accent: #3d8bfd;
-    out property <color> accent-hover: #5a9dff;
+    out property <color> card-glass: #11141ab8;
+    out property <color> bg: #0a0c10;
+    out property <color> card: #11141a;
+    out property <color> card-border: #2b3345;
+    out property <color> text: #d0d7e6;
+    out property <color> muted: #707b90;
+    out property <color> faint: #565f70;
+    out property <color> accent: #3a86ff;
+    out property <color> accent-hover: #5aa0ff;
     out property <color> danger: #e5484d;
     out property <color> danger-hover: #f06065;
-    out property <color> log-bg: #0b0d12;
+    out property <color> log-bg: #07090c;
+}
+
+// The explanation of whatever the pointer is over, shown in the description panel at the bottom of a page.
+// Elements set `text` while hovered and clear it if it is still theirs when the pointer leaves. `idle` is what
+// the panel says when nothing is hovered (a page can give it its own wording).
+export global HoverHint {
+    in-out property <string> text;
+    in-out property <string> idle: "Point your mouse at an option to display its description.";
 }
 
 export // Which sort arrow a sortable table header shows.
@@ -137,9 +145,9 @@ export component ThemedEdit inherits Rectangle {
     min-width: 60px;
     height: 32px;
     border-width: 1px;
-    border-radius: 4px;
+    border-radius: 0px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
-    background: #0b0e14;
+    background: #07090c;
     HorizontalLayout {
         padding-left: 10px;
         padding-right: 10px;
@@ -191,8 +199,8 @@ export component IconButton inherits Rectangle {
     callback clicked();
     width: 40px;
     height: 40px;
-    border-radius: 8px;
-    background: icon-touch.has-hover && root.enabled ? #1e2533 : transparent;
+    border-radius: 0px;
+    background: icon-touch.has-hover && root.enabled ? #1d212a : transparent;
     animate background { duration: 100ms; }
     Image {
         source: root.icon;
@@ -217,10 +225,10 @@ export component InlineEdit inherits Rectangle {
     callback cancelled();
     property <bool> finished: false;
     min-width: 90px;
-    background: #0b0e14;
+    background: #07090c;
     border-width: 1px;
     border-color: Theme.accent;
-    border-radius: 3px;
+    border-radius: 0px;
     Rectangle {
         x: 6px;
         width: parent.width - 12px;
@@ -309,9 +317,9 @@ export component Selector inherits Rectangle {
     callback selected(int);
     height: 26px;
     min-width: 90px;
-    background: #0b0e14;
+    background: #07090c;
     border-width: 1px;
-    border-radius: 4px;
+    border-radius: 0px;
     border-color: touch.has-hover ? Theme.accent : Theme.card-border;
     HorizontalLayout {
         padding-left: 10px;
@@ -348,12 +356,12 @@ export component Selector inherits Rectangle {
             background: #141923;
             border-width: 1px;
             border-color: Theme.card-border;
-            border-radius: 4px;
+            border-radius: 0px;
             VerticalLayout {
                 padding: 3px;
                 for item[i] in root.model: Rectangle {
                     height: 26px;
-                    border-radius: 3px;
+                    border-radius: 0px;
                     background: item-touch.has-hover ? Theme.row-hover : i == root.current-index ? #ffffff10 : transparent;
                     Text {
                         x: 8px;

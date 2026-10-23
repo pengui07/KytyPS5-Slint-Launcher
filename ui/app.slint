@@ -141,7 +141,7 @@ component GameRowView inherits Rectangle {
                 Rectangle {
                     width: 10px;
                     height: 10px;
-                    border-radius: 5px;
+                    border-radius: 0px;
                     background: Theme.status-color(root.game.status-code);
                 }
             }
@@ -185,7 +185,7 @@ component GameCard inherits Rectangle {
     callback menu(length, length); // right-click, in window coordinates
     width: 208px;
     height: 190px;
-    border-radius: 6px;
+    border-radius: 0px;
     border-width: 1px;
     border-color: root.selected ? Theme.row-outline : Theme.card-border;
     background: root.selected ? Theme.row-selected : card-touch.has-hover ? Theme.row-hover : Theme.card;
@@ -197,7 +197,7 @@ component GameCard inherits Rectangle {
         Rectangle {
             height: 116px;
             background: Theme.log-bg;
-            border-radius: 4px;
+            border-radius: 0px;
             clip: true;
             Image {
                 source: root.game.icon;
@@ -229,8 +229,8 @@ component GameCard inherits Rectangle {
         y: 6px;
         width: 20px;
         height: 20px;
-        border-radius: 10px;
-        background: #0b0e14cc;
+        border-radius: 0px;
+        background: #07090ccc;
         Image {
             source: @image-url("icons/pin.svg");
             colorize: Theme.accent;
@@ -256,7 +256,7 @@ component SearchBox inherits Rectangle {
     in-out property <string> text <=> input.text;
     public function unfocus() { input.clear-focus(); }
     height: 34px;
-    border-radius: 4px;
+    border-radius: 0px;
     border-width: 1px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
     background: #ffffff0a;
@@ -697,7 +697,7 @@ export component AppWindow inherits Window {
         Rectangle {
             height: 48px;
             background: Theme.card;
-            border-radius: 6px;
+            border-radius: 0px;
             border-width: 1px;
             border-color: Theme.card-border;
             HorizontalLayout {
@@ -794,7 +794,7 @@ export component AppWindow inherits Window {
         library-box := Rectangle {
             vertical-stretch: 1;
             background: Theme.bg;
-            border-radius: 3px;
+            border-radius: 0px;
             border-width: 1px;
             border-color: Theme.card-border;
             clip: true;
@@ -834,7 +834,7 @@ export component AppWindow inherits Window {
                 Rectangle {
                     visible: !root.library-grid;
                     height: 28px;
-                    background: #0b0e14d9;
+                    background: #07090cd9;
                     clip: true;
                     TableHeader {
                         x: table.content-x;
@@ -966,10 +966,10 @@ export component AppWindow inherits Window {
                     console-btn := Rectangle {
                         width: 32px;
                         height: 26px;
-                        border-radius: 4px;
+                        border-radius: 0px;
                         border-width: 1px;
                         border-color: Theme.card-border;
-                        background: console-touch.has-hover ? #1e2533 : Theme.card;
+                        background: console-touch.has-hover ? #1d212a : Theme.card;
                         Text {
                             text: ">_";
                             color: Theme.text;
@@ -1172,9 +1172,9 @@ export component AppWindow inherits Window {
                 }
                 Rectangle {
                     vertical-stretch: 1;
-                    background: #0b0e14;
+                    background: #07090c;
                     border-width: 1px;
-                    border-radius: 4px;
+                    border-radius: 0px;
                     border-color: Theme.card-border;
                     clip: true;
                     ListView {
@@ -1443,7 +1443,7 @@ export component AppWindow inherits Window {
                     min-height: 80px;
                     preferred-height: min(380px, max(root.height - 200px, 80px));
                     background: Theme.log-bg;
-                    border-radius: 4px;
+                    border-radius: 0px;
                     clip: true;
                     ScrollView {
                         VerticalLayout {
@@ -1601,7 +1601,7 @@ export component ConsoleWindow inherits Window {
         Rectangle {
             vertical-stretch: 1;
             background: Theme.log-bg;
-            border-radius: 6px;
+            border-radius: 0px;
             clip: true;
             log := ListView {
                 for line in root.log-lines: Text {
