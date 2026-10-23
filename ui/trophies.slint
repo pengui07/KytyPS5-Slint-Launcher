@@ -1,7 +1,7 @@
 // Trophies page: progress of every game that has trophies.
 
-import { Button, CheckBox, ScrollView } from "std-widgets.slint";
-import { Theme } from "common.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Theme, AppButton, AppCheckBox } from "common.slint";
 
 export struct TrophyGame {
     name: string,
@@ -275,14 +275,14 @@ export component TrophiesPage inherits Rectangle {
             GradeCount { cup: Cups.bronze; count: Trophies.detail-open ? Trophies.detail-game.bronze : Trophies.bronze; size: 24px; }
             if Trophies.detail-open: VerticalLayout {
                 alignment: center;
-                CheckBox {
+                AppCheckBox {
                     text: "Reveal hidden trophies";
                     checked <=> root.reveal-hidden;
                 }
             }
             if Trophies.detail-open: VerticalLayout {
                 alignment: center;
-                Button {
+                AppButton {
                     text: "← All games";
                     clicked => {
                         root.reveal-hidden = false;

@@ -1,5 +1,5 @@
-import { Button, CheckBox, ComboBox, ListView, ScrollView, Slider, SpinBox } from "std-widgets.slint";
-import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, HoverHint } from "common.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, Chevron, Selector, AppButton, AppCheckBox, AppSlider, AppSpinBox, Card } from "common.slint";
 import { VM, TabButton } from "version_manager.slint";
 
 export struct ToggleItem {
@@ -67,67 +67,23 @@ export global GameActions {
 
 // Sizes shared by the form rows, so the controls of every group line up.
 global Form {
-    out property <length> label-w: 150px; // the "Label:" column
-    out property <length> row-h: 30px;
-    out property <length> gap: 10px;      // between groups, and between the two columns
+    out property <length> label-w: 124px; // the "Label:" column (tightened so inputs have more room)
+    out property <length> row-h: 26px;
+    out property <length> gap: 10px;     // between groups, and between the two columns
 }
 
-// A titled group: a thin frame with its title sitting on the top edge. `hint` is what the title explains in the
-// description panel when the pointer is over it.
-export component Card inherits VerticalLayout {
-    in property <string> title;
-    in property <string> hint;
-    padding-top: 8px; // room for the title, which rises above the frame
-    Rectangle {
-        border-width: 1px;
-        border-color: #2b3345;
-        border-radius: 0px;
-        VerticalLayout {
-            padding: 12px;
-            padding-top: 16px;
-            spacing: 8px;
-            alignment: start;
-            @children
-        }
-        // The title covers the border behind it.
-        Rectangle {
-            x: 10px;
-            y: -8px;
-            width: title-text.preferred-width + 8px;
-            height: 16px;
-            background: Theme.bg;
-            title-text := Text {
-                x: 4px;
-                width: self.preferred-width;
-                height: parent.height;
-                text: root.title;
-                color: Theme.text;
-                font-size: 13px;
-                vertical-alignment: center;
-            }
-            if root.hint != "": TouchArea {
-                changed has-hover => {
-                    if (self.has-hover) {
-                        HoverHint.text = root.hint;
-                    } else if (HoverHint.text == root.hint) {
-                        HoverHint.text = "";
-                    }
-                }
-            }
-        }
-    }
-}
 
 // One of the two columns of a tab; both get the same width.
 component Column inherits VerticalLayout {
     horizontal-stretch: 1;
     preferred-width: 0px;
     alignment: start;
+    padding-top: 8px; // prevents ScrollView from clipping the top Card's floating title
     spacing: Form.gap;
 }
 
 // "Label:" and its control(s), which fill the rest of the row.
-// A label column entry. Hovering it explains the row in the description panel (`hint`, when it has one).
+// A label column entry: hovering it shows the row's explanation.
 component RowLabel inherits Rectangle {
     in property <string> text;
     in property <string> hint;
@@ -142,14 +98,8 @@ component RowLabel inherits Rectangle {
         vertical-alignment: center;
         overflow: elide;
     }
-    if root.hint != "": TouchArea {
-        changed has-hover => {
-            if (self.has-hover) {
-                HoverHint.text = root.hint;
-            } else if (HoverHint.text == root.hint) {
-                HoverHint.text = "";
-            }
-        }
+    if root.hint != "": Tooltip {
+        text: @markdown("\{root.hint}");
     }
 }
 
@@ -184,7 +134,7 @@ component PathField inherits FormRow {
         horizontal-stretch: 1;
         placeholder: root.placeholder;
     }
-    Button {
+    AppButton {
         text: "Browse…";
         clicked => { root.browse(); }
     }
@@ -243,6 +193,8 @@ component GameConfigRowView inherits Rectangle {
     callback clicked();
     callback double-clicked();
     callback menu(length, length); // right-click, in window coordinates
+    callback set-emu-none();       // the Emu drop-down: "None"
+    callback set-emu-pick();       // the Emu drop-down: "Set Emu…"
     height: 42px;
     background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
     border-width: root.selected ? 1px : 0px;
@@ -284,15 +236,102 @@ component GameConfigRowView inherits Rectangle {
         }
         TextCell { w: root.serial-w; text: root.game.serial == "" ? "—" : root.game.serial; }
         TextCell { w: root.version-w; text: root.game.game-version == "" ? "—" : root.game.game-version; }
-        TextCell {
-            w: root.emu-w;
-            text: root.game.emu;
-            color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+        // The Emu column is a drop-down: None, or pick another build. The row's TouchArea opens it (see below).
+        emu-cell := Rectangle {
+            width: root.emu-w;
+            height: 24px;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            background: Theme.log-bg;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 6px;
+                spacing: 4px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.game.pinned ? root.game.emu : "None";
+                    color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Chevron {
+                        width: 10px;
+                        height: 10px;
+                        angle: 90deg;
+                        color: Theme.muted;
+                    }
+                }
+            }
+            emu-popup := PopupWindow {
+                x: 0px;
+                y: emu-cell.height + 2px;
+                width: 150px;
+                close-policy: close-on-click-outside;
+                Rectangle {
+                    background: Theme.card;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    VerticalLayout {
+                        padding: 3px;
+                        spacing: 1px;
+                        Rectangle {
+                            height: 26px;
+                            opacity: root.game.pinned ? 1 : 0.45;
+                            background: none-hover.has-hover && root.game.pinned ? Theme.row-hover : transparent;
+                            Text {
+                                x: 8px;
+                                text: "None";
+                                color: Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            none-hover := TouchArea {
+                                clicked => {
+                                    if (root.game.pinned) {
+                                        emu-popup.close();
+                                        root.set-emu-none();
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            height: 26px;
+                            opacity: root.game.can-config ? 1 : 0.45;
+                            background: pick-hover.has-hover && root.game.can-config ? Theme.row-hover : transparent;
+                            Text {
+                                x: 8px;
+                                text: "Set Emu…";
+                                color: Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            pick-hover := TouchArea {
+                                clicked => {
+                                    if (root.game.can-config) {
+                                        emu-popup.close();
+                                        root.set-emu-pick();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     touch := TouchArea {
-        clicked => { root.clicked(); }
+        clicked => {
+            // A click in the Emu column opens its drop-down; anywhere else selects the row.
+            if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x) {
+                emu-popup.show();
+            } else {
+                root.clicked();
+            }
+        }
         double-clicked => { root.double-clicked(); }
         pointer-event(event) => {
             if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
@@ -321,28 +360,17 @@ component ToggleRow inherits Rectangle {
         spacing: 8px;
         min-height: 26px;
         if root.indent: Rectangle { width: Form.label-w; }
-        CheckBox {
+        AppCheckBox {
             text: root.item.label;
             enabled: root.enabled;
             checked: root.item.on;
             toggled => { root.toggled(self.checked); }
         }
-        // The trailing space explains the option in the description panel; nothing is written after the label.
-        Rectangle {
-            horizontal-stretch: 1;
-            if root.item.hint != "": TouchArea {
-                changed has-hover => {
-                    if (self.has-hover) {
-                        HoverHint.text = root.item.hint;
-                    } else if (HoverHint.text == root.item.hint) {
-                        HoverHint.text = "";
-                    }
-                }
-            }
-        }
     }
-    if root.item.env != "": Tooltip {
-        text: @markdown("`\{root.item.env}`");
+    if root.item.hint != "" || root.item.env != "": Tooltip {
+        text: root.item.hint != ""
+            ? @markdown("\{root.item.hint}")
+            : @markdown("`\{root.item.env}`");
     }
 }
 
@@ -472,12 +500,7 @@ export component SettingsPage inherits VerticalLayout {
     changed settings-tab => {
         if (self.settings-tab == 4) {
             root.games-opened();
-            // The panel's resting text explains the Games tab's emulator pins.
-            HoverHint.idle = "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
-        } else {
-            HoverHint.idle = "Point your mouse at an option to display its description.";
         }
-        HoverHint.text = "";
     }
 
     // STEP6:6e: fill the microphone and GPU pickers when the page opens (their Refresh buttons redo it).
@@ -491,18 +514,38 @@ export component SettingsPage inherits VerticalLayout {
     padding-top: 10px;
     spacing: 10px;
 
-    // Tabs, and the way back to the library.
-    HorizontalLayout {
-        spacing: 2px;
-        for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
-            text: tab;
-            active: i == root.settings-tab;
-            clicked => { root.settings-tab = i; }
+    // Tabs on a strip: full-width 1px bottom border like Qt Fusion / shadPS4.
+    Rectangle {
+        height: 28px;
+        // The band behind the tabs runs to the window edges, ignoring the page padding, as in the reference.
+        Rectangle {
+            x: -12px;
+            y: -10px;
+            width: parent.width + 24px;
+            height: parent.height + 10px;
+            background: Theme.bg;
         }
-        Rectangle { horizontal-stretch: 1; }
-        Button {
-            text: "← Library";
-            clicked => { root.back(); }
+        // Full-width 1px bottom line under the tab bar
+        Rectangle {
+            x: -12px;
+            y: parent.height - 1px;
+            width: parent.width + 24px;
+            height: 1px;
+            background: Theme.card-border;
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
+                text: tab;
+                active: i == root.settings-tab;
+                clicked => { root.settings-tab = i; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            AppButton {
+                height: 24px;
+                text: "← Library";
+                clicked => { root.back(); }
+            }
         }
     }
 
@@ -546,7 +589,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Console language";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["Japanese", "English (United States)", "French (France)", "Spanish (Spain)", "German", "Italian", "Dutch", "Portuguese (Portugal)", "Russian", "Korean", "Chinese (Traditional)", "Chinese (Simplified)", "Finnish", "Swedish", "Danish", "Norwegian", "Polish", "Portuguese (Brazil)", "English (United Kingdom)", "Turkish", "Spanish (Latin America)", "Arabic", "French (Canada)", "Czech", "Hungarian", "Greek", "Romanian", "Thai", "Vietnamese", "Indonesian"];
                             current-index <=> root.console-language;
@@ -559,39 +602,63 @@ export component SettingsPage inherits VerticalLayout {
                     // working: the emulator also accepts a name the system doesn't list).
                     FormRow {
                         label: "Microphone";
-                        hint: "The detected input devices. A name that is not listed can still be typed in.";
-                        ThemedEdit {
+                        hint: "The detected input devices. Default (system) leaves the choice to Windows; a name brought over from Kyty.ini shows even when its device is not plugged in.";
+                        // The field itself is the drop-down: it shows the current device and opens the detected list.
+                        mic-field := Rectangle {
                             horizontal-stretch: 1;
-                            placeholder: "None (or the device name)";
-                            text <=> root.microphone;
-                        }
-                        mic-button := Button {
-                            text: "Detected…";
-                            enabled: Devices.audio-inputs.length > 0;
-                            clicked => {
-                                mic-menu.show({ x: mic-button.absolute-position.x - mic-menu.absolute-position.x,
-                                                y: mic-button.absolute-position.y + mic-button.height - mic-menu.absolute-position.y });
-                            }
-                        }
-                        mic-menu := ContextMenuArea {
-                            width: 0px;
-                            height: 0px;
-                            Menu {
-                                MenuItem {
-                                    title: "Default";
-                                    activated => { root.microphone = ""; }
+                            height: 26px;
+                            border-width: 1px;
+                            border-radius: 0px;
+                            border-color: mic-touch.has-hover ? Theme.accent : Theme.card-border;
+                            background: #07090c;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 6px;
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.microphone == "" ? "Default (system)" : root.microphone;
+                                    color: root.microphone == "" ? Theme.muted : Theme.text;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
                                 }
-                                for input in Devices.audio-inputs: MenuItem {
-                                    title: input;
-                                    activated => { root.microphone = input; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Chevron {
+                                        width: 12px;
+                                        height: 12px;
+                                        color: Theme.muted;
+                                        angle: 90deg;
+                                    }
+                                }
+                            }
+                            mic-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    mic-menu.show({ x: 0px, y: mic-field.height + 2px });
+                                }
+                            }
+                            mic-menu := ContextMenuArea {
+                                width: 0px;
+                                height: 0px;
+                                Menu {
+                                    MenuItem {
+                                        title: "Default (system)";
+                                        activated => { root.microphone = ""; }
+                                    }
+                                    for input in Devices.audio-inputs: MenuItem {
+                                        title: input;
+                                        activated => { root.microphone = input; }
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 if !root.game-mode: Card {
-                    title: "Paths";
-                    hint: "The folder the emulator runs in, the shared add-ons folder, and where downloaded builds are saved. Import from Kyty.ini… brings over the old Qt launcher's settings.";
+                    title: "Paths & Game folders";
+                    hint: "The folder the emulator runs in, the shared add-ons folder, where downloaded builds are saved, and the folders scanned for games. Import configs from Kyty.ini brings over the old Qt launcher's settings; the Version Manager installs and switches builds.";
                     PathField {
                         label: "Run folder";
                         hint: "Save data, flags.ctl and the logs go in the run folder.";
@@ -606,21 +673,14 @@ export component SettingsPage inherits VerticalLayout {
                             placeholder: "None (--addcont-dir)";
                             text <=> root.addons-dir;
                         }
-                        Button {
+                        AppButton {
                             text: "Browse…";
                             clicked => { root.browse-addons-dir(); }
                         }
-                        Button {
+                        AppButton {
                             text: "Clear";
                             enabled: root.addons-dir != "";
                             clicked => { root.addons-dir = ""; }
-                        }
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        Button {
-                            text: "Import from Kyty.ini…";
-                            clicked => { root.import-ini(); }
                         }
                     }
                     FormRow {
@@ -631,16 +691,14 @@ export component SettingsPage inherits VerticalLayout {
                             // Enter applies the typed folder, like Browse does.
                             accepted => { VM.refresh-installed(); }
                         }
-                        Button {
+                        AppButton {
                             text: "Browse…";
                             clicked => { VM.browse-path(); }
                         }
                     }
-                }
-                if !root.game-mode: Card {
-                    title: "Game folders";
+                    // The folders scanned for games, sized so the left and right columns align cleanly at the bottom.
                     Rectangle {
-                        height: 160px;
+                        height: 120px;
                         background: #07090c;
                         border-width: 1px;
                         border-radius: 0px;
@@ -658,41 +716,34 @@ export component SettingsPage inherits VerticalLayout {
                             }
                         }
                     }
+                    // Unified action bar at the foot of the card: folder actions on the left, utilities on the right.
                     HorizontalLayout {
-                        alignment: start;
-                        spacing: 2px;
-                        IconButton {
-                            width: 32px;
-                            height: 32px;
-                            icon: @image-url("icons/folder-add.svg");
-                            tooltip: "Add a game folder";
+                        spacing: 6px;
+                        AppButton {
+                            text: "Add folder…";
                             clicked => { root.browse-game-dir(); }
                         }
-                        IconButton {
-                            width: 32px;
-                            height: 32px;
-                            icon: @image-url("icons/remove-configuration.svg");
-                            tooltip: "Remove the selected folder";
+                        AppButton {
+                            text: "Remove";
                             enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dir-list.length;
                             clicked => { root.remove-game-dir(root.game-dir-selected); }
                         }
-                    }
-                }
-                // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
-                if !root.game-mode: Card {
-                    title: "Updates";
-                    ToggleRow {
-                        item: { env: "check_updates", label: "Check for updates on startup",
-                        hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
-                        on: root.check-updates };
-                        toggled(on) => { root.check-updates = on; }
+                        Rectangle { horizontal-stretch: 1; }
+                        AppButton {
+                            text: "Import Kyty.ini…";
+                            clicked => { root.import-ini(); }
+                        }
+                        AppButton {
+                            text: "Version Manager…";
+                            clicked => { root.open-versions(); }
+                        }
                     }
                 }
 
             }
             Column {
                 Card {
-                    title: "Compatibility";
+                    title: "System & Compatibility";
                     ToggleRow {
                         item: { env: "--amd-cpu", label: "AMD CPU patch (experimental)", hint: "", on: root.amd-cpu };
                         toggled(on) => { root.amd-cpu = on; }
@@ -703,9 +754,13 @@ export component SettingsPage inherits VerticalLayout {
                         item: { env: "--redzone", label: "Windows SysV red zone crash protection (experimental)", hint: root.is-windows ? "" : "Windows only", on: root.red-zone };
                         toggled(on) => { root.red-zone = on; }
                     }
-                }
-                Card {
-                    title: "General";
+                    // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
+                    if !root.game-mode: ToggleRow {
+                        item: { env: "check_updates", label: "Check for updates on startup",
+                        hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
+                        on: root.check-updates };
+                        toggled(on) => { root.check-updates = on; }
+                    }
                     ToggleRow {
                         item: { env: "--fullscreen", label: "Run in fullscreen", hint: "", on: root.fullscreen };
                         toggled(on) => { root.fullscreen = on; }
@@ -732,7 +787,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Trophy duration";
-                        SpinBox {
+                        AppSpinBox {
                             width: 90px;
                             minimum: 5;
                             maximum: 10;
@@ -768,7 +823,7 @@ export component SettingsPage inherits VerticalLayout {
                             text <=> root.controller-color;
                             edited(text) => { root.controller-color-edited(text); }
                         }
-                        Button {
+                        AppButton {
                             text: "Default";
                             enabled: root.controller-color != "";
                             clicked => {
@@ -779,7 +834,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Vibration intensity";
-                        Slider {
+                        AppSlider {
                             horizontal-stretch: 1;
                             minimum: 0;
                             maximum: 100;
@@ -796,7 +851,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Speaker volume";
-                        Slider {
+                        AppSlider {
                             horizontal-stretch: 1;
                             minimum: 0;
                             maximum: 100;
@@ -813,20 +868,10 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Keyboard player";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["Shared with player 1 (default)", "Player 1", "Player 2", "Player 3", "Player 4"];
                             current-index <=> root.keyboard-player;
-                        }
-                    }
-                }
-                if !root.game-mode: Card {
-                    title: "Emulator builds";
-                    HorizontalLayout {
-                        alignment: start;
-                        Button {
-                            text: "Open Version Manager";
-                            clicked => { root.open-versions(); }
                         }
                     }
                 }
@@ -846,7 +891,7 @@ export component SettingsPage inherits VerticalLayout {
                     title: "Graphics & display";
                     FormRow {
                         label: "Screen resolution";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: [
                                 "1280 x 720" + (root.recommended-size == 0 ? " (recommended)" : ""),
@@ -886,7 +931,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Present mode";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["Fifo", "Mailbox", "Immediate"];
                             current-index <=> root.present-mode;
@@ -899,7 +944,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Shader optimization";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["None", "Size", "Performance"];
                             current-index <=> root.shader-opt;
@@ -909,7 +954,7 @@ export component SettingsPage inherits VerticalLayout {
                     // index stays possible while nothing was detected.
                     if Devices.gpu-choices.length > 1: FormRow {
                         label: "GPU";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: Devices.gpu-choices;
                             current-index <=> Devices.gpu-choice;
@@ -918,7 +963,7 @@ export component SettingsPage inherits VerticalLayout {
                                 root.gpu-text = self.current-index <= 0 ? "" : "\{self.current-index - 1}";
                             }
                         }
-                        Button {
+                        AppButton {
                             text: "Refresh";
                             clicked => { Devices.rescan(); }
                         }
@@ -930,7 +975,7 @@ export component SettingsPage inherits VerticalLayout {
                             placeholder: "Auto";
                             text <=> root.gpu-text;
                         }
-                        Button {
+                        AppButton {
                             text: "Refresh";
                             clicked => { Devices.rescan(); }
                         }
@@ -996,7 +1041,7 @@ export component SettingsPage inherits VerticalLayout {
                             text: v.value;
                             edited(text) => { EnvEditor.edited(i, v.name, text); }
                         }
-                        Button {
+                        AppButton {
                             text: "Remove";
                             clicked => { EnvEditor.removed(i); }
                         }
@@ -1006,7 +1051,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     HorizontalLayout {
                         alignment: start;
-                        Button {
+                        AppButton {
                             text: "Add variable";
                             clicked => { EnvEditor.added(); }
                         }
@@ -1033,7 +1078,7 @@ export component SettingsPage inherits VerticalLayout {
                             spacing: 8px;
                             alignment: start;
                             Rectangle { width: Form.label-w; }
-                            Button {
+                            AppButton {
                                 text: "Save";
                                 primary: true;
                                 enabled: token-edit.text != "";
@@ -1073,7 +1118,7 @@ export component SettingsPage inherits VerticalLayout {
                                 color: Theme.muted;
                                 vertical-alignment: center;
                             }
-                            Button {
+                            AppButton {
                                 text: "Clear";
                                 clicked => { VM.gh-token-changed(""); }
                             }
@@ -1085,7 +1130,7 @@ export component SettingsPage inherits VerticalLayout {
                     hint: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
                     HorizontalLayout {
                         alignment: start;
-                        Button {
+                        AppButton {
                             text: "Delete cache";
                             enabled: !VM.busy;
                             clicked => { root.delete-cache-requested(); }
@@ -1133,7 +1178,7 @@ export component SettingsPage inherits VerticalLayout {
                     title: "Logging";
                     FormRow {
                         label: "Shader logging";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["Silent", "Console", "File"];
                             current-index <=> root.shader-log;
@@ -1146,7 +1191,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Printf output";
-                        ComboBox {
+                        Selector {
                             horizontal-stretch: 1;
                             model: ["Silent", "Console", "File"];
                             current-index <=> root.printf-dir;
@@ -1171,6 +1216,9 @@ export component SettingsPage inherits VerticalLayout {
     if root.settings-tab == 4 && !root.game-mode: VerticalLayout {
         vertical-stretch: 1;
         spacing: 8px;
+        Hint {
+            text: "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
+        }
         games-box := Rectangle {
             vertical-stretch: 1;
             background: Theme.bg;
@@ -1247,6 +1295,8 @@ export component SettingsPage inherits VerticalLayout {
                         menu(x, y) => {
                             games-menu.show({ x: x - games-menu.absolute-position.x, y: y - games-menu.absolute-position.y });
                         }
+                        set-emu-none => { root.clear-game-emu(index); }
+                        set-emu-pick => { root.pick-game-emu(index); }
                     }
                 }
             }
@@ -1261,24 +1311,24 @@ export component SettingsPage inherits VerticalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            Button {
+            AppButton {
                 text: "Game settings…";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
                 clicked => { root.open-game-settings(root.games-selected); }
             }
-            Button {
+            AppButton {
                 text: "None";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
                 clicked => { root.clear-game-emu(root.games-selected); }
             }
-            Button {
+            AppButton {
                 text: "Set Emu…";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
                 clicked => { root.pick-game-emu(root.games-selected); }
             }
             // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
             // confirmation. Games without a title id (a .zar archive, for one) have no save folder.
-            Button {
+            AppButton {
                 text: "Delete save data…";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
                     && root.game-configs[root.games-selected].serial != "" && !root.running;
@@ -1344,7 +1394,7 @@ export component SettingsPage inherits VerticalLayout {
         if root.removed-games.length > 0: HorizontalLayout {
             alignment: start;
             spacing: 8px;
-            Button {
+            AppButton {
                 text: "Restore";
                 enabled: root.removed-selected >= 0 && root.removed-selected < root.removed-games.length;
                 clicked => { root.restore-game(root.removed-selected); }
@@ -1360,65 +1410,53 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    // Description panel: what the pointer is over, otherwise what the tab is for.
-    Rectangle {
-        height: 44px;
-        border-width: 1px;
-        border-color: Theme.card-border;
-        background: Theme.log-bg;
-        HorizontalLayout {
-            padding-left: 10px;
-            padding-right: 10px;
-            Text {
-                text: HoverHint.text != "" ? HoverHint.text : HoverHint.idle;
-                color: HoverHint.text != "" ? Theme.text : Theme.muted;
-                font-size: 12px;
-                vertical-alignment: center;
-                wrap: word-wrap;
-            }
-        }
-    }
-
-    // Bottom bar: run on the left, save on the right. (Games tab: nothing to save there, pins apply at once.)
-    if !(root.settings-tab == 4 && !root.game-mode): HorizontalLayout {
+    // Bottom bar: crisp 1px top divider, run on the left, save on the right. (Games tab: nothing to save there, pins apply at once.)
+    if !(root.settings-tab == 4 && !root.game-mode): VerticalLayout {
         spacing: 8px;
-        if !root.game-mode: ActionButton {
-            width: 110px;
-            text: root.running ? "Stop" : "Play";
-            base: root.running ? Theme.danger : Theme.accent;
-            hover: root.running ? Theme.danger-hover : Theme.accent-hover;
-            clicked => {
-                if (root.running) {
-                    root.stop();
-                } else {
-                    root.play();
+        Rectangle {
+            height: 1px;
+            background: Theme.card-border;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            if !root.game-mode: ActionButton {
+                width: 110px;
+                text: root.running ? "Stop" : "Play";
+                base: root.running ? Theme.danger : Theme.accent;
+                hover: root.running ? Theme.danger-hover : Theme.accent-hover;
+                clicked => {
+                    if (root.running) {
+                        root.stop();
+                    } else {
+                        root.play();
+                    }
                 }
             }
-        }
-        if !root.game-mode: Button {
-            text: "Dry run";
-            clicked => { root.dry-run(); }
-        }
-        // Per-game mode: deletes the game's overrides (its emulator pin stays).
-        if root.game-mode: Button {
-            text: "Reset to global";
-            clicked => { root.reset-game(); }
-        }
-        Rectangle { horizontal-stretch: 1; }
-        // Drops the unsaved changes and goes back to the library.
-        Button {
-            width: 110px;
-            text: "Discard";
-            clicked => {
-                root.discard();
-                root.back();
+            if !root.game-mode: AppButton {
+                text: "Dry run";
+                clicked => { root.dry-run(); }
             }
-        }
-        Button {
-            width: 110px;
-            text: "Save";
-            primary: true;
-            clicked => { root.save(); }
+            // Per-game mode: deletes the game's overrides (its emulator pin stays).
+            if root.game-mode: AppButton {
+                text: "Reset to global";
+                clicked => { root.reset-game(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            // Drops the unsaved changes and goes back to the library.
+            AppButton {
+                width: 110px;
+                text: "Discard";
+                clicked => {
+                    root.discard();
+                    root.back();
+                }
+            }
+            AppButton {
+                width: 110px;
+                text: "Save";
+                primary: true;
+                clicked => { root.save(); }
+            }
         }
     }
 }

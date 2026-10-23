@@ -10,6 +10,7 @@ export global Theme {
     out property <color> row-outline: #e7ecf3cc;
     out property <color> card-glass: #11141ab8;
     out property <color> bg: #0a0c10;
+    out property <color> panel: #0d0f14;
     out property <color> card: #11141a;
     out property <color> card-border: #2b3345;
     out property <color> text: #d0d7e6;
@@ -20,14 +21,6 @@ export global Theme {
     out property <color> danger: #e5484d;
     out property <color> danger-hover: #f06065;
     out property <color> log-bg: #07090c;
-}
-
-// The explanation of whatever the pointer is over, shown in the description panel at the bottom of a page.
-// Elements set `text` while hovered and clear it if it is still theirs when the pointer leaves. `idle` is what
-// the panel says when nothing is hovered (a page can give it its own wording).
-export global HoverHint {
-    in-out property <string> text;
-    in-out property <string> idle: "Point your mouse at an option to display its description.";
 }
 
 export // Which sort arrow a sortable table header shows.
@@ -143,14 +136,14 @@ export component ThemedEdit inherits Rectangle {
     callback accepted();
     callback edited(string); // the text changed by typing
     min-width: 60px;
-    height: 32px;
+    height: 26px;
     border-width: 1px;
     border-radius: 0px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
     background: #07090c;
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-left: 8px;
+        padding-right: 8px;
         // Clipped, and the text scrolls to keep the cursor in view (as std-widgets' LineEdit does).
         Rectangle {
             horizontal-stretch: 1;
@@ -377,6 +370,260 @@ export component Selector inherits Rectangle {
                             root.selected(i);
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// A titled group: a thin frame with its title sitting on the top edge. `hint` is what the title explains in the
+// description panel when the pointer is over it.
+export component Card inherits VerticalLayout {
+    in property <string> title;
+    in property <string> hint;
+    padding-top: 8px; // room for the title, which rises above the frame
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.card-border;
+        border-radius: 0px;
+        VerticalLayout {
+            padding: 10px;
+            padding-top: 15px;
+            spacing: 6px;
+            alignment: start;
+            @children
+        }
+        // The title covers the border behind it.
+        Rectangle {
+            x: 10px;
+            y: -8px;
+            width: title-text.preferred-width + 8px;
+            height: 16px;
+            background: Theme.panel;
+            title-text := Text {
+                x: 4px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: root.title;
+                color: Theme.text;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+            if root.hint != "": Tooltip {
+                text: @markdown("\{root.hint}");
+            }
+        }
+    }
+}
+
+// ---- Controls in the launcher's own style: square, 1 px borders, the reference's shading. They replace the
+// std-widgets ones, whose Fluent drawing (rounded corners, its own palette) does not follow the theme. ----
+
+export component AppButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 28px;
+    min-width: 76px;
+    border-width: 1px;
+    border-radius: 0px;
+    border-color: root.primary ? (touch.has-hover ? #6db0ff : Theme.accent)
+        : touch.has-hover ? #3e4c66 : Theme.card-border;
+    background: root.primary
+        ? (touch.pressed ? #2f74e0 : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : touch.pressed ? #14171d : touch.has-hover ? #262c38 : @linear-gradient(180deg, #232834 0%, #191d26 100%);
+    opacity: root.enabled ? 1 : 0.45;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        alignment: center;
+        if root.icon.width > 0: Image {
+            source: root.icon;
+            width: 14px;
+            height: 14px;
+            colorize: root.primary ? #ffffff : Theme.text;
+        }
+        Text {
+            text: root.text;
+            color: root.primary ? #ffffff : Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component AppCheckBox inherits Rectangle {
+    in property <string> text;
+    in-out property <bool> checked: false;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    height: 24px;
+    HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                border-width: 1px;
+                border-radius: 0px;
+                border-color: root.checked ? Theme.accent : check-touch.has-hover ? #3e4c66 : Theme.card-border;
+                background: root.checked ? Theme.accent : #07090c;
+                Text {
+                    text: "✓";
+                    color: #ffffff;
+                    font-size: 9px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    visible: root.checked;
+                }
+            }
+        }
+        Text {
+            text: root.text;
+            color: root.enabled ? Theme.text : Theme.faint;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    check-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            }
+        }
+    }
+}
+
+export component AppSlider inherits Rectangle {
+    in-out property <float> value: 0;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 0;
+    in property <bool> enabled: true;
+    callback changed(float);
+    height: 24px;
+    min-width: 60px;
+    // Where a pointer at `x` puts the value: clamped to the range and snapped to `step`.
+    pure function value-at(x: length) -> float {
+        return root.maximum > root.minimum
+            ? root.minimum + clamp(0.0, 1.0, (x - thumb-w / 2) / max(1px, root.width - thumb-w)) * (root.maximum - root.minimum)
+            : root.minimum;
+    }
+    function snapped(v: float) -> float {
+        return root.step > 0 ? round(v / root.step) * root.step : v;
+    }
+    pure function ratio() -> float {
+        return root.maximum > root.minimum ? (root.value - root.minimum) / (root.maximum - root.minimum) : 0;
+    }
+    property <length> thumb-w: 10px;
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 100%;
+        height: 1px;
+        background: Theme.card-border;
+    }
+    Rectangle {
+        x: root.ratio() * (parent.width - thumb-w);
+        y: (parent.height - self.height) / 2;
+        width: thumb-w;
+        height: 14px;
+        background: Theme.accent;
+    }
+    slider-touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        moved => {
+            root.value = root.snapped(root.value-at(self.mouse-x));
+            root.changed(root.value);
+        }
+        clicked => {
+            root.value = root.snapped(root.value-at(self.mouse-x));
+            root.changed(root.value);
+        }
+    }
+}
+
+export component AppSpinBox inherits Rectangle {
+    in-out property <int> value: 0;
+    in property <int> minimum: 0;
+    in property <int> maximum: 100;
+    in property <bool> enabled: true;
+    height: 26px;
+    min-width: 78px;
+    border-width: 1px;
+    border-radius: 0px;
+    border-color: Theme.card-border;
+    background: #07090c;
+    opacity: root.enabled ? 1 : 0.45;
+    function bump(by: int) {
+        root.value = max(root.minimum, min(root.maximum, root.value + by));
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 2px;
+        spacing: 6px;
+        Text {
+            horizontal-stretch: 1;
+            text: root.value;
+            color: Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            Rectangle {
+                width: 18px;
+                height: 11px;
+                background: up-touch.has-hover ? Theme.row-hover : transparent;
+                Chevron {
+                    x: 5px;
+                    y: 2px;
+                    width: 8px;
+                    height: 8px;
+                    angle: 270deg;
+                    color: Theme.muted;
+                }
+                up-touch := TouchArea {
+                    enabled: root.enabled && root.value < root.maximum;
+                    mouse-cursor: pointer;
+                    clicked => { root.bump(1); }
+                }
+            }
+            Rectangle {
+                width: 18px;
+                height: 11px;
+                background: down-touch.has-hover ? Theme.row-hover : transparent;
+                Chevron {
+                    x: 5px;
+                    y: 1px;
+                    width: 8px;
+                    height: 8px;
+                    angle: 90deg;
+                    color: Theme.muted;
+                }
+                down-touch := TouchArea {
+                    enabled: root.enabled && root.value > root.minimum;
+                    mouse-cursor: pointer;
+                    clicked => { root.bump(-1); }
                 }
             }
         }

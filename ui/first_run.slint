@@ -4,9 +4,7 @@
 // Options are short labels; what each one means (and the folder it uses) shows in the panel at the bottom on hover.
 // The path defaults below are only sample data for the live preview: C++ sets every property before showing it.
 
-import { Button } from "std-widgets.slint";
-import { Theme } from "common.slint";
-import { Card } from "settings.slint";
+import { Theme, AppButton, Card } from "common.slint";
 
 // One option: a radio dot (or a check box when `check` is set) and its label. Reports hover with its help text.
 component ChoiceRow inherits Rectangle {
@@ -193,7 +191,7 @@ export component FirstRunWindow inherits Window {
 
         HorizontalLayout {
             alignment: end;
-            Button {
+            AppButton {
                 text: "Continue";
                 primary: true;
                 clicked => { root.continue-clicked(); }

@@ -1,8 +1,8 @@
 // Controls page: the PS5 controls mapped to keyboard keys / mouse buttons and to gamepad buttons.
 // The Qt launcher's Controls dialog, as a page: two tabs, click a binding then press, right-click clears.
 
-import { Button, CheckBox, ComboBox, ScrollView, Slider } from "std-widgets.slint";
-import { Theme } from "common.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Selector, AppButton, AppCheckBox, AppSlider } from "common.slint";
 
 // One row: a PS5 control and the binding it shows.
 export struct ControlRow {
@@ -276,7 +276,7 @@ export component ControlsPage inherits Rectangle {
                     }
                     VerticalLayout {
                         alignment: center;
-                        Slider {
+                        AppSlider {
                             width: 220px;
                             minimum: 0.1;
                             maximum: 5.0;
@@ -334,7 +334,7 @@ export component ControlsPage inherits Rectangle {
                 }
                 VerticalLayout {
                     alignment: center;
-                    ComboBox {
+                    Selector {
                         width: 150px;
                         model: ["Classic", "Blue neon", "Monochrome", "Crimson", "Red/Blue"];
                         current-index <=> Controls.skin-index;
@@ -342,7 +342,7 @@ export component ControlsPage inherits Rectangle {
                 }
                 VerticalLayout {
                     alignment: center;
-                    CheckBox {
+                    AppCheckBox {
                         text: "Show hand cursor and trail";
                         checked <=> Controls.show-cursor;
                     }
@@ -371,21 +371,21 @@ export component ControlsPage inherits Rectangle {
             }
             VerticalLayout {
                 alignment: center;
-                Button {
+                AppButton {
                     text: "Restore Defaults";
                     clicked => { Controls.restore-defaults(Controls.tab == 0); }
                 }
             }
             VerticalLayout {
                 alignment: center;
-                Button {
+                AppButton {
                     text: "Cancel";
                     clicked => { Controls.cancel(); }
                 }
             }
             VerticalLayout {
                 alignment: center;
-                Button {
+                AppButton {
                     text: "Save";
                     primary: true;
                     clicked => { Controls.save(); }
@@ -434,7 +434,7 @@ export component ControlsPage inherits Rectangle {
                         color: Theme.muted;
                         font-size: 12px;
                     }
-                    ComboBox {
+                    Selector {
                         model: Controls.pad-sources;
                         selected => { Controls.pick-source(self.current-index); }
                     }
@@ -442,7 +442,7 @@ export component ControlsPage inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     Rectangle { horizontal-stretch: 1; }
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         clicked => { Controls.cancel-capture(); }
                     }

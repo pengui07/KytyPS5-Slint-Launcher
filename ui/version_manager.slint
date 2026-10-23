@@ -1,5 +1,5 @@
-import { Button, CheckBox, ComboBox, LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Selector, Chevron } from "common.slint";
+import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
+import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Selector, Chevron, AppButton, AppCheckBox } from "common.slint";
 
 // ---- Version Manager: emulator builds the launcher can run ----
 
@@ -147,8 +147,10 @@ export component TabButton inherits Rectangle {
     in property <bool> renaming: false; // the title is an edit box
     callback rename-done(string);
     callback rename-cancel();
-    height: 28px;
-    background: root.active ? #ffffff14 : tab-touch.has-hover ? #ffffff0a : transparent;
+    height: 26px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: root.active ? Theme.bg : #141820;
     HorizontalLayout {
         padding-left: root.renaming ? 6px : 12px;
         padding-right: root.renaming ? 6px : 12px;
@@ -169,10 +171,13 @@ export component TabButton inherits Rectangle {
             cancelled => { root.rename-cancel(); }
         }
     }
+    // The active tab opens into the page below: its bottom edge is the page colour, cutting the strip's hairline.
     Rectangle {
-        y: parent.height - 2px;
-        height: 2px;
-        background: root.active ? Theme.accent : transparent;
+        visible: root.active;
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.bg;
     }
     if root.tooltip != "": Tooltip {
         text: @markdown("\{root.tooltip}");
@@ -253,7 +258,7 @@ component VersionRowView inherits Rectangle {
         spacing: 0px;
         Rectangle {
             width: root.col-selected;
-            CheckBox {
+            AppCheckBox {
                 checked: root.version.shown;
                 toggled => { root.toggled(self.checked); }
             }
@@ -665,7 +670,7 @@ export component VersionManagerPage inherits Rectangle {
                     // Enter applies the typed folder, like Browse does.
                     accepted => { VM.refresh-installed(); }
                 }
-                Button {
+                AppButton {
                     width: 100px;
                     text: "Browse";
                     clicked => { VM.browse-path(); }
@@ -1166,7 +1171,7 @@ export component VersionManagerPage inherits Rectangle {
                         overflow: elide;
                         vertical-alignment: center;
                     }
-                    if VM.busy: Button {
+                    if VM.busy: AppButton {
                         width: 70px;
                         text: "Cancel";
                         clicked => { VM.cancel-busy(); }
@@ -1228,11 +1233,11 @@ export component VersionManagerPage inherits Rectangle {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         clicked => { VM.add-source-open = false; }
                     }
-                    Button {
+                    AppButton {
                         text: "Add";
                         primary: true;
                         enabled: !VM.add-source-busy && link-edit.text != "";
@@ -1330,14 +1335,14 @@ export component VersionManagerPage inherits Rectangle {
                         }
                     }
                 }
-                if VM.remove-has-tracked: CheckBox {
+                if VM.remove-has-tracked: AppCheckBox {
                     text: "Also delete the downloaded files";
                     checked <=> VM.remove-delete-files;
                 }
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         clicked => { VM.remove-dialog-open = false; }
                     }
@@ -1427,7 +1432,7 @@ export component VersionManagerPage inherits Rectangle {
                 AboutRow {
                     label: "Path";
                     value: VM.about.path;
-                    Button {
+                    AppButton {
                         text: "Go to file";
                         clicked => { VM.about-show-file(); }
                     }
@@ -1503,7 +1508,7 @@ export component VersionManagerPage inherits Rectangle {
                 Rectangle { height: 6px; }
                 HorizontalLayout {
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Close";
                         primary: true;
                         clicked => { VM.about-open = false; }

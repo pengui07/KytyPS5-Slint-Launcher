@@ -1,5 +1,5 @@
-import { Button, ComboBox, LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, IconButton, SortState } from "common.slint";
+import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
+import { Theme, TextCell, HeaderCell, IconButton, SortState, Selector, AppButton } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
 // pickers and the Games tab's delete-save action).
@@ -769,7 +769,7 @@ export component AppWindow inherits Window {
             // Which emulator build runs the game (the Version Manager's installed list).
             VerticalLayout {
                 alignment: center;
-                ComboBox {
+                Selector {
                     width: 230px;
                     model: root.emu-builds;
                     current-index <=> root.emu-build-index;
@@ -778,7 +778,7 @@ export component AppWindow inherits Window {
             }
             VerticalLayout {
                 alignment: center;
-                Button {
+                AppButton {
                     text: "Version Manager";
                     clicked => {
                         root.show-trophies = false;
@@ -1002,7 +1002,16 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Settings page: the values live here, the page binds to them.
+    // Settings page: the values live here, the page binds to them. The surface behind it is a shade lighter than
+    // the window, so the page reads as its own layer (the reference's layering).
+    Rectangle {
+        visible: root.show-settings && !root.show-versions;
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: Theme.panel;
+    }
     SettingsPage {
         visible: root.show-settings && !root.show-versions;
         x: 0px;
@@ -1219,11 +1228,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         clicked => { root.pin-dialog-open = false; }
                     }
-                    Button {
+                    AppButton {
                         text: "Set";
                         primary: true;
                         enabled: root.pin-pick >= 0 && root.pin-pick < root.pin-builds.length;
@@ -1272,14 +1281,14 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Close anyway";
                         clicked => {
                             root.close-prompt-open = false;
                             root.confirm-close();
                         }
                     }
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         primary: true;
                         clicked => { root.close-prompt-open = false; }
@@ -1324,14 +1333,14 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Continue";
                         clicked => {
                             root.delete-cache-prompt-open = false;
                             VM.delete-cache();
                         }
                     }
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         primary: true;
                         clicked => { root.delete-cache-prompt-open = false; }
@@ -1380,14 +1389,14 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Delete";
                         clicked => {
                             root.delete-save-prompt-open = false;
                             root.delete-save-data(root.delete-save-row);
                         }
                     }
-                    Button {
+                    AppButton {
                         text: "Cancel";
                         primary: true;
                         clicked => { root.delete-save-prompt-open = false; }
@@ -1459,7 +1468,7 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "OK";
                         primary: true;
                         clicked => { root.import-summary-open = false; }
@@ -1530,11 +1539,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 10px;
                     alignment: end;
-                    Button {
+                    AppButton {
                         text: "Later";
                         clicked => { VM.update-prompt-open = false; }
                     }
-                    Button {
+                    AppButton {
                         text: "Update";
                         primary: true;
                         clicked => {
@@ -1593,7 +1602,7 @@ export component ConsoleWindow inherits Window {
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
-            Button {
+            AppButton {
                 text: "Clear";
                 clicked => { root.clear(); }
             }
