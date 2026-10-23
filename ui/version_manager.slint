@@ -147,7 +147,9 @@ export component TabButton inherits Rectangle {
     in property <bool> renaming: false; // the title is an edit box
     callback rename-done(string);
     callback rename-cancel();
-    height: 26px;
+    // Full strip height: every tab's own bottom edge sits exactly on the strip's hairline. The active tab's cut
+    // rectangle below then hides both its border and the hairline behind it, so it opens into the page.
+    height: 28px;
     border-width: 1px;
     border-color: Theme.card-border;
     background: root.active ? Theme.bg : #141820;
