@@ -266,9 +266,10 @@ component GameConfigRowView inherits Rectangle {
                 }
             }
             emu-popup := PopupWindow {
-                x: 0px;
-                y: emu-cell.height + 2px;
-                width: 150px;
+                x: (emu-cell.width - 100px) / 2;
+                // Centred on the cell: 59px = two 26px rows + 1px spacing + 3px padding top and bottom.
+                y: (emu-cell.height - 59px) / 2;
+                width: 100px;
                 close-policy: close-on-click-outside;
                 Rectangle {
                     background: Theme.card;
