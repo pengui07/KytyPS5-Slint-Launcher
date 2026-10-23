@@ -1,63 +1,61 @@
 // First launch: where the launcher keeps its data, where the saves go, and whether to bring over the Qt launcher's
 // settings. Shown before the main window exists (see run_first_run_setup in main.cpp); nothing is written until
 // Continue, and closing the window keeps the choices it shows.
+// Options are short labels; what each one means (and the folder it uses) shows in the panel at the bottom on hover.
 // The path defaults below are only sample data for the live preview: C++ sets every property before showing it.
 
-import { Button, CheckBox } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 import { Theme } from "common.slint";
+import { Card } from "settings.slint";
 
-// One exclusive choice: a radio dot, a title and the folder it means (or why the choice is off).
+// One option: a radio dot (or a check box when `check` is set) and its label. Reports hover with its help text.
 component ChoiceRow inherits Rectangle {
     in property <string> title;
-    in property <string> detail;
+    in property <string> help;
     in property <bool> selected: false;
     in property <bool> enabled: true;
+    in property <bool> check: false;
     callback picked();
+    callback hover(string /* help, or "" on leave */, string /* own help, to clear only its own */);
 
-    min-height: 44px;
-    border-radius: 6px;
-    background: root.selected ? Theme.row-selected : touch.has-hover && root.enabled ? Theme.row-hover : transparent;
+    height: 26px;
     opacity: root.enabled ? 1 : 0.5;
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 12px;
-        padding-top: 6px;
-        padding-bottom: 6px;
-        spacing: 10px;
-
+        spacing: 8px;
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                // A thick accent ring reads as a filled radio dot without a second shape.
-                border-width: root.selected ? 5px : 1.5px;
+                width: 14px;
+                height: 14px;
+                border-radius: root.check ? 3px : 7px;
+                // A thick accent ring reads as a filled radio dot; a check box fills instead.
+                border-width: root.check ? (root.selected ? 0px : 1.5px) : (root.selected ? 4px : 1.5px);
                 border-color: root.selected ? Theme.accent : Theme.faint;
+                background: root.check && root.selected ? Theme.accent : transparent;
+                if root.check && root.selected: Text {
+                    text: "✓";
+                    color: Theme.bg;
+                    font-size: 11px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
-        VerticalLayout {
-            alignment: center;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
             horizontal-stretch: 1;
-            spacing: 1px;
-            Text {
-                text: root.title;
-                color: Theme.text;
-                font-size: 13px;
-                overflow: elide;
-            }
-            // Only laid out when there is something to say: a hidden Text still takes its height.
-            if root.detail != "": Text {
-                text: root.detail;
-                color: Theme.muted;
-                font-size: 11px;
-                overflow: elide;
-            }
         }
     }
     touch := TouchArea {
         mouse-cursor: root.enabled ? pointer : default;
+        changed has-hover => {
+            root.hover(self.has-hover ? root.help : "", root.help);
+        }
         clicked => {
             if (root.enabled) {
                 root.picked();
@@ -66,33 +64,11 @@ component ChoiceRow inherits Rectangle {
     }
 }
 
-// A group heading: the name and, fainter, what lives there.
-component SectionLabel inherits HorizontalLayout {
-    in property <string> name;
-    in property <string> hint;
-    spacing: 8px;
-    padding-left: 10px;
-    padding-bottom: 2px;
-    Text {
-        text: root.name;
-        color: Theme.muted;
-        font-size: 11px;
-        font-weight: 700;
-    }
-    Text {
-        text: root.hint;
-        color: Theme.faint;
-        font-size: 11px;
-        overflow: elide;
-        horizontal-stretch: 1;
-    }
-}
-
 export component FirstRunWindow inherits Window {
-    title: "KytyPS5 Launcher";
+    title: "KytyPS5 Launcher - first start";
     icon: @image-url("icons/app-icon.png");
-    preferred-width: 620px;
-    min-width: 540px;
+    preferred-width: 560px;
+    min-width: 480px;
     background: Theme.bg;
     default-font-size: 13px;
 
@@ -123,113 +99,104 @@ export component FirstRunWindow inherits Window {
     callback continue-clicked();
     callback pick-run-dir();
 
+    // The hovered option's explanation, shown in the panel at the bottom.
+    property <string> hover-help;
+    function on-hover(help: string, own: string) {
+        if (help != "") {
+            root.hover-help = help;
+        } else if (root.hover-help == own) {
+            root.hover-help = "";
+        }
+    }
+
     VerticalLayout {
-        padding: 24px;
-        padding-bottom: 20px;
-        spacing: 2px;
+        padding: 12px;
+        spacing: 10px;
 
-        Text {
-            text: "Welcome to KytyPS5 Launcher";
-            color: Theme.text;
-            font-size: 18px;
-            font-weight: 700;
-        }
-        Text {
-            text: "Choose where your files go. You can change both later in Settings > Paths.";
-            color: Theme.muted;
-            font-size: 12px;
-            wrap: word-wrap;
-        }
-
-        Rectangle { height: 18px; }
-
-        SectionLabel {
-            name: "LAUNCHER DATA";
-            hint: "settings, downloaded versions, cache, logs";
-        }
-        ChoiceRow {
-            title: "App data (recommended)";
-            detail: root.app-data-root;
-            selected: !root.portable-selected;
-            picked => {
-                root.portable-selected = false;
+        Card {
+            title: "Launcher data";
+            ChoiceRow {
+                title: "App data (recommended)";
+                help: "Settings, downloaded emulator versions, cache and logs are kept in your user folder: " + root.app-data-root;
+                selected: !root.portable-selected;
+                picked => { root.portable-selected = false; }
+                hover(h, o) => { root.on-hover(h, o); }
             }
-        }
-        ChoiceRow {
-            title: "Next to the launcher (portable)";
-            detail: root.portable-enabled ? root.portable-root : root.portable-disabled-reason;
-            selected: root.portable-selected;
-            enabled: root.portable-enabled;
-            picked => {
-                root.portable-selected = true;
+            ChoiceRow {
+                title: "Next to the launcher (portable)";
+                help: root.portable-enabled
+                    ? "Everything is kept beside the launcher, so the folder can be moved or copied as a whole: " + root.portable-root
+                    : root.portable-disabled-reason;
+                selected: root.portable-selected;
+                enabled: root.portable-enabled;
+                picked => { root.portable-selected = true; }
+                hover(h, o) => { root.on-hover(h, o); }
             }
         }
 
-        Rectangle { height: 14px; }
-
-        SectionLabel {
-            name: "SAVES";
-            hint: "where games keep _SaveData and _Trophies";
-        }
-        if root.qt-run-dir-available: ChoiceRow {
-            title: "Keep the Qt launcher's folder";
-            detail: root.qt-run-dir;
-            selected: root.run-choice == 1;
-            picked => {
-                root.run-choice = 1;
+        Card {
+            title: "Saves";
+            if root.qt-run-dir-available: ChoiceRow {
+                title: "Keep the Qt launcher's folder";
+                help: "Games keep using the _SaveData and _Trophies already in " + root.qt-run-dir;
+                selected: root.run-choice == 1;
+                picked => { root.run-choice = 1; }
+                hover(h, o) => { root.on-hover(h, o); }
             }
-        }
-        ChoiceRow {
-            title: "With the launcher data";
-            detail: root.default-run-dir;
-            selected: root.run-choice == 0;
-            picked => {
-                root.run-choice = 0;
+            ChoiceRow {
+                title: "With the launcher data";
+                help: "Games keep _SaveData and _Trophies in " + root.default-run-dir;
+                selected: root.run-choice == 0;
+                picked => { root.run-choice = 0; }
+                hover(h, o) => { root.on-hover(h, o); }
             }
-        }
-        ChoiceRow {
-            title: root.run-choice == 2 && root.picked-run-dir != "" ? "Another folder" : "Another folder...";
-            detail: root.run-choice == 2 ? root.picked-run-dir : "";
-            selected: root.run-choice == 2;
-            picked => {
-                root.pick-run-dir();
+            ChoiceRow {
+                title: root.run-choice == 2 && root.picked-run-dir != "" ? "Another folder" : "Another folder...";
+                help: root.run-choice == 2 && root.picked-run-dir != ""
+                    ? "Games keep _SaveData and _Trophies in " + root.picked-run-dir + ". Click to pick a different one."
+                    : "Pick any folder for _SaveData and _Trophies.";
+                selected: root.run-choice == 2;
+                picked => { root.pick-run-dir(); }
+                hover(h, o) => { root.on-hover(h, o); }
             }
         }
 
-        if root.qt-found: HorizontalLayout {
-            padding-top: 14px;
-            padding-left: 8px;
-            VerticalLayout {
-                spacing: 1px;
-                CheckBox {
-                    text: "Import settings and games from the Qt launcher";
-                    checked: root.import-qt;
-                    toggled => {
-                        root.import-qt = self.checked;
-                    }
-                }
-                HorizontalLayout {
-                    padding-left: 28px;
-                    Text {
-                        text: root.qt-ini-path;
-                        color: Theme.faint;
-                        font-size: 11px;
-                        overflow: elide;
-                    }
+        if root.qt-found: Card {
+            title: "Qt launcher";
+            ChoiceRow {
+                title: "Import its settings and games";
+                help: "Copies the settings and the game list from " + root.qt-ini-path;
+                check: true;
+                selected: root.import-qt;
+                picked => { root.import-qt = !root.import-qt; }
+                hover(h, o) => { root.on-hover(h, o); }
+            }
+        }
+
+        // Description panel, as in the Qt launcher's settings: the hovered option's explanation.
+        Rectangle {
+            height: 52px;
+            border-width: 1px;
+            border-radius: 4px;
+            border-color: Theme.card-border;
+            background: Theme.card;
+            HorizontalLayout {
+                padding: 8px;
+                Text {
+                    text: root.hover-help != "" ? root.hover-help : "Point your mouse at an option to see what it does. Both can be changed later in Settings > Paths.";
+                    color: root.hover-help != "" ? Theme.text : Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
                 }
             }
         }
-
-        Rectangle { height: 20px; }
 
         HorizontalLayout {
             alignment: end;
             Button {
                 text: "Continue";
                 primary: true;
-                clicked => {
-                    root.continue-clicked();
-                }
+                clicked => { root.continue-clicked(); }
             }
         }
     }
