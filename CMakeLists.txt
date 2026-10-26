@@ -66,22 +66,27 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Slint)
 # Menus shaped like the shadPS4 launcher's, and the menu bar drawn as the window's title bar. Slint
-# has no per-app menu styling, so the fluent style's menu file and the shared menu bar
-# implementation are replaced in the fetched source; slint-compiler embeds the styles and rebuilds
+# has no per-app menu styling, so the fluent style's menu file, its Palette (which carries the
+# launcher's theme to the menus) and the shared menu bar implementation are replaced in the fetched
+# source; slint-compiler embeds the styles and rebuilds
 # when they change. Copied only when they differ.
 set(KYTY_MENU_STYLE "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/fluent-menu.slint")
 set(KYTY_MENU_IMPL "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/menus.slint")
+set(KYTY_STYLE_BASE "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/fluent-style-base.slint")
 configure_file("${KYTY_MENU_STYLE}"
 	"${slint_SOURCE_DIR}/internal/compiler/widgets/fluent/menu.slint" COPYONLY)
 configure_file("${KYTY_MENU_IMPL}"
 	"${slint_SOURCE_DIR}/internal/compiler/widgets/common/menus.slint" COPYONLY)
+configure_file("${KYTY_STYLE_BASE}"
+	"${slint_SOURCE_DIR}/internal/compiler/widgets/fluent/style-base.slint" COPYONLY)
 # The embedded styles are not in the depfile slint-compiler writes (only app.slint's own imports are),
 # so a style-only edit would rebuild nothing. Re-configure when they change, and drop the generated
 # app.h so the codegen step re-runs and picks the new menu style up.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KYTY_MENU_STYLE}" "${KYTY_MENU_IMPL}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KYTY_MENU_STYLE}" "${KYTY_MENU_IMPL}" "${KYTY_STYLE_BASE}")
 file(SHA256 "${KYTY_MENU_STYLE}" _kyty_menu_style_hash)
 file(SHA256 "${KYTY_MENU_IMPL}" _kyty_menu_impl_hash)
-set(_kyty_menu_hash "${_kyty_menu_style_hash}${_kyty_menu_impl_hash}")
+file(SHA256 "${KYTY_STYLE_BASE}" _kyty_style_base_hash)
+set(_kyty_menu_hash "${_kyty_menu_style_hash}${_kyty_menu_impl_hash}${_kyty_style_base_hash}")
 set(_kyty_menu_stamp "${CMAKE_CURRENT_BINARY_DIR}/menu-style.stamp")
 if(EXISTS "${_kyty_menu_stamp}")
 	file(READ "${_kyty_menu_stamp}" _kyty_menu_old_hash)

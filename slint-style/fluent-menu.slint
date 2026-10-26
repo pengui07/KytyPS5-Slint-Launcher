@@ -8,12 +8,13 @@
 // brightens on hover or while its menu is open, with no box behind it.
 // The popup menus are shaped like the shadPS4 launcher's: near-square corners, rows highlighted edge
 // to edge in the accent colour, a slim frame.
-// This file cannot see the launcher's Theme global, so it follows FluentPalette.color-scheme, which
-// app.slint sets from Theme.light; the popup colours copy common.slint's Theme values (named beside
-// them), light or dark. The classic theme gets the dark ones: color-scheme has no third value. The bar itself
+// This file cannot see the launcher's Theme global, so the popup colours copy common.slint's Theme
+// values (named beside them) for each scheme, picked by Palette.launcher-scheme (the launcher's copy
+// of style-base.slint), which PaletteSync sets from Theme.scheme. The bar itself
 // is transparent: AppWindow's background (Theme.panel) shows through it.
 
 import { FluentPalette, FluentFontSettings } from "styling.slint";
+import { Palette } from "style-base.slint";
 
 // `open` is set by the launcher's copy of menus.slint (slint-style/menus.slint) while this entry's
 // menu is showing.
@@ -76,11 +77,12 @@ export component MenuBar inherits Rectangle {
 
 // Padding only above and below, so the highlighted row reaches both edges.
 export component MenuFrame inherits Rectangle {
-    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
-    background: light ? #ffffff : #141923; // Theme.popup
+    property <bool> light: Palette.launcher-scheme == 1;
+    property <bool> classic: Palette.launcher-scheme == 2;
+    background: light ? #ffffff : classic ? #2f2e2c : #141923; // Theme.popup
     border-radius: 2px;
     border-width: 1px;
-    border-color: light ? #c5ccd8 : #2b3345; // Theme.card-border
+    border-color: light ? #c5ccd8 : classic ? #45433f : #2b3345; // Theme.card-border
     drop-shadow-color: light ? #00000040 : #00000090;
     drop-shadow-offset-y: 4px;
     drop-shadow-blur: 10px;
@@ -219,7 +221,8 @@ component IconMenuItemBase {
 }
 
 export component MenuItem {
-    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
+    property <bool> light: Palette.launcher-scheme == 1;
+    property <bool> classic: Palette.launcher-scheme == 2;
     in property <bool> is-current <=> base.is-current;
     in property <MenuEntry> entry <=> base.entry;
 
@@ -236,11 +239,11 @@ export component MenuItem {
 
         base := IconMenuItemBase {
             // Theme.text, Theme.muted, Theme.on-accent, Theme.accent and Theme.card-border.
-            default-foreground: light ? #1a2130 : #d0d7e6;
-            alternate-foreground: light ? #586377 : #707b90;
+            default-foreground: light ? #1a2130 : classic ? #d6d6d6 : #d0d7e6;
+            alternate-foreground: light ? #586377 : classic ? #8f8f8d : #707b90;
             current-foreground: #ffffff;
-            current-background: light ? #2b6fe0 : #3a86ff;
-            separator-color: light ? #c5ccd8 : #2b3345;
+            current-background: light ? #2b6fe0 : classic ? #5a86b8 : #3a86ff;
+            separator-color: light ? #c5ccd8 : classic ? #45433f : #2b3345;
             border-radius: 0px;
             horizontal-padding: 12px;
             sub-menu-icon: @image-url("_arrow_forward.svg");
