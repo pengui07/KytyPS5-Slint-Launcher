@@ -543,7 +543,7 @@ export component VersionManagerPage inherits Rectangle {
             }
             MenuItem {
                 title: "GitHub page";
-                icon: @image-url("icons/link.svg");
+                icon: @image-url("icons/github.svg");
                 enabled: VM.current-available >= 0 && VM.current-available < VM.available.length;
                 activated => { VM.open-release(VM.current-available); }
             }
