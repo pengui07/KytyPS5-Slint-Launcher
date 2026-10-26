@@ -1,5 +1,5 @@
 import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Selector, Chevron, AppButton, AppCheckBox } from "common.slint";
+import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Dropdown, Chevron, AppButton, AppCheckBox } from "common.slint";
 
 // ---- Version Manager: emulator builds the launcher can run ----
 
@@ -703,7 +703,7 @@ export component VersionManagerPage inherits Rectangle {
                     }
                     VerticalLayout {
                         alignment: center;
-                        Selector {
+                        Dropdown {
                             width: 110px;
                             model: ["Any", "Tracked", "Local"];
                             current-index <=> VM.installed-kind;
