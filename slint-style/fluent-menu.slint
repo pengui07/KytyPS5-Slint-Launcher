@@ -3,8 +3,8 @@
 
 // The launcher's copy of Slint's fluent/menu.slint (v1.18.1), copied over the fetched one by
 // CMakeLists.txt: Slint has no per-app menu styling. The window has no native frame, so the menu bar
-// is the window's title bar, like the classic Steam client's: small grey menu titles from the left
-// edge, and app.slint draws the window buttons over its right end. A title is plain text that only
+// is the window's title bar, like the classic Steam client's: small grey menu titles after the app
+// icon, and app.slint draws the icon and the window buttons over its two ends. A title is plain text that only
 // brightens on hover or while its menu is open, with no box behind it.
 // The popup menus are shaped like the shadPS4 launcher's: near-square corners, rows highlighted edge
 // to edge in the accent colour, a slim frame.
@@ -51,8 +51,8 @@ export component MenuBarItem {
     }
 }
 
-// The title bar row. 24px high and 6px of left padding: app.slint's TitleBar uses the same two
-// values. Dragging anywhere on it moves the window.
+// The title bar row. 24px high and 28px of left padding (room for the app icon): app.slint's
+// TitleBar uses the same two values. Dragging anywhere on it moves the window.
 export component MenuBar inherits Rectangle {
     min-height: max(24px, layout.min-height);
     background: #0d0f14;
@@ -60,7 +60,7 @@ export component MenuBar inherits Rectangle {
     WindowMoveArea {
         layout := HorizontalLayout {
             alignment: start;
-            padding-left: 6px;
+            padding-left: 28px;
 
             @children
         }
