@@ -1148,16 +1148,19 @@ export component SettingsPage inherits VerticalLayout {
                 Menu {
                     MenuItem {
                         title: "Game settings…";
+                        icon: @image-url("icons/global-settings.svg");
                         enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
                         activated => { root.open-game-settings(root.games-selected); }
                     }
                     MenuItem {
                         title: "None";
+                        icon: @image-url("icons/clear.svg");
                         enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
                         activated => { root.clear-game-emu(root.games-selected); }
                     }
                     MenuItem {
                         title: "Set Emu…";
+                        icon: @image-url("icons/pin.svg");
                         enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
                         activated => { root.pick-game-emu(root.games-selected); }
                     }

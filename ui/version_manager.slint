@@ -447,6 +447,7 @@ export component VersionManagerPage inherits Rectangle {
         Menu {
             MenuItem {
                 title: "Rename";
+                icon: @image-url("icons/rename.svg");
                 enabled: VM.selected-count == 1 && VM.current-installed >= 0 && VM.current-installed < VM.installed.length
                     && VM.installed[VM.current-installed].renamable;
                 activated => {
@@ -457,13 +458,16 @@ export component VersionManagerPage inherits Rectangle {
             // build list) and not the per-game emulator pin.
             MenuItem {
                 title: VM.installed[VM.current-installed].pinned ? "Unpin" : "Pin to top";
+                icon: @image-url("icons/pin.svg");
                 enabled: VM.selected-count == 1 && VM.current-installed >= 0 && VM.current-installed < VM.installed.length
                     && !VM.installed[VM.current-installed].main-latest;
                 activated => { VM.toggle-pin(VM.current-installed); }
             }
+            MenuSeparator {}
             // The build the launcher runs. It can be set while it is not shown in the list.
             MenuItem {
                 title: "Use this build";
+                icon: @image-url("icons/check.svg");
                 enabled: VM.selected-count == 1 && VM.current-installed >= 0 && VM.current-installed < VM.installed.length
                     && !VM.installed[VM.current-installed].active;
                 activated => { VM.activate-version(VM.current-installed); }
@@ -471,22 +475,28 @@ export component VersionManagerPage inherits Rectangle {
             // The selected "-latest" builds get their source's newest release.
             MenuItem {
                 title: VM.selected-latest-count > 1 ? "Update " + VM.selected-latest-count + " builds" : "Update";
+                icon: @image-url("icons/download.svg");
                 enabled: !VM.busy && VM.selected-latest-count > 0;
                 activated => { VM.update-selected(); }
             }
             // Show unless every selected build is already shown; then Hide.
             MenuItem {
                 title: VM.selected-all-shown ? "Hide from the build list" : "Show in the build list";
+                icon: VM.selected-all-shown ? @image-url("icons/eye-off.svg") : @image-url("icons/eye.svg");
                 enabled: VM.selected-count > 0;
                 activated => { VM.show-selected(!VM.selected-all-shown); }
             }
+            MenuSeparator {}
             MenuItem {
                 title: VM.selected-count > 1 ? "Remove " + VM.selected-count + " builds" : "Remove";
+                icon: @image-url("icons/remove-configuration.svg");
                 enabled: !VM.busy && VM.selected-count > 0;
                 activated => { VM.request-remove(); }
             }
+            MenuSeparator {}
             MenuItem {
                 title: "About";
+                icon: @image-url("icons/info.svg");
                 enabled: VM.selected-count == 1 && VM.current-installed >= 0 && VM.current-installed < VM.installed.length;
                 activated => {
                     VM.about-requested(VM.current-installed);
@@ -506,10 +516,12 @@ export component VersionManagerPage inherits Rectangle {
         Menu {
             MenuItem {
                 title: "Rename";
+                icon: @image-url("icons/rename.svg");
                 activated => { VM.renaming-source = root.menu-source; }
             }
             MenuItem {
                 title: "Stop tracking";
+                icon: @image-url("icons/clear.svg");
                 activated => { VM.stop-tracking(root.menu-source); }
             }
         }
@@ -524,12 +536,14 @@ export component VersionManagerPage inherits Rectangle {
         Menu {
             MenuItem {
                 title: "Download";
+                icon: @image-url("icons/download.svg");
                 enabled: !VM.busy && VM.current-available >= 0 && VM.current-available < VM.available.length
                     && !VM.available[VM.current-available].installed;
                 activated => { VM.download-version(VM.current-available); }
             }
             MenuItem {
                 title: "GitHub page";
+                icon: @image-url("icons/link.svg");
                 enabled: VM.current-available >= 0 && VM.current-available < VM.available.length;
                 activated => { VM.open-release(VM.current-available); }
             }

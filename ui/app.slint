@@ -698,10 +698,12 @@ export component AppWindow inherits Window {
             title: "File";
             MenuItem {
                 title: "Add game…";
+                icon: @image-url("icons/folder-add.svg");
                 activated => { root.add-game(); }
             }
             MenuItem {
                 title: "Run folder";
+                icon: @image-url("icons/folder.svg");
                 enabled: root.run-dir != "";
                 activated => { root.open-url(root.run-dir); }
             }
@@ -710,8 +712,10 @@ export component AppWindow inherits Window {
             title: "View";
             Menu {
                 title: "Page";
+                icon: @image-url("icons/grid-view.svg");
                 MenuItem {
                     title: "Library";
+                    icon: @image-url("icons/library.svg");
                     activated => {
                         root.show-settings = false;
                         root.show-versions = false;
@@ -719,6 +723,7 @@ export component AppWindow inherits Window {
                 }
                 MenuItem {
                     title: "Settings";
+                    icon: @image-url("icons/global-settings.svg");
                     activated => {
                         root.show-versions = false;
                         root.show-trophies = false;
@@ -727,6 +732,7 @@ export component AppWindow inherits Window {
                 }
                 MenuItem {
                     title: "Version Manager";
+                    icon: @image-url("icons/versions.svg");
                     activated => {
                         root.show-settings = false;
                         root.show-trophies = false;
@@ -737,6 +743,7 @@ export component AppWindow inherits Window {
             }
             MenuItem {
                 title: "Console";
+                icon: @image-url("icons/console.svg");
                 activated => { root.open-console(); }
             }
         }
@@ -744,22 +751,27 @@ export component AppWindow inherits Window {
             title: "Settings";
             MenuItem {
                 title: "General";
+                icon: @image-url("icons/gear.svg");
                 activated => { root.open-settings(0); }
             }
             MenuItem {
                 title: "Graphics";
+                icon: @image-url("icons/display.svg");
                 activated => { root.open-settings(1); }
             }
             MenuItem {
                 title: "Advanced";
+                icon: @image-url("icons/wrench.svg");
                 activated => { root.open-settings(2); }
             }
             MenuItem {
                 title: "Debug";
+                icon: @image-url("icons/bug.svg");
                 activated => { root.open-settings(3); }
             }
             MenuItem {
                 title: "Games";
+                icon: @image-url("icons/library.svg");
                 activated => { root.open-settings(4); }
             }
         }
@@ -767,10 +779,12 @@ export component AppWindow inherits Window {
             title: "Help";
             MenuItem {
                 title: "GitHub";
+                icon: @image-url("icons/link.svg");
                 activated => { root.open-url("https://github.com/KytyPS5/KytyPS5"); }
             }
             MenuItem {
                 title: "Check for updates";
+                icon: @image-url("icons/refresh.svg");
                 enabled: false; // placeholder
             }
         }
