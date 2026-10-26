@@ -1,5 +1,5 @@
 import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, IconButton, SortState, Selector, AppButton } from "common.slint";
+import { Theme, TextCell, HeaderCell, IconButton, SortState, Dropdown, AppButton } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
 // pickers and the Games tab's delete-save action).
@@ -858,9 +858,10 @@ export component AppWindow inherits Window {
             // Which emulator build runs the game (the Version Manager's installed list).
             VerticalLayout {
                 alignment: center;
-                Selector {
+                Dropdown {
                     width: 200px;
                     model: root.emu-builds;
+                    placeholder: "No builds installed";
                     current-index <=> root.emu-build-index;
                     selected => { root.choose-emu-build(self.current-index); }
                 }

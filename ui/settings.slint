@@ -1,5 +1,5 @@
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, Chevron, Selector, AppButton, AppCheckBox, AppSlider, AppSpinBox, Card } from "common.slint";
+import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, Chevron, Dropdown, AppButton, AppCheckBox, AppSlider, AppSpinBox, Card } from "common.slint";
 import { VM, TabButton } from "version_manager.slint";
 
 export struct ToggleItem {
@@ -52,7 +52,7 @@ export global EnvEditor {
 // STEP6:6e: the microphone and GPU pickers. C++ fills these when the page opens and on Refresh; empty lists
 // mean the page keeps its plain text fields (macOS and Linux, or when nothing was detected).
 export global Devices {
-    in property <[string]> audio-inputs;
+    in property <[string]> audio-inputs;   // "Default (system)" first, then the detected input devices
     in property <[string]> gpu-choices;    // "Auto" first, then the Vulkan devices in enumeration order
     in-out property <int> gpu-choice: 0;   // index in gpu-choices; 0 = Auto (the emulator's gpu index -1)
     callback refresh();                    // page opened: use the session's list (enumerate on first use)
@@ -237,88 +237,19 @@ component GameConfigRowView inherits Rectangle {
         TextCell { w: root.serial-w; text: root.game.serial == "" ? "—" : root.game.serial; }
         TextCell { w: root.version-w; text: root.game.game-version == "" ? "—" : root.game.game-version; }
         // The Emu column is a drop-down: None, or pick another build. The row's TouchArea opens it (see below).
-        emu-cell := Rectangle {
+        emu-cell := Dropdown {
             width: root.emu-w;
-            height: 24px;
-            border-width: 1px;
-            border-color: Theme.card-border;
-            background: Theme.log-bg;
-            HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 6px;
-                spacing: 4px;
-                Text {
-                    horizontal-stretch: 1;
-                    text: root.game.pinned ? root.game.emu : "None";
-                    color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    Chevron {
-                        width: 10px;
-                        height: 10px;
-                        angle: 90deg;
-                        color: Theme.muted;
-                    }
-                }
-            }
-            emu-popup := PopupWindow {
-                x: (emu-cell.width - 100px) / 2;
-                // Centred on the cell: 59px = two 26px rows + 1px spacing + 3px padding top and bottom.
-                y: (emu-cell.height - 59px) / 2;
-                width: 100px;
-                close-policy: close-on-click-outside;
-                Rectangle {
-                    background: Theme.card;
-                    border-width: 1px;
-                    border-color: Theme.card-border;
-                    VerticalLayout {
-                        padding: 3px;
-                        spacing: 1px;
-                        Rectangle {
-                            height: 26px;
-                            opacity: root.game.pinned ? 1 : 0.45;
-                            background: none-hover.has-hover && root.game.pinned ? Theme.row-hover : transparent;
-                            Text {
-                                x: 8px;
-                                text: "None";
-                                color: Theme.text;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            none-hover := TouchArea {
-                                clicked => {
-                                    if (root.game.pinned) {
-                                        emu-popup.close();
-                                        root.set-emu-none();
-                                    }
-                                }
-                            }
-                        }
-                        Rectangle {
-                            height: 26px;
-                            opacity: root.game.can-config ? 1 : 0.45;
-                            background: pick-hover.has-hover && root.game.can-config ? Theme.row-hover : transparent;
-                            Text {
-                                x: 8px;
-                                text: "Set Emu…";
-                                color: Theme.text;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            pick-hover := TouchArea {
-                                clicked => {
-                                    if (root.game.can-config) {
-                                        emu-popup.close();
-                                        root.set-emu-pick();
-                                    }
-                                }
-                            }
-                        }
-                    }
+            compact: true;
+            tracks-selection: false;
+            model: ["None", "Set Emu…"];
+            item-enabled: [root.game.pinned, root.game.can-config];
+            text: root.game.pinned ? root.game.emu : "None";
+            text-color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+            selected(i) => {
+                if (i == 0) {
+                    root.set-emu-none();
+                } else {
+                    root.set-emu-pick();
                 }
             }
         }
@@ -328,7 +259,7 @@ component GameConfigRowView inherits Rectangle {
         clicked => {
             // A click in the Emu column opens its drop-down; anywhere else selects the row.
             if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x) {
-                emu-popup.show();
+                emu-cell.open();
             } else {
                 root.clicked();
             }
@@ -602,7 +533,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Console language";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["Japanese", "English (United States)", "French (France)", "Spanish (Spain)", "German", "Italian", "Dutch", "Portuguese (Portugal)", "Russian", "Korean", "Chinese (Traditional)", "Chinese (Simplified)", "Finnish", "Swedish", "Danish", "Norwegian", "Polish", "Portuguese (Brazil)", "English (United Kingdom)", "Turkish", "Spanish (Latin America)", "Arabic", "French (Canada)", "Czech", "Hungarian", "Greek", "Romanian", "Thai", "Vietnamese", "Indonesian"];
                             current-index <=> root.console-language;
@@ -616,56 +547,15 @@ export component SettingsPage inherits VerticalLayout {
                     FormRow {
                         label: "Microphone";
                         hint: "The detected input devices. Default (system) leaves the choice to Windows; a name brought over from Kyty.ini shows even when its device is not plugged in.";
-                        // The field itself is the drop-down: it shows the current device and opens the detected list.
-                        mic-field := Rectangle {
+                        // Opens "Default (system)" and the detected devices; the box shows the current name even
+                        // when its device is not plugged in, so the list does not track a selection.
+                        Dropdown {
                             horizontal-stretch: 1;
-                            height: 26px;
-                            border-width: 1px;
-                            border-radius: 0px;
-                            border-color: mic-touch.has-hover ? Theme.accent : Theme.card-border;
-                            background: #07090c;
-                            HorizontalLayout {
-                                padding-left: 10px;
-                                padding-right: 10px;
-                                spacing: 6px;
-                                Text {
-                                    horizontal-stretch: 1;
-                                    text: root.microphone == "" ? "Default (system)" : root.microphone;
-                                    color: root.microphone == "" ? Theme.muted : Theme.text;
-                                    font-size: 13px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
-                                VerticalLayout {
-                                    alignment: center;
-                                    Chevron {
-                                        width: 12px;
-                                        height: 12px;
-                                        color: Theme.muted;
-                                        angle: 90deg;
-                                    }
-                                }
-                            }
-                            mic-touch := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    mic-menu.show({ x: 0px, y: mic-field.height + 2px });
-                                }
-                            }
-                            mic-menu := ContextMenuArea {
-                                width: 0px;
-                                height: 0px;
-                                Menu {
-                                    MenuItem {
-                                        title: "Default (system)";
-                                        activated => { root.microphone = ""; }
-                                    }
-                                    for input in Devices.audio-inputs: MenuItem {
-                                        title: input;
-                                        activated => { root.microphone = input; }
-                                    }
-                                }
-                            }
+                            tracks-selection: false;
+                            model: Devices.audio-inputs;
+                            text: root.microphone;
+                            placeholder: "Default (system)";
+                            selected(i) => { root.microphone = i == 0 ? "" : Devices.audio-inputs[i]; }
                         }
                     }
                 }
@@ -884,7 +774,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Keyboard player";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["Shared with player 1 (default)", "Player 1", "Player 2", "Player 3", "Player 4"];
                             current-index <=> root.keyboard-player;
@@ -910,7 +800,7 @@ export component SettingsPage inherits VerticalLayout {
                     title: "Graphics & display";
                     FormRow {
                         label: "Screen resolution";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: [
                                 "1280 x 720" + (root.recommended-size == 0 ? " (recommended)" : ""),
@@ -950,7 +840,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Present mode";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["Fifo", "Mailbox", "Immediate"];
                             current-index <=> root.present-mode;
@@ -963,7 +853,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Shader optimization";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["None", "Size", "Performance"];
                             current-index <=> root.shader-opt;
@@ -973,7 +863,7 @@ export component SettingsPage inherits VerticalLayout {
                     // index stays possible while nothing was detected.
                     if Devices.gpu-choices.length > 1: FormRow {
                         label: "GPU";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: Devices.gpu-choices;
                             current-index <=> Devices.gpu-choice;
@@ -1201,7 +1091,7 @@ export component SettingsPage inherits VerticalLayout {
                     title: "Logging";
                     FormRow {
                         label: "Shader logging";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["Silent", "Console", "File"];
                             current-index <=> root.shader-log;
@@ -1214,7 +1104,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     FormRow {
                         label: "Printf output";
-                        Selector {
+                        Dropdown {
                             horizontal-stretch: 1;
                             model: ["Silent", "Console", "File"];
                             current-index <=> root.printf-dir;

@@ -737,8 +737,10 @@ int main(int argc, char** argv)
 				*gpu_cache    = list_gpu_devices();
 				*enumerated   = true;
 			}
+			// Index 0 is "Default (system)" (an empty microphone name), so the menu always has an entry.
 			std::vector<slint::SharedString> audio;
-			audio.reserve(device_cache->size());
+			audio.reserve(device_cache->size() + 1);
+			audio.emplace_back("Default (system)");
 			for (const auto& name: *device_cache)
 			{
 				audio.emplace_back(name);

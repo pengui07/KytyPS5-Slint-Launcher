@@ -283,7 +283,6 @@ export component InlineEdit inherits Rectangle {
     }
 }
 
-// A compact drop-down (std ComboBox cannot be made as short as a thin text field).
 // ">" chevron that turns by `angle` (90deg points down). Drawn as a path with its points rotated here,
 // because the software renderer ignores rotation-angle on an Image.
 export component Chevron inherits Path {
@@ -310,82 +309,217 @@ export component Chevron inherits Path {
     }
 }
 
-export component Selector inherits Rectangle {
+// The launcher's drop-down (std ComboBox cannot be made as short as a thin text field, and its Fluent drawing does
+// not follow the theme). Click, Enter or Space opens the list; Up/Down change the value while it is closed, and move
+// the highlight while it is open (Enter picks, Esc closes). `selected(i)` fires after every pick.
+// Set `tracks-selection: false` for an action menu (the Emu column's None / Set Emu…): a pick fires `selected` but
+// leaves `current-index` alone and no row is marked, so `text` says what the closed box shows.
+export component Dropdown inherits Rectangle {
     in property <[string]> model;
     in-out property <int> current-index: 0;
+    in property <[bool]> item-enabled; // greys out entries; an entry past its end is enabled
+    in property <bool> enabled: true;
+    in property <bool> compact: false; // 24 px tall with 12 px text, for table cells
+    in property <bool> tracks-selection: true;
+    in property <string> placeholder; // shown, muted, while nothing is picked
+    in property <string> text: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
+    in property <color> text-color: Theme.text;
+    in property <length> popup-width: max(120px, root.width);
+    out property <bool> is-open: root.popup-focused;
+    out property <bool> has-focus: fs.has-focus || root.popup-focused;
     callback selected(int);
-    height: 26px;
-    min-width: 90px;
-    background: #07090c;
+    property <bool> popup-focused; // the open list holds the focus
+    property <bool> tab-focused; // the frame only lights up for keyboard focus, not after every click
+    property <int> highlight: -1; // the row the arrow keys are on while the list is open
+    property <length> row-h: 26px;
+    property <int> visible-rows: min(10, root.model.length);
+
+    // Opens the list; for owners whose own TouchArea covers this one (the game list's rows).
+    public function open() {
+        if (root.enabled && root.model.length > 0) {
+            root.highlight = root.tracks-selection ? root.current-index : -1;
+            popup.show();
+        }
+    }
+    function close-list() {
+        popup.close();
+        root.popup-focused = false;
+        fs.focus();
+    }
+    pure function item-on(i: int) -> bool {
+        return i < 0 || i >= root.item-enabled.length || root.item-enabled[i];
+    }
+    function pick(i: int) {
+        if (i < 0 || i >= root.model.length || !root.item-on(i)) {
+            return;
+        }
+        if (root.tracks-selection) {
+            root.current-index = i;
+        }
+        root.selected(i);
+    }
+
+    height: root.compact ? 24px : 26px;
+    min-width: root.compact ? 40px : 90px;
+    background: Theme.log-bg;
     border-width: 1px;
     border-radius: 0px;
-    border-color: touch.has-hover ? Theme.accent : Theme.card-border;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 8px;
-        spacing: 6px;
-        Text {
-            horizontal-stretch: 1;
-            text: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
-            color: Theme.text;
-            font-size: 13px;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-        VerticalLayout {
-            alignment: center;
-            Chevron {
-                color: Theme.muted;
-                width: 12px;
-                height: 12px;
-                angle: 90deg;
+    border-color: !root.enabled ? Theme.card-border
+        : root.is-open || (root.tab-focused && fs.has-focus) || touch.has-hover ? Theme.accent : Theme.card-border;
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: fs;
+    accessible-role: combobox;
+    accessible-value: root.text;
+    accessible-expanded: root.is-open;
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => {
+            if (reason == FocusReason.tab-navigation) {
+                root.tab-focused = true;
+            } else if (reason == FocusReason.pointer-click) {
+                root.tab-focused = false;
             }
         }
+        focus-lost(reason) => {
+            if (reason != FocusReason.popup-activation) {
+                root.tab-focused = false;
+            }
+        }
+        changed has-focus => {
+            // The focus comes back here when the list closes, however it was closed.
+            if (self.has-focus) {
+                root.popup-focused = false;
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.open();
+                return accept;
+            }
+            if (root.tracks-selection && event.text == Key.UpArrow) {
+                root.pick(max(0, root.current-index - 1));
+                return accept;
+            }
+            if (root.tracks-selection && event.text == Key.DownArrow) {
+                root.pick(min(root.model.length - 1, root.current-index + 1));
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            padding-left: root.compact ? 8px : 10px;
+            padding-right: root.compact ? 6px : 8px;
+            spacing: root.compact ? 4px : 6px;
+            Text {
+                horizontal-stretch: 1;
+                text: root.text != "" ? root.text : root.placeholder;
+                color: root.text != "" ? root.text-color : Theme.muted;
+                font-size: root.compact ? 12px : 13px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            VerticalLayout {
+                alignment: center;
+                Chevron {
+                    color: root.is-open ? Theme.text : Theme.muted;
+                    width: root.compact ? 10px : 12px;
+                    height: self.width;
+                    angle: root.is-open ? -90deg : 90deg;
+                }
+            }
+        }
+        touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.open(); }
+        }
     }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { popup.show(); }
-    }
+
     popup := PopupWindow {
         x: 0px;
         y: root.height + 2px;
-        width: max(120px, root.width);
+        width: root.popup-width;
+        height: root.visible-rows * root.row-h + 8px;
         close-policy: close-on-click-outside;
-        Rectangle {
-            background: #141923;
-            border-width: 1px;
-            border-color: Theme.card-border;
-            border-radius: 0px;
-            // Long lists (gamepad sources) cap at ~10 rows and scroll; short ones size to fit.
-            height: root.model.length > 10 ? 268px : (root.model.length * 26px + 6px);
-            clip: true;
-            list-scroll := ScrollView {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: parent.height;
-                content-width: self.visible-width;
-                VerticalLayout {
-                    width: list-scroll.visible-width;
-                    padding: 3px;
-                    for item[i] in root.model: Rectangle {
-                        height: 26px;
-                        border-radius: 0px;
-                        background: item-touch.has-hover ? Theme.row-hover : i == root.current-index ? #ffffff10 : transparent;
-                        Text {
-                            x: 8px;
-                            width: parent.width - 8px;
-                            text: item;
-                            color: Theme.text;
-                            font-size: 13px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                        item-touch := TouchArea {
-                            clicked => {
-                                root.current-index = i;
-                                popup.close();
-                                root.selected(i);
+        forward-focus: list-fs;
+        list-fs := FocusScope {
+            focus-changed-event => { root.popup-focused = self.has-focus; }
+            init => {
+                // Long lists open scrolled so the current row sits near the middle.
+                list-scroll.content-y = -clamp((root.highlight - (root.visible-rows - 1) / 2) * root.row-h, 0px,
+                    max(0px, (root.model.length - root.visible-rows) * root.row-h));
+            }
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    root.close-list();
+                    return accept;
+                }
+                if (event.text == Key.UpArrow || event.text == Key.DownArrow) {
+                    root.highlight = event.text == Key.UpArrow ? max(0, root.highlight - 1)
+                        : min(root.model.length - 1, root.highlight + 1);
+                    // Keep the highlighted row in view.
+                    if (root.highlight * root.row-h < -list-scroll.content-y) {
+                        list-scroll.content-y = -root.highlight * root.row-h;
+                    } else if ((root.highlight + 1) * root.row-h > -list-scroll.content-y + root.visible-rows * root.row-h) {
+                        list-scroll.content-y = -((root.highlight + 1 - root.visible-rows) * root.row-h);
+                    }
+                    return accept;
+                }
+                if (event.text == Key.Return || event.text == " ") {
+                    if (root.item-on(root.highlight)) {
+                        root.close-list();
+                        root.pick(root.highlight);
+                    }
+                    return accept;
+                }
+                return reject;
+            }
+            Rectangle {
+                background: #141923;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                border-radius: 0px;
+                clip: true;
+                list-scroll := ScrollView {
+                    x: 1px;
+                    y: 4px;
+                    width: parent.width - 2px;
+                    height: root.visible-rows * root.row-h;
+                    content-width: self.visible-width;
+                    VerticalLayout {
+                        width: list-scroll.visible-width;
+                        for item[i] in root.model: row := Rectangle {
+                            property <bool> on: root.item-on(i);
+                            property <bool> current: root.tracks-selection && i == root.current-index;
+                            height: root.row-h;
+                            background: !self.on ? transparent
+                                : item-touch.has-hover || i == root.highlight ? Theme.row-hover
+                                : self.current ? #ffffff08 : transparent;
+                            // The current value's marker.
+                            if row.current: Rectangle {
+                                x: 0px;
+                                width: 2px;
+                                height: parent.height;
+                                background: Theme.accent;
+                            }
+                            Text {
+                                x: 10px;
+                                width: parent.width - 18px;
+                                text: item;
+                                color: !row.on ? Theme.faint : row.current ? #ffffff : Theme.text;
+                                font-size: 13px;
+                                font-weight: row.current ? 600 : 400;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            item-touch := TouchArea {
+                                enabled: row.on;
+                                mouse-cursor: row.on ? pointer : default;
+                                clicked => {
+                                    root.close-list();
+                                    root.pick(i);
+                                }
                             }
                         }
                     }
