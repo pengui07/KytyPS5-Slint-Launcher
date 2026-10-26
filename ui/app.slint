@@ -366,9 +366,138 @@ component SearchBox inherits Rectangle {
     }
 }
 
+// One of the title bar's minimize / maximize / close buttons: a small glyph that brightens on hover,
+// with no box behind it (like the menu titles).
+component CaptionButton {
+    callback clicked;
+    width: 26px;
+    // The glyph's colour, for the Path children.
+    out property <color> glyph: touch.pressed ? Theme.muted : touch.has-hover ? #ffffff : #8b939f;
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    @children
+}
+
+// The parts of the title bar that are not the menu bar (which draws the bar's background and the menu
+// titles; slint-style/fluent-menu.slint). Only the drag area and the buttons take the mouse, so clicks
+// on the menu titles reach them below.
+component TitleBar {
+    in property <bool> maximized;
+    callback minimize;
+    callback toggle-maximize;
+    callback close;
+
+    // The menu titles' width, for the drag area after them: the same text and padding as the menu
+    // bar's items (8px either side, 6px before the first). Keep the titles in step with the MenuBar.
+    menu-measure := HorizontalLayout {
+        visible: false;
+        spacing: 16px;
+        Text { text: "File"; font-size: 12px; }
+        Text { text: "View"; font-size: 12px; }
+        Text { text: "Settings"; font-size: 12px; }
+        Text { text: "Help"; font-size: 12px; }
+    }
+    property <length> menus-end: 6px + menu-measure.preferred-width + 16px;
+
+    // The empty bar between the menu titles and the buttons: dragging moves the window, a
+    // double-click maximizes or restores it.
+    WindowMoveArea {
+        x: root.menus-end;
+        y: 0px;
+        width: max(0px, buttons.x - root.menus-end);
+        height: root.height;
+        TouchArea {
+            double-clicked => { root.toggle-maximize(); }
+        }
+    }
+
+    buttons := HorizontalLayout {
+        x: root.width - self.width - 4px;
+        y: 0px;
+        width: 3 * 26px;
+        height: root.height;
+        min-button := CaptionButton {
+            clicked => { root.minimize(); }
+            Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 10px;
+                height: 10px;
+                viewbox-width: 10;
+                viewbox-height: 10;
+                stroke: min-button.glyph;
+                stroke-width: 1.5px;
+                MoveTo { x: 0; y: 9; }
+                LineTo { x: 10; y: 9; }
+            }
+        }
+        max-button := CaptionButton {
+            clicked => { root.toggle-maximize(); }
+            // Maximize: one square. Restore (when maximized): two overlapping squares.
+            if !root.maximized: Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 10px;
+                height: 10px;
+                viewbox-width: 10;
+                viewbox-height: 10;
+                stroke: max-button.glyph;
+                stroke-width: 1.5px;
+                MoveTo { x: 0.75; y: 0.75; }
+                LineTo { x: 9.25; y: 0.75; }
+                LineTo { x: 9.25; y: 9.25; }
+                LineTo { x: 0.75; y: 9.25; }
+                Close { }
+            }
+            if root.maximized: Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 10px;
+                height: 10px;
+                viewbox-width: 10;
+                viewbox-height: 10;
+                stroke: max-button.glyph;
+                stroke-width: 1.5px;
+                MoveTo { x: 0.75; y: 2.75; }
+                LineTo { x: 7.25; y: 2.75; }
+                LineTo { x: 7.25; y: 9.25; }
+                LineTo { x: 0.75; y: 9.25; }
+                Close { }
+                MoveTo { x: 2.75; y: 2.75; }
+                LineTo { x: 2.75; y: 0.75; }
+                LineTo { x: 9.25; y: 0.75; }
+                LineTo { x: 9.25; y: 7.25; }
+                LineTo { x: 7.25; y: 7.25; }
+            }
+        }
+        close-button := CaptionButton {
+            clicked => { root.close(); }
+            Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 10px;
+                height: 10px;
+                viewbox-width: 10;
+                viewbox-height: 10;
+                stroke: close-button.glyph;
+                stroke-width: 1.5px;
+                MoveTo { x: 0.5; y: 0.5; }
+                LineTo { x: 9.5; y: 9.5; }
+                MoveTo { x: 9.5; y: 0.5; }
+                LineTo { x: 0.5; y: 9.5; }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "KytyPS5 Launcher";
     icon: @image-url("icons/app-icon.png");
+    // No native frame: the menu bar is the title bar (see TitleBar at the end and
+    // slint-style/fluent-menu.slint). The edges still resize the window, except when maximized.
+    no-frame: true;
+    resize-border-width: self.maximized ? 0px : 5px;
     preferred-width: 1200px;
     preferred-height: 780px;
     min-width: 1000px;
@@ -1666,6 +1795,20 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
+
+    // The rest of the title bar around the menu bar: the drag area and the window buttons. The menu
+    // bar sits above the window's content area, so this is drawn one bar height (24px, the menu
+    // bar's own) above it.
+    TitleBar {
+        x: 0px;
+        y: -24px;
+        width: root.width;
+        height: 24px;
+        maximized: root.maximized;
+        minimize => { root.minimized = true; }
+        toggle-maximize => { root.maximized = !root.maximized; }
+        close => { root.close(); }
     }
 }
 

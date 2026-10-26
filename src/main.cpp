@@ -537,11 +537,14 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 
 int main(int argc, char** argv)
 {
+	// Slint menus render styled (like the launcher) instead of native: the window has no native frame and
+	// its menu bar is the title bar (slint-style/fluent-menu.slint), and the right-click game menu uses our
+	// popup styling. Native right-click menus would also run a modal loop that keeps the window from
+	// repainting the row the right-click selected. Must precede any Slint backend use.
 #ifdef _WIN32
-	// Slint menus render styled (like the launcher) instead of native: the menu bar then
-	// follows slint-style/fluent-menu.slint (uniform #303030 with the toolbar) and the
-	// right-click game menu uses our popup styling. Must precede any Slint backend use.
 	SetEnvironmentVariableW(L"SLINT_NO_MUDA", L"1");
+#elif defined(__APPLE__)
+	setenv("SLINT_NO_MUDA", "1", 1);
 #endif
 	const char* const argv0 = argc > 0 && argv[0] != nullptr ? argv[0] : "";
 	// Every launcher file lives under these folders (see paths.h); they are created when first written.
@@ -2682,17 +2685,6 @@ int main(int argc, char** argv)
 		    slint::quit_event_loop();
 	    });
 
-#ifdef _WIN32
-	// Right-click menus are drawn by Slint, not native Win32 menus: a native context menu runs a
-	// modal loop, so the window does not repaint the row the right-click selected, and a
-	// right-click on another row only closes the menu. SLINT_NO_MUDA is read every time a
-	// context menu opens, but the menu bar is set up once when the window is shown, so setting
-	// it after that keeps the native Windows menu bar.
-	slint::Timer::single_shot(std::chrono::milliseconds(0), [] { SetEnvironmentVariableW(L"SLINT_NO_MUDA", L"1"); });
-#elif defined(__APPLE__)
-	// Same on macOS: native context menus, but keep the native menu bar.
-	slint::Timer::single_shot(std::chrono::milliseconds(0), [] { setenv("SLINT_NO_MUDA", "1", 1); });
-#endif
 	// STEP6:6e: the window's last size and position (window_x/y/window_w/window_h). Sizes that don't look like a
 	// real window, or a position off the primary monitor (whose rect is taken as 0,0..w,h), fall back to the
 	// Slint defaults: the page's preferred-width/height, placed by the window manager.
