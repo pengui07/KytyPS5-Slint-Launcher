@@ -773,40 +773,49 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/remove-configuration.svg");
-                tooltip: "Remove from list";
-                enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
-                clicked => { root.remove-game(); }
-            }
-            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/input-mapping.svg");
-                tooltip: "Controls";
-                clicked => {
-                    root.show-settings = false;
-                    root.show-versions = false;
-                    root.show-trophies = false;
-                    Controls.opened();
-                    root.show-controls = true;
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/remove-configuration.svg");
+                    tooltip: "Remove from list";
+                    enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
+                    clicked => { root.remove-game(); }
                 }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/trophy.svg");
-                tooltip: "Trophies";
-                clicked => {
-                    root.show-trophies = true;
-                    Trophies.detail-open = false;
-                    Trophies.opened();
+            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/input-mapping.svg");
+                    tooltip: "Controls";
+                    clicked => {
+                        root.show-settings = false;
+                        root.show-versions = false;
+                        root.show-trophies = false;
+                        Controls.opened();
+                        root.show-controls = true;
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/trophy.svg");
+                    tooltip: "Trophies";
+                    clicked => {
+                        root.show-trophies = true;
+                        Trophies.detail-open = false;
+                        Trophies.opened();
+                    }
                 }
             }
             // The search box gives way first when the window narrows, so the right-hand
@@ -818,26 +827,32 @@ export component AppWindow inherits Window {
                 max-width: 320px;
                 search := SearchBox { height: 32px; }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/refresh.svg");
-                tooltip: "Rescan library";
-                enabled: !root.scanning;
-                clicked => { root.refresh-library(); }
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/refresh.svg");
+                    tooltip: "Rescan library";
+                    enabled: !root.scanning;
+                    clicked => { root.refresh-library(); }
+                }
             }
             Rectangle { horizontal-stretch: 1; }
             // STEP6:6c: list/grid toggle (the icon shows the view a click switches to).
-            IconButton {
-                tooltip: root.library-grid ? "List view" : "Grid view";
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
-                clicked => {
-                    root.library-grid = !root.library-grid;
-                    root.library-view-changed(root.library-grid);
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    tooltip: root.library-grid ? "List view" : "Grid view";
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
+                    clicked => {
+                        root.library-grid = !root.library-grid;
+                        root.library-view-changed(root.library-grid);
+                    }
                 }
             }
             // Which emulator build runs the game (the Version Manager's installed list).
