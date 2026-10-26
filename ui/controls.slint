@@ -55,7 +55,7 @@ component TabHeader inherits Rectangle {
     width: 170px;
     height: 32px;
     border-radius: 0px;
-    background: root.active ? #ffffff14 : touch.has-hover ? #ffffff0a : transparent;
+    background: root.active ? Theme.tint(0.08) : touch.has-hover ? Theme.tint(0.04) : transparent;
     Text {
         x: 12px;
         width: parent.width - 24px;
@@ -105,7 +105,7 @@ component BindingRow inherits HorizontalLayout {
         border-radius: 0px;
         border-width: 1px;
         border-color: capturing ? Theme.accent : bind.has-hover ? Theme.accent : Theme.card-border;
-        background: bind.has-hover ? #1d212a : #07090c;
+        background: bind.has-hover ? Theme.control-hover : Theme.log-bg;
         VerticalLayout {
             alignment: center;
             Text {
@@ -148,7 +148,7 @@ component TabRows inherits VerticalLayout {
         BindingRow { entry: row; pad: root.pad; }
         Rectangle {
             height: 1px;
-            background: #ffffff0d;
+            background: Theme.tint(0.05);
         }
     }
 }
@@ -448,7 +448,7 @@ export component ControlsPage inherits Rectangle {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea {
             x: 0px;
             y: 0px;
