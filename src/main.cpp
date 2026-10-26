@@ -875,6 +875,7 @@ int main(int argc, char** argv)
 		ui->set_addons_dir(slint::SharedString(v.addons_dir));
 		// STEP7:3: the update check is a launcher setting, not an emulator one.
 		ui->set_check_updates(v.check_updates);
+		ui->global<Theme>().set_scheme(v.theme == "light" ? 1 : v.theme == "classic" ? 2 : 0);
 		push_columns(v.columns);
 		push_emu(v);
 	};
@@ -1005,6 +1006,8 @@ int main(int argc, char** argv)
 		s.addons_dir = ToStd(ui->get_addons_dir());
 		// STEP7:3
 		s.check_updates = ui->get_check_updates();
+		const int scheme = ui->global<Theme>().get_scheme();
+		s.theme          = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
 		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
 		s.library_sort      = ToStd(ui->get_sort_key());
 		s.library_sort_desc = ui->get_sort_desc();
@@ -2532,8 +2535,21 @@ int main(int argc, char** argv)
 			        });
 			    *console = c;
 		    }
+		    if (auto h = weak_app.lock())
+		    {
+			    (**console)->global<Theme>().set_scheme((*h)->global<Theme>().get_scheme());
+		    }
 		    (**console)->show();
 		    (**console)->invoke_scroll_to_end();
+	    });
+
+	ui->on_theme_changed(
+	    [console](int scheme)
+	    {
+		    if (console->has_value())
+		    {
+			    (**console)->global<Theme>().set_scheme(scheme);
+		    }
 	    });
 
 	ui->on_open_url(

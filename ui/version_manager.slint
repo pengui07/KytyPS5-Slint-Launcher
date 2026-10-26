@@ -65,7 +65,7 @@ component SectionLabel inherits Text {
 
 // Bordered, square panel for lists.
 component Panel inherits Rectangle {
-    background: #07090c;
+    background: Theme.log-bg;
     border-width: 1px;
     border-color: Theme.card-border;
     clip: true;
@@ -152,7 +152,7 @@ export component TabButton inherits Rectangle {
     height: 28px;
     border-width: 1px;
     border-color: Theme.card-border;
-    background: root.active ? Theme.bg : #141820;
+    background: root.active ? Theme.bg : Theme.tab-inactive;
     HorizontalLayout {
         padding-left: root.renaming ? 6px : 12px;
         padding-right: root.renaming ? 6px : 12px;
@@ -775,7 +775,7 @@ export component VersionManagerPage inherits Rectangle {
                     VerticalLayout {
                         Rectangle {
                             height: 24px;
-                            background: #07090cd9;
+                            background: Theme.log-bg.with-alpha(0.85);
                             clip: true;
                             // The header follows the rows when the list scrolls sideways.
                             HorizontalLayout {
@@ -932,7 +932,7 @@ export component VersionManagerPage inherits Rectangle {
                     height: parent.height * 0.60;
                     border-radius: 0px;
                     // Visible at rest (it was as dark as the box borders), accent while hovered or dragged.
-                    background: split-touch.has-hover || split-touch.pressed ? Theme.accent : #3e4c66;
+                    background: split-touch.has-hover || split-touch.pressed ? Theme.accent : Theme.border-hover;
                     animate background { duration: 100ms; }
                 }
                 // Only the bar's height: above and below it is empty space.
@@ -1027,7 +1027,7 @@ export component VersionManagerPage inherits Rectangle {
                     VerticalLayout {
                         Rectangle {
                             height: 24px;
-                            background: #07090cd9;
+                            background: Theme.log-bg.with-alpha(0.85);
                             Text {
                                 overflow: elide;
                                 x: 8px;
@@ -1069,7 +1069,7 @@ export component VersionManagerPage inherits Rectangle {
                                 spacing: 6px;
                                 Rectangle {
                                     width: 26px;
-                                    background: chevron-touch.has-hover ? #ffffff1a : transparent;
+                                    background: chevron-touch.has-hover ? Theme.tint(0.1) : transparent;
                                     Chevron {
                                         width: 14px;
                                         height: 14px;
@@ -1189,7 +1189,7 @@ export component VersionManagerPage inherits Rectangle {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a0;
+        background: Theme.scrim;
         // Swallows clicks outside the box.
         TouchArea { }
         Rectangle {
@@ -1256,7 +1256,7 @@ export component VersionManagerPage inherits Rectangle {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a0;
+        background: Theme.scrim;
         // Swallows clicks outside the box.
         TouchArea { }
         Rectangle {
@@ -1355,7 +1355,7 @@ export component VersionManagerPage inherits Rectangle {
                         background: rm-touch.pressed ? Theme.danger.darker(0.2) : rm-touch.has-hover ? Theme.danger-hover : Theme.danger;
                         Text {
                             text: VM.remove-delete-files ? "Delete" : "Remove";
-                            color: #ffffff;
+                            color: Theme.on-accent;
                             font-size: 13px;
                             font-weight: 600;
                             horizontal-alignment: center;
@@ -1377,7 +1377,7 @@ export component VersionManagerPage inherits Rectangle {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a0;
+        background: Theme.scrim;
         // A click outside the box closes it.
         TouchArea {
             clicked => { VM.about-open = false; }

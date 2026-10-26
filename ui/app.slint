@@ -14,6 +14,9 @@ import { FirstRunWindow } from "first_run.slint";
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
 export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow }
+// Theme.scheme is the launcher's light/dark setting (main.cpp).
+import { PaletteSync } from "common.slint";
+export { Theme }
 // The setup window is exported so C++ can create it before AppWindow (main.cpp includes only this header).
 export { FirstRunWindow }
 
@@ -245,7 +248,7 @@ component GameCard inherits Rectangle {
         width: 20px;
         height: 20px;
         border-radius: 0px;
-        background: #07090ccc;
+        background: Theme.log-bg.with-alpha(0.8);
         Image {
             source: @image-url("icons/pin.svg");
             colorize: Theme.accent;
@@ -275,7 +278,7 @@ component SearchBox inherits Rectangle {
     border-radius: 0px;
     border-width: 1px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
-    background: #07090c;
+    background: Theme.log-bg;
     // Clicks anywhere in the box (icon, padding) focus the text; the input on top still
     // gets its own clicks for cursor placement.
     TouchArea {
@@ -350,7 +353,7 @@ component SearchBox inherits Rectangle {
             width: 32px;
             border-top-right-radius: 3px;
             border-bottom-right-radius: 3px;
-            background: clear-touch.has-hover ? #ffffff1a : transparent;
+            background: clear-touch.has-hover ? Theme.tint(0.1) : transparent;
             Image {
                 source: @image-url("icons/clear.svg");
                 colorize: clear-touch.has-hover ? Theme.text : Theme.muted;
@@ -375,7 +378,7 @@ component CaptionButton {
     callback clicked;
     width: 26px;
     // The glyph's colour, for the Path children.
-    out property <color> glyph: touch.pressed ? Theme.muted : touch.has-hover ? #ffffff : #8b939f;
+    out property <color> glyph: touch.pressed ? Theme.muted : touch.has-hover ? Theme.chrome-text-hover : Theme.chrome-text;
     touch := TouchArea {
         clicked => { root.clicked(); }
     }
@@ -524,8 +527,18 @@ export component AppWindow inherits Window {
     preferred-height: 780px;
     min-width: 1000px;
     min-height: 560px;
-    background: Theme.bg;
+    // The window background shows through the menu bar (the menu style cannot see Theme, so it draws
+    // none) as the title bar's colour; the first child below gives the page its own.
+    background: Theme.panel;
     default-font-size: 13px;
+    Rectangle {
+        background: Theme.bg;
+    }
+    PaletteSync {}
+    // Each window has its own Theme; C++ passes a change on to the console window.
+    callback theme-changed(int);
+    property <int> theme-scheme: Theme.scheme;
+    changed theme-scheme => { root.theme-changed(self.theme-scheme); }
 
     in-out property <string> emulator;
     in-out property <string> game;
@@ -1126,7 +1139,7 @@ export component AppWindow inherits Window {
                     // The header follows the rows' horizontal scroll; the grid view has no header.
                     Rectangle {
                         height: 28px;
-                        background: #07090cd9;
+                        background: Theme.log-bg.with-alpha(0.85);
                         clip: true;
                         TableHeader {
                             x: table.content-x;
@@ -1278,7 +1291,7 @@ export component AppWindow inherits Window {
                         border-radius: 0px;
                         border-width: 1px;
                         border-color: Theme.card-border;
-                        background: console-touch.has-hover ? #1d212a : Theme.card;
+                        background: console-touch.has-hover ? Theme.control-hover : Theme.card;
                         Text {
                             text: ">_";
                             color: Theme.text;
@@ -1449,7 +1462,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(520px, root.width - 48px);
@@ -1477,7 +1490,7 @@ export component AppWindow inherits Window {
                 }
                 Rectangle {
                     vertical-stretch: 1;
-                    background: #07090c;
+                    background: Theme.log-bg;
                     border-width: 1px;
                     border-radius: 0px;
                     border-color: Theme.card-border;
@@ -1548,7 +1561,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(420px, root.width - 48px);
@@ -1600,7 +1613,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(420px, root.width - 48px);
@@ -1652,7 +1665,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(460px, root.width - 48px);
@@ -1708,7 +1721,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(560px, root.width - 48px);
@@ -1780,7 +1793,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #000000a6;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             width: min(480px, root.width - 48px);
@@ -1883,6 +1896,7 @@ export component ConsoleWindow inherits Window {
     property <bool> stick: true;
     // STEP6:6a: mirrors log-lines.length so a model change can re-pin after the content grew.
     property <int> line-count: root.log-lines.length;
+    PaletteSync {}
 
     // Rows are fixed at 16px, so the end is known without waiting for layout.
     public function pin() {
@@ -1934,7 +1948,7 @@ export component ConsoleWindow inherits Window {
                     x: 8px;
                     width: parent.width - 16px;
                     text: line;
-                    color: #b9c4d2;
+                    color: Theme.log-text;
                     font-family: "Consolas";
                     font-size: 12px;
                     vertical-alignment: center;

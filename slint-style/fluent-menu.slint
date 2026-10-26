@@ -8,6 +8,9 @@
 // brightens on hover or while its menu is open, with no box behind it.
 // The popup menus are shaped like the shadPS4 launcher's: near-square corners, rows highlighted edge
 // to edge in the accent colour, a slim frame.
+// This file cannot see the launcher's Theme global, so it follows FluentPalette.color-scheme, which
+// app.slint sets from Theme.light; the light values match common.slint's light palette. The bar itself
+// is transparent: AppWindow's background (Theme.panel) shows through it.
 
 import { FluentPalette, FluentFontSettings } from "styling.slint";
 
@@ -30,7 +33,9 @@ export component MenuBarItem {
 
             label := Text {
                 text: root.entry.title;
-                color: touch-area.has-hover || root.open ? #ffffff : #8b939f;
+                color: touch-area.has-hover || root.open
+                    ? (FluentPalette.color-scheme == ColorScheme.light ? #1a2130 : #ffffff)
+                    : (FluentPalette.color-scheme == ColorScheme.light ? #586377 : #8b939f);
                 font-size: 12px;
                 vertical-alignment: center;
             }
@@ -55,7 +60,7 @@ export component MenuBarItem {
 // Steam's, and the 12px gaps between them belong to the bar. Dragging anywhere on the bar moves the window.
 export component MenuBar inherits Rectangle {
     min-height: max(32px, layout.min-height);
-    background: #0d0f14;
+    background: transparent;
 
     WindowMoveArea {
         layout := HorizontalLayout {
@@ -70,11 +75,12 @@ export component MenuBar inherits Rectangle {
 
 // Padding only above and below, so the highlighted row reaches both edges.
 export component MenuFrame inherits Rectangle {
-    background: #1b1f27;
+    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
+    background: light ? #ffffff : #1b1f27;
     border-radius: 2px;
     border-width: 1px;
-    border-color: #2e3542;
-    drop-shadow-color: #00000090;
+    border-color: light ? #c5ccd8 : #2e3542;
+    drop-shadow-color: light ? #00000040 : #00000090;
     drop-shadow-offset-y: 4px;
     drop-shadow-blur: 10px;
     clip: true;
@@ -212,6 +218,7 @@ component IconMenuItemBase {
 }
 
 export component MenuItem {
+    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
     in property <bool> is-current <=> base.is-current;
     in property <MenuEntry> entry <=> base.entry;
 
@@ -230,8 +237,8 @@ export component MenuItem {
             default-foreground: FluentPalette.foreground;
             alternate-foreground: FluentPalette.text-secondary;
             current-foreground: #ffffff;
-            current-background: #3d8bfd;
-            separator-color: #2e3542;
+            current-background: light ? #2b6fe0 : #3d8bfd;
+            separator-color: light ? #c5ccd8 : #2e3542;
             border-radius: 0px;
             horizontal-padding: 12px;
             sub-menu-icon: @image-url("_arrow_forward.svg");

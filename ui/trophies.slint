@@ -92,7 +92,7 @@ component TrophyItemRow inherits Rectangle {
         Rectangle {
             width: 60px;
             height: 60px;
-            background: #07090c;
+            background: Theme.log-bg;
             Image {
                 width: parent.width;
                 height: parent.height;
@@ -156,7 +156,7 @@ component TrophyGameRow inherits Rectangle {
     in property <bool> selected;
     callback clicked();
     height: 112px;
-    background: root.selected ? #ffffff1f : touch.has-hover ? Theme.row-hover : transparent;
+    background: root.selected ? Theme.tint(0.12) : touch.has-hover ? Theme.row-hover : transparent;
     border-width: root.selected ? 1px : 0px;
     border-color: Theme.accent.with-alpha(0.6);
     touch := TouchArea {
@@ -170,7 +170,7 @@ component TrophyGameRow inherits Rectangle {
         Rectangle {
             width: 88px;
             height: 88px;
-            background: #07090c;
+            background: Theme.log-bg;
             Image {
                 width: parent.width;
                 height: parent.height;
@@ -213,7 +213,7 @@ component TrophyGameRow inherits Rectangle {
             }
             Rectangle {
                 height: 8px;
-                background: #ffffff14;
+                background: Theme.tint(0.08);
                 border-radius: 0px;
                 Rectangle {
                     x: 0px;

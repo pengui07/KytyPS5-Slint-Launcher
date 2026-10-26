@@ -423,6 +423,7 @@ void ReadApp(const JsonValue& root, Settings& s)
 	// STEP7:3 app keys: begin
 	r.flag("check_updates", s.check_updates);
 	// STEP7:3 app keys: end
+	r.str("theme", s.theme);
 	r.list("source_names", s.source_names);
 	r.list("menu_hidden", s.menu_hidden);
 	r.list("build_names", s.build_names);
@@ -1207,6 +1208,7 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	// STEP7:3 app keys: begin
 	out += "    \"check_updates\": " + std::string(s.check_updates ? "true" : "false") + ",\n";
 	// STEP7:3 app keys: end
+	out += "    \"theme\": " + Quote(s.theme) + ",\n";
 	out += "    \"source_names\": " + QuoteList(s.source_names) + ",\n";
 	out += "    \"menu_hidden\": " + QuoteList(s.menu_hidden) + ",\n";
 	out += "    \"build_names\": " + QuoteList(s.build_names) + ",\n";
