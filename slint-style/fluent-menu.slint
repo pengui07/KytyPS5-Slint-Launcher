@@ -2,43 +2,69 @@
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
 // The launcher's copy of Slint's fluent/menu.slint (v1.18.1), copied over the fetched one by
-// CMakeLists.txt: Slint has no per-app menu styling. The menu bar shares the toolbar's #303030
-// so the whole top reads one uniform colour (app.slint keeps a same-colour backing behind it,
-// since MenuBar exposes no background of its own); the popup menus are shaped like the shadPS4
-// launcher's: near-square corners, rows highlighted edge to edge in the accent colour, a slim frame.
+// CMakeLists.txt: Slint has no per-app menu styling. The window has no native frame, so the menu bar
+// is the window's title bar, like the classic Steam client's: small grey menu titles after the app
+// icon, and app.slint draws the icon and the window buttons over its two ends. A title is plain text that only
+// brightens on hover or while its menu is open, with no box behind it.
+// The popup menus are shaped like the shadPS4 launcher's: near-square corners, rows highlighted edge
+// to edge in the accent colour, a slim frame.
 
 import { FluentPalette, FluentFontSettings } from "styling.slint";
-import { MenuBarItemBase, MenuBarBase, MenuItemBase } from "../common/menu-base.slint";
+import { MenuItemBase } from "../common/menu-base.slint";
 
+// `open` is set by the launcher's copy of menus.slint (slint-style/menus.slint) while this entry's
+// menu is showing.
 export component MenuBarItem {
-    in property <MenuEntry> entry <=> base.entry;
+    in property <MenuEntry> entry;
+    in property <bool> open;
 
-    callback clicked <=> base.clicked;
-    callback hovered <=> base.hovered;
+    callback clicked;
+    callback hovered;
 
-    min-width: base.min-width;
-    min-height: base.min-height;
+    min-width: layout.min-width;
+    min-height: layout.min-height;
 
-    base := MenuBarItemBase {
-        horizontal-padding: 11px;
-        top-padding: 1px;
-        bottom-padding: 2px;
-        font-size: 12px;
-        default-foreground: FluentPalette.foreground;
-        hover-foreground: FluentPalette.foreground;
-        pressed-foreground: FluentPalette.text-secondary;
-        hover-background: FluentPalette.subtle-secondary;
-        pressed-background: FluentPalette.control-alt-tertiary;
-        border-radius: 3px;
+    touch-area := TouchArea {
+        layout := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+
+            label := Text {
+                text: root.entry.title;
+                color: touch-area.has-hover || root.open ? #ffffff : #8b939f;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.clicked();
+            }
+        }
+
+        changed has-hover => {
+            if self.has-hover {
+                root.hovered();
+            }
+        }
     }
 }
 
-export component MenuBar inherits MenuBarBase {
-    spacing: 10px;
-    // Bar height: max(this, an item's own min height = font line + the paddings above),
-    // so shrinking past the text needs a smaller font-size on MenuBarItem as well.
-    min-layout-height: 22px;
-    background: #303030;
+// The title bar row. 24px high and 28px of left padding (room for the app icon): app.slint's
+// TitleBar uses the same two values. Dragging anywhere on it moves the window.
+export component MenuBar inherits Rectangle {
+    min-height: max(24px, layout.min-height);
+    background: #0d0f14;
+
+    WindowMoveArea {
+        layout := HorizontalLayout {
+            alignment: start;
+            padding-left: 28px;
+
+            @children
+        }
+    }
 }
 
 // Padding only above and below, so the highlighted row reaches both edges.

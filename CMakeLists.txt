@@ -65,17 +65,23 @@ FetchContent_Declare(
 	SOURCE_SUBDIR api/cpp
 )
 FetchContent_MakeAvailable(Slint)
-# Popup menus shaped like the shadPS4 launcher's. Slint has no per-app menu styling, so the fluent
-# style's menu file is replaced in the fetched source; slint-compiler embeds the styles and
-# rebuilds when it changes. Copied only when it differs.
+# Menus shaped like the shadPS4 launcher's, and the menu bar drawn as the window's title bar. Slint
+# has no per-app menu styling, so the fluent style's menu file and the shared menu bar
+# implementation are replaced in the fetched source; slint-compiler embeds the styles and rebuilds
+# when they change. Copied only when they differ.
 set(KYTY_MENU_STYLE "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/fluent-menu.slint")
+set(KYTY_MENU_IMPL "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/menus.slint")
 configure_file("${KYTY_MENU_STYLE}"
 	"${slint_SOURCE_DIR}/internal/compiler/widgets/fluent/menu.slint" COPYONLY)
-# The embedded style is not in the depfile slint-compiler writes (only app.slint's own imports are),
-# so a style-only edit would rebuild nothing. Re-configure when it changes, and drop the generated
+configure_file("${KYTY_MENU_IMPL}"
+	"${slint_SOURCE_DIR}/internal/compiler/widgets/common/menus.slint" COPYONLY)
+# The embedded styles are not in the depfile slint-compiler writes (only app.slint's own imports are),
+# so a style-only edit would rebuild nothing. Re-configure when they change, and drop the generated
 # app.h so the codegen step re-runs and picks the new menu style up.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KYTY_MENU_STYLE}")
-file(SHA256 "${KYTY_MENU_STYLE}" _kyty_menu_hash)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KYTY_MENU_STYLE}" "${KYTY_MENU_IMPL}")
+file(SHA256 "${KYTY_MENU_STYLE}" _kyty_menu_style_hash)
+file(SHA256 "${KYTY_MENU_IMPL}" _kyty_menu_impl_hash)
+set(_kyty_menu_hash "${_kyty_menu_style_hash}${_kyty_menu_impl_hash}")
 set(_kyty_menu_stamp "${CMAKE_CURRENT_BINARY_DIR}/menu-style.stamp")
 if(EXISTS "${_kyty_menu_stamp}")
 	file(READ "${_kyty_menu_stamp}" _kyty_menu_old_hash)
