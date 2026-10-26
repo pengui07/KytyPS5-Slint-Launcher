@@ -389,7 +389,7 @@ component TitleBar {
     callback close;
 
     // The menu titles' width, for the drag area after them: the same text and padding as the menu
-    // bar's items (8px either side, 28px before the first). Keep the titles in step with the MenuBar.
+    // bar's items (2px either side, 12px between, 34px before the first). Keep the titles in step with the MenuBar.
     menu-measure := HorizontalLayout {
         visible: false;
         spacing: 16px;
@@ -398,7 +398,7 @@ component TitleBar {
         Text { text: "Settings"; font-size: 12px; }
         Text { text: "Help"; font-size: 12px; }
     }
-    property <length> menus-end: 28px + menu-measure.preferred-width + 16px;
+    property <length> menus-end: 36px + menu-measure.preferred-width + 2px;
 
     // The app icon before the menu titles. Dragging it moves the window, a double-click maximizes
     // or restores it, like the empty bar.
