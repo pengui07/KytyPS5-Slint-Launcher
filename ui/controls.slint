@@ -18,9 +18,14 @@ export global Controls {
     in-out property <int> tab: 0; // 0 = Gamepad, 1 = Keyboard & Mouse
     in property <[ControlRow]> gamepad-rows;
     in property <[ControlRow]> keyboard-rows;
+    // Manual scroll positions (wheel/drag/scrollbar are unreliable here): the lists
+    // bind their content-y here, and the action-row buttons step them.
+    in-out property <length> gamepad-y: 0px;
+    in-out property <length> keyboard-y: 0px;
     in property <[string]> pad-sources; // labels of every gamepad button / trigger, table order
     in property <bool> listening;       // a capture is running: the overlay is up
     in property <string> capture-id;    // the row being captured
+    in property <bool> capture-pad;     // the capture started on the gamepad tab (tabs lock while listening)
     in property <string> capture-label; // its control label, for the overlay title
     in property <string> capture-message;
     in property <string> status; // "Connected: Controller 1" / "No controller connected"
@@ -47,7 +52,7 @@ component TabHeader inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked();
-    width: 140px;
+    width: 170px;
     height: 32px;
     border-radius: 0px;
     background: root.active ? #ffffff14 : touch.has-hover ? #ffffff0a : transparent;
@@ -78,14 +83,17 @@ component TabHeader inherits Rectangle {
 }
 
 // Label on the left, the binding button on the right. Click binds, right-click clears (upstream's behaviour).
-component BindingRow inherits Rectangle {
+// NOTE: no `horizontal-stretch` anywhere in a row: stretch inside the ScrollView's
+// unbounded content evaluates to infinity and pushes everything after it off-screen
+// (the buttons painted nothing while still receiving clicks). Fixed widths instead.
+component BindingRow inherits HorizontalLayout {
     in property <ControlRow> entry;
     in property <bool> pad;
     height: 30px;
+    spacing: 8px;
+    padding-left: 2px;
     Text {
-        x: 2px;
-        width: max(0px, parent.width - 214px);
-        height: parent.height;
+        width: 280px;
         text: root.entry.label;
         color: Theme.text;
         font-size: 13px;
@@ -93,42 +101,32 @@ component BindingRow inherits Rectangle {
         overflow: elide;
     }
     Rectangle {
-        x: parent.width - 200px;
-        y: 2px;
         width: 196px;
-        height: 26px;
         border-radius: 0px;
         border-width: 1px;
         border-color: capturing ? Theme.accent : bind.has-hover ? Theme.accent : Theme.card-border;
         background: bind.has-hover ? #1d212a : #07090c;
-        Text {
-            x: 8px;
-            width: parent.width - 16px;
-            height: parent.height;
-            text: capturing ? "Press…" : root.entry.binding;
-            color: capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
-            font-size: 12px;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: elide;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: capturing ? "Press…" : root.entry.binding;
+                color: capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
+                font-size: 12px;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
         }
         bind := TouchArea {
             mouse-cursor: pointer;
+            // Right-click clears on press (upstream behaviour); left binds on click so a
+            // drag starting on a binding still scrolls instead of opening capture.
             pointer-event(event) => {
-                if (event.kind == PointerEventKind.down) {
-                    if (event.button == PointerEventButton.right) {
-                        Controls.clear-binding(root.entry.id, root.pad);
-                    } else if (event.button == PointerEventButton.left) {
-                        Controls.begin-capture(root.entry.id, root.pad);
-                    }
+                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                    Controls.clear-binding(root.entry.id, root.pad);
                 }
             }
+            clicked => { Controls.begin-capture(root.entry.id, root.pad); }
         }
-    }
-    Rectangle {
-        y: parent.height - 1px;
-        height: 1px;
-        background: #ffffff0d;
     }
     property <bool> capturing: Controls.listening && Controls.capture-id == root.entry.id;
 }
@@ -148,6 +146,10 @@ component TabRows inherits VerticalLayout {
             vertical-alignment: bottom;
         }
         BindingRow { entry: row; pad: root.pad; }
+        Rectangle {
+            height: 1px;
+            background: #ffffff0d;
+        }
     }
 }
 
@@ -159,152 +161,123 @@ export component ControlsPage inherits Rectangle {
     TouchArea { }
 
     VerticalLayout {
+        // Explicit size: without it the page sizes to content preferred height, the
+        // ScrollView never constrains (it grows with content), nothing scrolls and the
+        // bottom action row is pushed off-screen.
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
         padding: 18px;
         padding-left: 24px;
         padding-right: 24px;
         spacing: 10px;
 
-        // Title and the way back to the library.
+        // Title and the way back to the library. Back button FIRST (left): a control
+        // after growing content gets pushed off-screen; leading position is immune.
         HorizontalLayout {
             spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 110px;
+                    text: "← Library";
+                    clicked => { root.close(); }
+                }
+            }
             Text {
                 text: "Controls";
                 color: Theme.text;
-                font-size: 24px;
+                font-size: 20px;
+                font-weight: 700;
                 vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 58px;
-                    height: 40px;
-                    border-radius: 0px;
-                    background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
-                    animate background { duration: 100ms; }
-                    Image {
-                        x: 9px;
-                        y: (parent.height - self.height) / 2;
-                        source: @image-url("icons/chevron-thin-left.svg");
-                        colorize: Theme.muted;
-                        width: 9px;
-                        height: 20px;
-                    }
-                    Image {
-                        x: 21px;
-                        y: (parent.height - self.height) / 2;
-                        source: @image-url("icons/library.svg");
-                        colorize: Theme.text;
-                        width: 30px;
-                        height: 30px;
-                    }
-                    back-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.close(); }
-                    }
-                }
             }
         }
 
         HorizontalLayout {
+            // No stretch spacer: in this unbounded context it evaluates to infinity and
+            // pushes everything after it off-screen. Tabs pack left instead.
             spacing: 4px;
-            TabHeader { text: "Gamepad"; active: Controls.tab == 0; clicked => { Controls.tab = 0; } }
-            TabHeader { text: "Keyboard & Mouse"; active: Controls.tab == 1; clicked => { Controls.tab = 1; } }
-            Rectangle { horizontal-stretch: 1; }
+            TabHeader { text: "Gamepad"; active: Controls.tab == 0; clicked => { if (!Controls.listening) { Controls.tab = 0; } } }
+            TabHeader { text: "Keyboard & Mouse"; active: Controls.tab == 1; clicked => { if (!Controls.listening) { Controls.tab = 1; } } }
         }
 
-        // The tab's own list.
-        Rectangle {
-            vertical-stretch: 1;
-            background: transparent;
-
-            if Controls.tab == 0: VerticalLayout {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: parent.height;
-                spacing: 6px;
-
-                Text {
-                    text: "Choose which button on your gamepad triggers each PS5 control. Click a binding, then press the button or trigger you want to use.";
-                    color: Theme.muted;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                }
-                Text {
-                    text: Controls.status;
-                    color: Theme.text;
-                    font-size: 12px;
-                }
-                Text {
-                    text: "Older/fork builds may exit with 'Invalid input mapping' when a Pad: binding is set.";
-                    color: Theme.faint;
-                    font-size: 11px;
-                    wrap: word-wrap;
-                }
-                ScrollView {
-                    vertical-stretch: 1;
-                    TabRows { rows: Controls.gamepad-rows; pad: true; }
+        // Save / Cancel / Restore live here (not at the page bottom): the list below
+        // can grow taller than the window, which would push bottom-anchored actions
+        // off-screen with no way to reach them. The tip gets its own full-width line
+        // so it can never squeeze the buttons out.
+        Text {
+            text: Controls.notice != "" ? Controls.notice : "Tip: right-click a binding to unmap it.";
+            color: Controls.notice != "" ? Theme.danger : Theme.muted;
+            font-size: 12px;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 150px;
+                    text: "Restore Defaults";
+                    clicked => { Controls.restore-defaults(Controls.tab == 0); }
                 }
             }
-
-            if Controls.tab == 1: VerticalLayout {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: parent.height;
-                spacing: 6px;
-
-                Text {
-                    text: "Choose which keyboard key or mouse button triggers each PS5 control. Click a binding, then press the key or mouse button.";
-                    color: Theme.muted;
-                    font-size: 12px;
-                    wrap: word-wrap;
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 100px;
+                    text: "Cancel";
+                    clicked => { Controls.cancel(); }
                 }
-                ScrollView {
-                    vertical-stretch: 1;
-                    TabRows { rows: Controls.keyboard-rows; pad: false; }
+            }
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 100px;
+                    text: "Save";
+                    primary: true;
+                    clicked => { Controls.save(); }
                 }
-                HorizontalLayout {
-                    spacing: 10px;
-                    Text {
-                        text: "Mouse sensitivity";
-                        color: Theme.text;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                        width: 130px;
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        AppSlider {
-                            width: 220px;
-                            minimum: 0.1;
-                            maximum: 5.0;
-                            step: 0.1;
-                            value <=> Controls.sensitivity;
-                            changed(value) => { Controls.sensitivity-edited(value); }
+            }
+            // Manual list scroll (wheel/drag/scrollbar are unreliable here): steps the
+            // active tab's list by 120px. Lives here (not next to the list) because
+            // only this row reliably paints all its buttons.
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 100px;
+                    text: "Up";
+                    clicked => {
+                        if (Controls.tab == 0) {
+                            Controls.gamepad-y = min(0px, Controls.gamepad-y + 120px);
+                        } else {
+                            Controls.keyboard-y = min(0px, Controls.keyboard-y + 120px);
                         }
                     }
-                    Text {
-                        text: Controls.sensitivity-text;
-                        color: Theme.text;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                        width: 48px;
-                    }
-                    Text {
-                        text: "F7 in-game toggles mouse movement on the right stick.";
-                        color: Theme.muted;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                        overflow: elide;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 100px;
+                    text: "Down";
+                    clicked => {
+                        // No lower clamp available here (the ScrollView ids are invisible
+                        // outside their `if`); Flickable clamps the rest. -1200px covers
+                        // the tallest list with room to spare.
+                        if (Controls.tab == 0) {
+                            Controls.gamepad-y = max(-1200px, Controls.gamepad-y - 120px);
+                        } else {
+                            Controls.keyboard-y = max(-1200px, Controls.keyboard-y - 120px);
+                        }
                     }
                 }
             }
         }
 
-        // The emulated touch pad: shared by both tabs, as in upstream.
+        // The emulated touch pad: shared by both tabs, as in upstream. Sits above
+        // the list (not below): below-list content gets pushed off-screen when the
+        // list grows, with no way to scroll the page itself.
         Rectangle {
             height: 56px;
             background: Theme.card;
@@ -347,7 +320,7 @@ export component ControlsPage inherits Rectangle {
                         checked <=> Controls.show-cursor;
                     }
                 }
-                Rectangle { horizontal-stretch: 1; }
+                // (No stretch spacer before the hint: it pushes followers off-screen.)
                 VerticalLayout {
                     alignment: center;
                     Text {
@@ -359,36 +332,111 @@ export component ControlsPage inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
-            spacing: 10px;
-            Text {
-                text: Controls.notice != "" ? Controls.notice : "Tip: right-click a binding to unmap it.";
-                color: Controls.notice != "" ? Theme.danger : Theme.muted;
-                font-size: 12px;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                overflow: elide;
-            }
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    text: "Restore Defaults";
-                    clicked => { Controls.restore-defaults(Controls.tab == 0); }
+        // The tab's own list.
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+
+            if Controls.tab == 0: VerticalLayout {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                spacing: 6px;
+
+                Text {
+                    // Fixed height: VBox children grow by default and tall help text
+                    // pushes the list off-screen.
+                    height: 20px;
+                    text: "Choose which button on your gamepad triggers each PS5 control. Click a binding, then press the button or trigger you want to use.";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                Text {
+                    height: 20px;
+                    text: Controls.status;
+                    color: Theme.text;
+                    font-size: 12px;
+                }
+                Text {
+                    height: 18px;
+                    text: "Older/fork builds may exit with 'Invalid input mapping' when a Pad: binding is set.";
+                    color: Theme.faint;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+                gamepad-scroll := ScrollView {
+                    // Bounded height so the list scrolls instead of pushing everything
+                    // below off-screen. max-height (not height): short content stays short.
+                    // Drag-pan enabled (the style disables it): wheel alone may not reach.
+                    // content-y bound to the global (same value the action-row buttons step):
+                    // ids inside `if` are invisible outside it, globals are not.
+                    max-height: 400px;
+                    mouse-drag-pan-enabled: true;
+                    content-width: self.visible-width;
+                    content-y <=> Controls.gamepad-y;
+                    TabRows { width: gamepad-scroll.visible-width; rows: Controls.gamepad-rows; pad: true; }
                 }
             }
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    text: "Cancel";
-                    clicked => { Controls.cancel(); }
+
+            if Controls.tab == 1: VerticalLayout {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                spacing: 6px;
+
+                Text {
+                    text: "Choose which keyboard key or mouse button triggers each PS5 control. Click a binding, then press the key or mouse button.";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
                 }
-            }
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    text: "Save";
-                    primary: true;
-                    clicked => { Controls.save(); }
+                // Sensitivity above the list (not below): below-list content gets
+                // pushed off-screen when the list grows.
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: "Mouse sensitivity";
+                        color: Theme.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        width: 130px;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        AppSlider {
+                            width: 220px;
+                            minimum: 0.1;
+                            maximum: 5.0;
+                            step: 0.1;
+                            value <=> Controls.sensitivity;
+                            changed(value) => { Controls.sensitivity-edited(value); }
+                        }
+                    }
+                    Text {
+                        text: Controls.sensitivity-text;
+                        color: Theme.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        width: 48px;
+                    }
+                    Text {
+                        text: "F7 in-game toggles mouse movement on the right stick.";
+                        color: Theme.muted;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                keyboard-scroll := ScrollView {
+                    // Fixed height: see gamepad-scroll above.
+                    height: 300px;
+                    mouse-drag-pan-enabled: true;
+                    content-width: self.visible-width;
+                    content-y <=> Controls.keyboard-y;
+                    TabRows { width: keyboard-scroll.visible-width; rows: Controls.keyboard-rows; pad: false; }
                 }
             }
         }
@@ -401,7 +449,12 @@ export component ControlsPage inherits Rectangle {
         width: root.width;
         height: root.height;
         background: #000000a6;
-        TouchArea { }
+        TouchArea {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+        }
         Rectangle {
             width: min(460px, root.width - 48px);
             height: capture-box.preferred-height;
@@ -427,7 +480,7 @@ export component ControlsPage inherits Rectangle {
                     font-size: 13px;
                     wrap: word-wrap;
                 }
-                if Controls.tab == 0: VerticalLayout {
+                if Controls.capture-pad: VerticalLayout {
                     spacing: 6px;
                     Text {
                         text: "Or pick one from the list:";

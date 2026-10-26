@@ -59,14 +59,33 @@ FetchContent_Declare(
 	GIT_REPOSITORY https://github.com/slint-ui/slint.git
 	GIT_TAG v1.18.1
 	GIT_SHALLOW TRUE
+	# Slint has no submodules; an explicit empty list skips the submodule
+	# update step entirely (CMP0097 NEW in the FetchContent subbuild).
+	GIT_SUBMODULES ""
 	SOURCE_SUBDIR api/cpp
 )
 FetchContent_MakeAvailable(Slint)
 # Popup menus shaped like the shadPS4 launcher's. Slint has no per-app menu styling, so the fluent
 # style's menu file is replaced in the fetched source; slint-compiler embeds the styles and
 # rebuilds when it changes. Copied only when it differs.
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/slint-style/fluent-menu.slint"
+set(KYTY_MENU_STYLE "${CMAKE_CURRENT_SOURCE_DIR}/slint-style/fluent-menu.slint")
+configure_file("${KYTY_MENU_STYLE}"
 	"${slint_SOURCE_DIR}/internal/compiler/widgets/fluent/menu.slint" COPYONLY)
+# The embedded style is not in the depfile slint-compiler writes (only app.slint's own imports are),
+# so a style-only edit would rebuild nothing. Re-configure when it changes, and drop the generated
+# app.h so the codegen step re-runs and picks the new menu style up.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KYTY_MENU_STYLE}")
+file(SHA256 "${KYTY_MENU_STYLE}" _kyty_menu_hash)
+set(_kyty_menu_stamp "${CMAKE_CURRENT_BINARY_DIR}/menu-style.stamp")
+if(EXISTS "${_kyty_menu_stamp}")
+	file(READ "${_kyty_menu_stamp}" _kyty_menu_old_hash)
+else()
+	set(_kyty_menu_old_hash "")
+endif()
+if(NOT _kyty_menu_old_hash STREQUAL _kyty_menu_hash)
+	file(WRITE "${_kyty_menu_stamp}" "${_kyty_menu_hash}")
+	file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/app.h")
+endif()
 if(WIN32 AND KYTY_SLINT_STATIC_CRT)
 	# Rust side of the static CRT (the C++ side is the target property further down).
 	corrosion_add_target_rustflags(slint_cpp "-Ctarget-feature=+crt-static")

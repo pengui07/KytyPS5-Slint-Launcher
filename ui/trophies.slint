@@ -242,21 +242,42 @@ export component TrophiesPage inherits Rectangle {
     property <bool> reveal-hidden: false;
 
     VerticalLayout {
+        // Explicit size (see Controls page): a bare layout child sizes to preferred,
+        // and stretch descendants make that unbounded, pushing right-side content off-screen.
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
         padding: 18px;
         padding-left: 24px;
         padding-right: 24px;
         spacing: 10px;
 
+        // Title + back (back first: a control after growing content gets pushed off-screen).
         HorizontalLayout {
-            spacing: 14px;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 110px;
+                    text: "← Library";
+                    clicked => { root.back(); }
+                }
+            }
             Text {
                 text: Trophies.detail-open ? Trophies.detail-game.name : "Trophies";
                 color: Theme.text;
-                font-size: 26px;
+                font-size: 20px;
+                font-weight: 700;
                 vertical-alignment: center;
                 overflow: elide;
             }
-            Rectangle { horizontal-stretch: 1; }
+        }
+
+        // Grade summary on its own row (was crammed into the header): totals, cups,
+        // and the detail-view actions. No stretch spacers (they push followers off-screen).
+        HorizontalLayout {
+            spacing: 14px;
             if !Trophies.detail-open: Text {
                 text: "Total " + Trophies.earned;
                 color: Theme.text;
@@ -287,36 +308,6 @@ export component TrophiesPage inherits Rectangle {
                     clicked => {
                         root.reveal-hidden = false;
                         Trophies.detail-open = false;
-                    }
-                }
-            }
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 58px;
-                    height: 40px;
-                    border-radius: 0px;
-                    background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
-                    animate background { duration: 100ms; }
-                    Image {
-                        x: 9px;
-                        y: (parent.height - self.height) / 2;
-                        source: @image-url("icons/chevron-thin-left.svg");
-                        colorize: Theme.muted;
-                        width: 9px;
-                        height: 20px;
-                    }
-                    Image {
-                        x: 21px;
-                        y: (parent.height - self.height) / 2;
-                        source: @image-url("icons/library.svg");
-                        colorize: Theme.text;
-                        width: 30px;
-                        height: 30px;
-                    }
-                    back-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.back(); }
                     }
                 }
             }

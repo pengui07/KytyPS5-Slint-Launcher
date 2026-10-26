@@ -270,8 +270,9 @@ private:
 	std::map<std::string, std::pair<slint::Image, std::list<std::string>::iterator>> slots_;
 };
 
-// Icons are decoded at this edge: sharp in the 46 px list row and in the grid card, never full size.
-constexpr int kIconPixels = 128;
+// Icons are decoded at this edge: sharp in the 46 px list row and in the 192 px
+// grid card, never full size.
+constexpr int kIconPixels = 256;
 // Play time only counts a session at least this long: a game that crashes while booting is not play time.
 constexpr std::chrono::seconds kMinPlaySession{10};
 
@@ -534,6 +535,12 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 
 int main(int argc, char** argv)
 {
+#ifdef _WIN32
+	// Slint menus render styled (like the launcher) instead of native: the menu bar then
+	// follows slint-style/fluent-menu.slint (uniform #303030 with the toolbar) and the
+	// right-click game menu uses our popup styling. Must precede any Slint backend use.
+	SetEnvironmentVariableW(L"SLINT_NO_MUDA", L"1");
+#endif
 	const char* const argv0 = argc > 0 && argv[0] != nullptr ? argv[0] : "";
 	// Every launcher file lives under these folders (see paths.h); they are created when first written.
 	Paths       paths = compute_paths(argv0);
@@ -802,8 +809,8 @@ int main(int argc, char** argv)
 		ui->set_network_connected(v.network_connected);
 		ui->set_controller_color(slint::SharedString(v.controller_color));
 		ui->set_controller_swatch(ParseHexColor(v.controller_color));
-		ui->set_controller_vibration(static_cast<float>(v.controller_vibration));
-		ui->set_controller_volume(static_cast<float>(v.controller_volume));
+		ui->set_controller_vibration(v.controller_vibration);
+		ui->set_controller_volume(v.controller_volume);
 		ui->set_keyboard_player(v.keyboard_player);
 		// STEP6:6e: the environment table, and the GPU picker's index (0 = Auto, so the device at N is gpu index N-1).
 		{
@@ -919,8 +926,8 @@ int main(int argc, char** argv)
 		t.skip_notice_screen   = ui->get_skip_boot_logos();
 		t.network_connected    = ui->get_network_connected();
 		t.controller_color     = NormalizeHexColor(ToStd(ui->get_controller_color()));
-		t.controller_vibration = std::clamp(static_cast<int>(std::lround(ui->get_controller_vibration())), 0, 100);
-		t.controller_volume    = std::clamp(static_cast<int>(std::lround(ui->get_controller_volume())), 0, 100);
+		t.controller_vibration = std::clamp(ui->get_controller_vibration(), 0, 100);
+		t.controller_volume    = std::clamp(ui->get_controller_volume(), 0, 100);
 		t.keyboard_player      = std::clamp(ui->get_keyboard_player(), 0, 4);
 		// STEP6:6e: the environment table. Names are trimmed; an empty name is an unused row, a blank value
 		// leaves the variable out (the launcher unsets what is not in the table for the child), and a bad row is
@@ -2262,6 +2269,7 @@ int main(int argc, char** argv)
 		auto& c = ui->global<Controls>();
 		c.set_listening(false);
 		c.set_capture_id("");
+		c.set_capture_pad(false);
 		c.set_capture_label("");
 		c.set_capture_message("");
 	};
@@ -2273,6 +2281,7 @@ int main(int argc, char** argv)
 		    c.set_tab(0);
 		    c.set_listening(false);
 		    c.set_capture_id("");
+		    c.set_capture_pad(false);
 		    c.set_capture_label("");
 		    c.set_capture_message("");
 		    c.set_notice("");
@@ -2292,6 +2301,7 @@ int main(int argc, char** argv)
 		    stop_controls_capture();
 		    auto& c = ui->global<Controls>();
 		    c.set_capture_id(slint::SharedString(key));
+		    c.set_capture_pad(pad);
 		    c.set_capture_label(slint::SharedString(input_mapping->RowLabel(pad, key)));
 		    c.set_listening(true);
 		    if (!input_mapping->BeginCapture(pad, key, &error))
@@ -2331,7 +2341,7 @@ int main(int argc, char** argv)
 	    {
 		    auto&       c       = ui->global<Controls>();
 		    const auto& sources = InputMapping::Sources();
-		    if (!c.get_listening() || index < 0 || static_cast<size_t>(index) >= sources.size())
+		    if (!c.get_listening() || !c.get_capture_pad() || index < 0 || static_cast<size_t>(index) >= sources.size())
 		    {
 			    return;
 		    }
@@ -2350,8 +2360,11 @@ int main(int argc, char** argv)
 	    {
 		    input_mapping->RestoreDefaults(pad);
 		    auto& c = ui->global<Controls>();
-		    c.set_sensitivity(static_cast<float>(input_mapping->Sensitivity()));
-		    c.set_sensitivity_text(slint::SharedString(one_decimal(input_mapping->Sensitivity()) + "\xc3\x97"));
+		    if (!pad)
+		    {
+			    c.set_sensitivity(static_cast<float>(input_mapping->Sensitivity()));
+			    c.set_sensitivity_text(slint::SharedString(one_decimal(input_mapping->Sensitivity()) + "\xc3\x97"));
+		    }
 		    refresh_controls();
 	    });
 	ui->global<Controls>().on_sensitivity_edited(
@@ -2359,6 +2372,12 @@ int main(int argc, char** argv)
 	    {
 		    const double rounded = std::round(std::clamp(static_cast<double>(value), 0.1, 5.0) * 10.0) / 10.0;
 		    auto&        c       = ui->global<Controls>();
+		    // Slint already snaps to 0.1: skip the write-back when nothing changed so a
+		    // drag doesn't round-trip through the same two-way property every pixel.
+		    if (std::fabs(static_cast<double>(c.get_sensitivity()) - rounded) < 1e-6)
+		    {
+			    return;
+		    }
 		    c.set_sensitivity(static_cast<float>(rounded));
 		    c.set_sensitivity_text(slint::SharedString(one_decimal(rounded) + "\xc3\x97"));
 	    });
@@ -2399,7 +2418,7 @@ int main(int argc, char** argv)
 	    });
 
 	ui->on_open_console(
-	    [console, log_model, pending_lines]
+	    [console, log_model, pending_lines, weak_app = slint::ComponentWeakHandle<AppWindow>(ui), &paths]
 	    {
 		    if (!console->has_value())
 		    {
@@ -2411,6 +2430,56 @@ int main(int argc, char** argv)
 			        {
 				        log_model->clear();
 				        pending_lines->clear();
+				        if (auto h = weak_console.lock())
+				        {
+					        (*h)->invoke_scroll_to_end();
+				        }
+			        });
+			    // Last log: replace the view with the tail of logs/last-run.log (the full
+			    // output, unlike the trimmed live buffer). New output keeps appending after it.
+			    c->on_open_last_log(
+			        [log_model, weak_app, &paths, weak_console = slint::ComponentWeakHandle<ConsoleWindow>(c)]
+			        {
+				        const fs::path file = paths.logs_dir / "last-run.log";
+				        std::error_code ec;
+				        if (!fs::exists(file, ec))
+				        {
+					        if (auto h = weak_app.lock())
+					        {
+						        (*h)->set_status(slint::SharedString("Last log not found: " + path_utf8(file)));
+					        }
+					        return;
+				        }
+				        const std::string        text = read_text_file(path_utf8(file));
+				        std::vector<std::string> all;
+				        for (size_t b = 0;;)
+				        {
+					        const size_t e = text.find('\n', b);
+					        std::string  line =
+					            e == std::string::npos ? text.substr(b) : text.substr(b, e - b);
+					        if (!line.empty() && line.back() == '\r')
+					        {
+						        line.pop_back();
+					        }
+					        all.push_back(std::move(line));
+					        if (e == std::string::npos)
+					        {
+						        break;
+					        }
+					        b = e + 1;
+				        }
+				        if (!all.empty() && all.back().empty())
+				        {
+					        all.pop_back(); // trailing newline is not a row
+				        }
+				        const size_t from = all.size() > kMaxLogLines ? all.size() - kMaxLogLines : 0;
+				        std::vector<slint::SharedString> rows;
+				        rows.reserve(all.size() - from);
+				        for (size_t i = from; i < all.size(); i++)
+				        {
+					        rows.emplace_back(all[i]);
+				        }
+				        log_model->set_vector(std::move(rows));
 				        if (auto h = weak_console.lock())
 				        {
 					        (*h)->invoke_scroll_to_end();
