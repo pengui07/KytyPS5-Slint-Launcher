@@ -48,6 +48,9 @@ export global Theme {
     out property <color> button-bottom: light ? #f0f2f6 : classic ? #3c3b38 : #191d26;
     out property <color> button-hover: light ? #e8ecf2 : classic ? #55534f : #262c38;
     out property <color> button-pressed: light ? #dde2ea : classic ? #343331 : #14171d;
+    // The title bar's menu titles and window buttons (slint-style/fluent-menu.slint keeps its own copy).
+    out property <color> chrome-text: light ? #586377 : #8b939f;
+    out property <color> chrome-text-hover: light ? #1a2130 : #ffffff;
     out property <color> scrim: light ? #00000052 : classic ? #000000a6 : #000000a6; // behind dialogs
 }
 
