@@ -535,7 +535,9 @@ export component SettingsPage inherits VerticalLayout {
     if root.settings-tab == 0: general-view := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
-        VerticalLayout {
+        general-col := VerticalLayout {
+            // One column of a row: rows share these widths, so the cards line up from row to row.
+            property <length> half: (self.width - self.padding-right - Form.gap) / 2;
             width: general-view.visible-width;
             padding-top: 8px;
             padding-right: 12px;
@@ -545,6 +547,7 @@ export component SettingsPage inherits VerticalLayout {
             HorizontalLayout {
                 spacing: Form.gap;
                 Section {
+                    width: general-col.half;
                     title: "User profile";
                     Field {
                         label: "User name";
@@ -570,6 +573,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                 }
                 Section {
+                    width: general-col.half;
                     title: "Controller & audio";
                     FormRow {
                         label: "DualSense lightbar";
@@ -652,6 +656,7 @@ export component SettingsPage inherits VerticalLayout {
             HorizontalLayout {
                 spacing: Form.gap;
                 Section {
+                    width: general-col.half;
                     title: "General";
                     ToggleRow {
                         item: { env: "--fullscreen", label: "Run in fullscreen", hint: "", on: root.fullscreen };
@@ -693,8 +698,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                 }
                 VerticalLayout {
-                    horizontal-stretch: 1;
-                    preferred-width: 0px;
+                    width: general-col.half;
                     spacing: Form.gap;
                     Section {
                         title: "Compatibility";
@@ -738,11 +742,11 @@ export component SettingsPage inherits VerticalLayout {
             if !root.game-mode: Section {
                 title: "Game folders";
                 hint: "The folders scanned for games, the folder the emulator runs in, and the shared add-ons folder.";
+                // Split on the same line as the rows above: the list under the left cards, the paths under the right.
                 HorizontalLayout {
-                    spacing: 24px;
+                    spacing: Form.gap + 28px;
                     VerticalLayout {
-                        horizontal-stretch: 1;
-                        preferred-width: 0px;
+                        width: general-col.half - 28px;
                         spacing: 6px;
                         Rectangle {
                             height: 120px;
@@ -779,7 +783,6 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     VerticalLayout {
                         horizontal-stretch: 1;
-                        preferred-width: 0px;
                         spacing: 6px;
                         alignment: start;
                         PathField {
