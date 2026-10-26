@@ -6,6 +6,8 @@
 // so the whole top reads one uniform colour (app.slint keeps a same-colour backing behind it,
 // since MenuBar exposes no background of its own); the popup menus are shaped like the shadPS4
 // launcher's: near-square corners, rows highlighted edge to edge in the accent colour, a slim frame.
+// This file cannot see the launcher's Theme global, so it follows FluentPalette.color-scheme, which
+// app.slint sets from Theme.light; the light values match common.slint's light palette.
 
 import { FluentPalette, FluentFontSettings } from "styling.slint";
 import { MenuBarItemBase, MenuBarBase, MenuItemBase } from "../common/menu-base.slint";
@@ -38,16 +40,17 @@ export component MenuBar inherits MenuBarBase {
     // Bar height: max(this, an item's own min height = font line + the paddings above),
     // so shrinking past the text needs a smaller font-size on MenuBarItem as well.
     min-layout-height: 22px;
-    background: #303030;
+    background: FluentPalette.color-scheme == ColorScheme.light ? #e6eaf0 : #303030;
 }
 
 // Padding only above and below, so the highlighted row reaches both edges.
 export component MenuFrame inherits Rectangle {
-    background: #1b1f27;
+    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
+    background: light ? #ffffff : #1b1f27;
     border-radius: 2px;
     border-width: 1px;
-    border-color: #2e3542;
-    drop-shadow-color: #00000090;
+    border-color: light ? #c5ccd8 : #2e3542;
+    drop-shadow-color: light ? #00000040 : #00000090;
     drop-shadow-offset-y: 4px;
     drop-shadow-blur: 10px;
     clip: true;
@@ -63,6 +66,7 @@ export component MenuFrame inherits Rectangle {
 }
 
 export component MenuItem {
+    property <bool> light: FluentPalette.color-scheme == ColorScheme.light;
     in property <bool> is-current <=> base.is-current;
     in property <MenuEntry> entry <=> base.entry;
 
@@ -81,8 +85,8 @@ export component MenuItem {
             default-foreground: FluentPalette.foreground;
             alternate-foreground: FluentPalette.text-secondary;
             current-foreground: #ffffff;
-            current-background: #3d8bfd;
-            separator-color: #2e3542;
+            current-background: light ? #2b6fe0 : #3d8bfd;
+            separator-color: light ? #c5ccd8 : #2e3542;
             border-radius: 0px;
             horizontal-padding: 12px;
             spacing: 8px;

@@ -1,28 +1,64 @@
 // Colours and table cells shared by the pages.
 
-import { ScrollView } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 
 export global Theme {
+    // 0 dark, 1 light, 2 classic (the 2017 Steam skin's warm greys): the launcher setting "theme"
+    // (Settings > General > Appearance). Each colour below is "light ? … : classic ? … : dark".
+    in-out property <int> scheme: 0;
+    out property <bool> light: scheme == 1;
+    out property <bool> classic: scheme == 2;
+
     // 0 unknown, 1 in game, 2 main menu, 3 logo, 4 doesn't boot
     public pure function status-color(code: int) -> color {
         return code == 1 ? #30a46c : code == 2 ? #3a86ff : code == 3 ? #f5a524 : code == 4 ? #e5484d : #565f70;
     }
-    out property <color> row-hover: #ffffff0f;
-    out property <color> row-selected: #ffffff1a;
-    out property <color> row-outline: #e7ecf3cc;
-    out property <color> card-glass: #11141ab8;
-    out property <color> bg: #0a0c10;
-    out property <color> panel: #0d0f14;
-    out property <color> card: #11141a;
-    out property <color> card-border: #2b3345;
-    out property <color> text: #d0d7e6;
-    out property <color> muted: #707b90;
-    out property <color> faint: #565f70;
-    out property <color> accent: #3a86ff;
-    out property <color> accent-hover: #5aa0ff;
-    out property <color> danger: #e5484d;
-    out property <color> danger-hover: #f06065;
-    out property <color> log-bg: #07090c;
+    // A see-through wash over whatever is behind: white on the dark themes, black on the light one.
+    public pure function tint(alpha: float) -> color {
+        return (root.light ? #000000 : #ffffff).with-alpha(alpha);
+    }
+    out property <color> row-hover: light ? #0000000d : classic ? #ffffff0f : #ffffff0f;
+    out property <color> row-selected: light ? #00000017 : classic ? #3e5470cc : #ffffff1a;
+    out property <color> row-outline: light ? #1a2130b3 : classic ? #d6d6d6aa : #e7ecf3cc;
+    out property <color> card-glass: light ? #ffffffc8 : classic ? #1e1d1bc0 : #11141ab8;
+    out property <color> bg: light ? #eef1f5 : classic ? #2b2a28 : #0a0c10;
+    out property <color> panel: light ? #e6eaf0 : classic ? #232220 : #0d0f14;
+    out property <color> card: light ? #ffffff : classic ? #1e1d1b : #11141a;
+    out property <color> card-border: light ? #c5ccd8 : classic ? #45433f : #2b3345;
+    out property <color> border-hover: light ? #8f9cb2 : classic ? #6a6763 : #3e4c66;
+    out property <color> text: light ? #1a2130 : classic ? #d6d6d6 : #d0d7e6;
+    out property <color> muted: light ? #586377 : classic ? #8f8f8d : #707b90;
+    out property <color> faint: light ? #858fa1 : classic ? #6b6a67 : #565f70;
+    out property <color> placeholder: light ? #7d879ab3 : classic ? #6b6a67b3 : #4a5566b3;
+    out property <color> accent: light ? #2b6fe0 : classic ? #5a86b8 : #3a86ff;
+    out property <color> accent-hover: light ? #4a86ee : classic ? #6f98c6 : #5aa0ff;
+    out property <color> accent-pressed: light ? #1f5cc4 : classic ? #4a7099 : #2f74e0;
+    out property <color> accent-border-hover: light ? #1f5cc4 : classic ? #8fb0d6 : #6db0ff;
+    out property <color> accent-soft: light ? #d4e2fa : classic ? #3a4a5e : #1f3550; // banners, the selected nav row
+    out property <color> on-accent: #ffffff; // text and icons on accent or danger fills
+    out property <color> danger: light ? #d93036 : classic ? #c9453f : #e5484d;
+    out property <color> danger-hover: light ? #e5484d : classic ? #db5a54 : #f06065;
+    out property <color> log-bg: light ? #ffffff : classic ? #1a1a19 : #07090c; // also the inside of edit boxes and pickers
+    out property <color> log-text: light ? #2a3140 : classic ? #c4c4c4 : #b9c4d2;
+    out property <color> popup: light ? #ffffff : classic ? #2f2e2c : #141923;
+    out property <color> tab-inactive: light ? #dfe4eb : classic ? #262523 : #141820;
+    out property <color> control-hover: light ? #e1e6ee : classic ? #3a3936 : #1d212a;
+    out property <color> button-top: light ? #ffffff : classic ? #4a4946 : #232834;
+    out property <color> button-bottom: light ? #f0f2f6 : classic ? #3c3b38 : #191d26;
+    out property <color> button-hover: light ? #e8ecf2 : classic ? #55534f : #262c38;
+    out property <color> button-pressed: light ? #dde2ea : classic ? #343331 : #14171d;
+    out property <color> scrim: light ? #00000052 : classic ? #000000a6 : #000000a6; // behind dialogs
+}
+
+// Put one in each window: points the std widgets (scroll bars, menus, LineEdit) at the same light or
+// dark palette as Theme.
+export component PaletteSync {
+    property <bool> light: Theme.light;
+    function apply() {
+        Palette.color-scheme = root.light ? ColorScheme.light : ColorScheme.dark;
+    }
+    init => { root.apply(); }
+    changed light => { root.apply(); }
 }
 
 export // Which sort arrow a sortable table header shows.
@@ -146,7 +182,7 @@ export component ThemedEdit inherits Rectangle {
     border-width: 1px;
     border-radius: 0px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
-    background: #07090c;
+    background: Theme.log-bg;
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -181,7 +217,7 @@ export component ThemedEdit inherits Rectangle {
                 width: 100%;
                 height: 100%;
                 text: root.placeholder;
-                color: #4a5566b3;
+                color: Theme.placeholder;
                 font-size: 13px;
                 vertical-alignment: center;
                 overflow: elide;
@@ -199,7 +235,7 @@ export component IconButton inherits Rectangle {
     width: 40px;
     height: 40px;
     border-radius: 0px;
-    background: icon-touch.has-hover && root.enabled ? #1d212a : transparent;
+    background: icon-touch.has-hover && root.enabled ? Theme.control-hover : transparent;
     animate background { duration: 100ms; }
     Image {
         source: root.icon;
@@ -224,7 +260,7 @@ export component InlineEdit inherits Rectangle {
     callback cancelled();
     property <bool> finished: false;
     min-width: 90px;
-    background: #07090c;
+    background: Theme.log-bg;
     border-width: 1px;
     border-color: Theme.accent;
     border-radius: 0px;
@@ -316,7 +352,7 @@ export component Selector inherits Rectangle {
     callback selected(int);
     height: 26px;
     min-width: 90px;
-    background: #07090c;
+    background: Theme.log-bg;
     border-width: 1px;
     border-radius: 0px;
     border-color: touch.has-hover ? Theme.accent : Theme.card-border;
@@ -352,7 +388,7 @@ export component Selector inherits Rectangle {
         width: max(120px, root.width);
         close-policy: close-on-click-outside;
         Rectangle {
-            background: #141923;
+            background: Theme.popup;
             border-width: 1px;
             border-color: Theme.card-border;
             border-radius: 0px;
@@ -371,7 +407,7 @@ export component Selector inherits Rectangle {
                     for item[i] in root.model: Rectangle {
                         height: 26px;
                         border-radius: 0px;
-                        background: item-touch.has-hover ? Theme.row-hover : i == root.current-index ? #ffffff10 : transparent;
+                        background: item-touch.has-hover ? Theme.row-hover : i == root.current-index ? Theme.tint(0.063) : transparent;
                         Text {
                             x: 8px;
                             width: parent.width - 8px;
@@ -448,11 +484,11 @@ export component AppButton inherits Rectangle {
     min-width: 76px;
     border-width: 1px;
     border-radius: 0px;
-    border-color: root.primary ? (touch.has-hover ? #6db0ff : Theme.accent)
-        : touch.has-hover ? #3e4c66 : Theme.card-border;
+    border-color: root.primary ? (touch.has-hover ? Theme.accent-border-hover : Theme.accent)
+        : touch.has-hover ? Theme.border-hover : Theme.card-border;
     background: root.primary
-        ? (touch.pressed ? #2f74e0 : touch.has-hover ? Theme.accent-hover : Theme.accent)
-        : touch.pressed ? #14171d : touch.has-hover ? #262c38 : @linear-gradient(180deg, #232834 0%, #191d26 100%);
+        ? (touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : touch.pressed ? Theme.button-pressed : touch.has-hover ? Theme.button-hover : @linear-gradient(180deg, Theme.button-top 0%, Theme.button-bottom 100%);
     opacity: root.enabled ? 1 : 0.45;
     HorizontalLayout {
         padding-left: 12px;
@@ -465,12 +501,12 @@ export component AppButton inherits Rectangle {
                 source: root.icon;
                 width: 14px;
                 height: 14px;
-                colorize: root.primary ? #ffffff : Theme.text;
+                colorize: root.primary ? Theme.on-accent : Theme.text;
             }
         }
         Text {
             text: root.text;
-            color: root.primary ? #ffffff : Theme.text;
+            color: root.primary ? Theme.on-accent : Theme.text;
             font-size: 13px;
             vertical-alignment: center;
         }
@@ -501,11 +537,11 @@ export component AppCheckBox inherits Rectangle {
                 height: 14px;
                 border-width: 1px;
                 border-radius: 0px;
-                border-color: root.checked ? Theme.accent : check-touch.has-hover ? #3e4c66 : Theme.card-border;
-                background: root.checked ? Theme.accent : #07090c;
+                border-color: root.checked ? Theme.accent : check-touch.has-hover ? Theme.border-hover : Theme.card-border;
+                background: root.checked ? Theme.accent : Theme.log-bg;
                 Text {
                     text: "✓";
-                    color: #ffffff;
+                    color: Theme.on-accent;
                     font-size: 9px;
                     font-weight: 700;
                     horizontal-alignment: center;
@@ -597,7 +633,7 @@ export component AppSpinBox inherits Rectangle {
     border-width: 1px;
     border-radius: 0px;
     border-color: Theme.card-border;
-    background: #07090c;
+    background: Theme.log-bg;
     opacity: root.enabled ? 1 : 0.45;
     function bump(by: int) {
         root.value = max(root.minimum, min(root.maximum, root.value + by));

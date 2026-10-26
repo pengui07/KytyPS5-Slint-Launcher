@@ -161,7 +161,7 @@ component FolderRow inherits Rectangle {
                 width: 52px;
                 height: 18px;
                 border-radius: 0px;
-                background: #1f3550;
+                background: Theme.accent-soft;
                 Text {
                     text: "Game";
                     color: Theme.text;
@@ -383,7 +383,7 @@ component ActionButton inherits Rectangle {
     callback clicked();
     height: 32px;
     border-radius: 0px;
-    background: !root.enabled ? #2b3345 : touch.has-hover ? root.hover : root.base;
+    background: !root.enabled ? Theme.card-border : touch.has-hover ? root.hover : root.base;
     animate background { duration: 120ms; }
     Text {
         overflow: elide;
@@ -561,7 +561,7 @@ export component SettingsPage inherits VerticalLayout {
     // Per-game mode: which game is being edited.
     if root.game-mode: Rectangle {
         height: 30px;
-        background: #1f3550;
+        background: Theme.accent-soft;
         border-radius: 0px;
         Text {
             x: 12px;
@@ -623,7 +623,7 @@ export component SettingsPage inherits VerticalLayout {
                             border-width: 1px;
                             border-radius: 0px;
                             border-color: mic-touch.has-hover ? Theme.accent : Theme.card-border;
-                            background: #07090c;
+                            background: Theme.log-bg;
                             HorizontalLayout {
                                 padding-left: 10px;
                                 padding-right: 10px;
@@ -712,7 +712,7 @@ export component SettingsPage inherits VerticalLayout {
                     // The folders scanned for games, sized so the left and right columns align cleanly at the bottom.
                     Rectangle {
                         height: 120px;
-                        background: #07090c;
+                        background: Theme.log-bg;
                         border-width: 1px;
                         border-radius: 0px;
                         border-color: Theme.card-border;
@@ -755,6 +755,18 @@ export component SettingsPage inherits VerticalLayout {
 
             }
             Column {
+                // A launcher setting, saved with the others (not per game).
+                if !root.game-mode: Card {
+                    title: "Appearance";
+                    FormRow {
+                        label: "Theme";
+                        Selector {
+                            horizontal-stretch: 1;
+                            model: ["Dark", "Light", "Classic"];
+                            current-index <=> Theme.scheme;
+                        }
+                    }
+                }
                 Card {
                     title: "System & Compatibility";
                     ToggleRow {
@@ -1278,7 +1290,7 @@ export component SettingsPage inherits VerticalLayout {
                 // The header follows the rows' horizontal scroll.
                 Rectangle {
                     height: 28px;
-                    background: #07090cd9;
+                    background: Theme.log-bg.with-alpha(0.85);
                     clip: true;
                     HorizontalLayout {
                         x: games-table.content-x;
