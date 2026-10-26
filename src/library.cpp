@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
+#include <ctime>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -617,6 +619,7 @@ void apply_play_times(std::vector<GameEntry>& games, const PlayTimeDb& db)
 	{
 		auto it        = db.find(favourite_key(g));
 		g.play_seconds = it != db.end() ? it->second.seconds : 0;
+		g.last_played  = it != db.end() ? it->second.last_played : 0;
 	}
 }
 
@@ -641,6 +644,84 @@ std::string format_play_time(uint64_t seconds)
 		return std::to_string(hours) + "h";
 	}
 	return std::to_string(hours) + "h " + std::to_string(minutes) + "m";
+}
+
+std::string format_last_played(int64_t when, int64_t now)
+{
+	if (when <= 0)
+	{
+		return {};
+	}
+	// Whole local days between the two, so "yesterday" means the calendar day, not 24 hours ago.
+	auto local_day = [](int64_t t) -> std::tm
+	{
+		std::time_t tt = static_cast<std::time_t>(t);
+		std::tm     tm {};
+#ifdef _WIN32
+		localtime_s(&tm, &tt);
+#else
+		localtime_r(&tt, &tm);
+#endif
+		tm.tm_hour = 12; // noon: a DST change can't push the difference across a day
+		tm.tm_min  = 0;
+		tm.tm_sec  = 0;
+		return tm;
+	};
+	std::tm then_tm = local_day(when);
+	std::tm now_tm  = local_day(now);
+	char    buf[16] = {};
+	std::strftime(buf, sizeof(buf), "%Y-%m-%d", &then_tm);
+	const auto days = std::llround(std::difftime(std::mktime(&now_tm), std::mktime(&then_tm)) / 86400.0);
+	if (days <= 0)
+	{
+		return days == 0 ? "today" : buf; // a future time (clock moved back) gets the plain date
+	}
+	if (days == 1)
+	{
+		return "yesterday";
+	}
+	if (days < 7)
+	{
+		return std::to_string(days) + " days ago";
+	}
+	return buf;
+}
+
+std::string describe_exit_code(int code)
+{
+	if (code == 0)
+	{
+		return "Exited normally";
+	}
+	const auto u = static_cast<uint32_t>(code);
+	char       hex[16];
+	std::snprintf(hex, sizeof(hex), "0x%08X", u);
+	const char* name = nullptr;
+	switch (u)
+	{
+		case 0xC0000005: name = "access violation"; break;
+		case 0xC000001D: name = "illegal instruction"; break;
+		case 0xC0000094: name = "integer divide by zero"; break;
+		case 0xC00000FD: name = "stack overflow"; break;
+		case 0xC0000135: name = "a DLL was not found"; break;
+		case 0xC0000139: name = "entry point not found"; break;
+		case 0xC000013A: name = "closed with Ctrl+C"; break;
+		case 0xC0000374: name = "heap corruption"; break;
+		case 0xC0000409: name = "stack buffer overrun"; break;
+		case 0xC0000417: name = "invalid C runtime parameter"; break;
+		default: break;
+	}
+	// Small codes are the emulator's own exit() values, so they stay decimal.
+	if (u < 0x10000)
+	{
+		return "Exited with code " + std::to_string(code);
+	}
+	std::string text = std::string("Exited with code ") + hex;
+	if (name != nullptr)
+	{
+		text += std::string(" (") + name + ")";
+	}
+	return text;
 }
 
 std::string play_time_key(const std::string& eboot)
