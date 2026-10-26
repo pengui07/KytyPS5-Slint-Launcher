@@ -2,7 +2,7 @@
 // The Qt launcher's Controls dialog, as a page: two tabs, click a binding then press, right-click clears.
 
 import { ScrollView } from "std-widgets.slint";
-import { Theme, Selector, AppButton, AppCheckBox, AppSlider } from "common.slint";
+import { Theme, Dropdown, AppButton, AppCheckBox, AppSlider } from "common.slint";
 
 // One row: a PS5 control and the binding it shows.
 export struct ControlRow {
@@ -307,7 +307,7 @@ export component ControlsPage inherits Rectangle {
                 }
                 VerticalLayout {
                     alignment: center;
-                    Selector {
+                    Dropdown {
                         width: 150px;
                         model: ["Classic", "Blue neon", "Monochrome", "Crimson", "Red/Blue"];
                         current-index <=> Controls.skin-index;
@@ -487,7 +487,7 @@ export component ControlsPage inherits Rectangle {
                         color: Theme.muted;
                         font-size: 12px;
                     }
-                    Selector {
+                    Dropdown {
                         model: Controls.pad-sources;
                         selected => { Controls.pick-source(self.current-index); }
                     }
