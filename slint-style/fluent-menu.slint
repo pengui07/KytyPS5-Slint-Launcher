@@ -25,8 +25,8 @@ export component MenuBarItem {
 
     touch-area := TouchArea {
         layout := HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
+            padding-left: 2px;
+            padding-right: 2px;
 
             label := Text {
                 text: root.entry.title;
@@ -50,8 +50,9 @@ export component MenuBarItem {
     }
 }
 
-// The title bar row. 32px high and 28px of left padding (room for the app icon): app.slint's
-// TitleBar uses the same two values. Dragging anywhere on it moves the window.
+// The title bar row. 32px high, with the first title 36px in (room for the app icon): app.slint's
+// TitleBar uses the same values. Each title takes clicks only 2px either side of its text, like
+// Steam's, and the 12px gaps between them belong to the bar. Dragging anywhere on the bar moves the window.
 export component MenuBar inherits Rectangle {
     min-height: max(32px, layout.min-height);
     background: #0d0f14;
@@ -59,7 +60,8 @@ export component MenuBar inherits Rectangle {
     WindowMoveArea {
         layout := HorizontalLayout {
             alignment: start;
-            padding-left: 28px;
+            padding-left: 34px;
+            spacing: 12px;
 
             @children
         }
