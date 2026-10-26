@@ -785,14 +785,17 @@ export component AppWindow inherits Window {
         y: 0px;
         width: 0px;
         height: 0px;
+        // Icons from the toolbar's set, tinted and greyed by the menu style (slint-style/fluent-menu.slint).
         Menu {
             MenuItem {
                 title: "Run";
+                icon: @image-url("icons/play.svg");
                 enabled: !root.running && root.selected >= 0;
                 activated => { root.play-game(root.selected); }
             }
             MenuItem {
                 title: "Trophies";
+                icon: @image-url("icons/trophy.svg");
                 activated => {
                     root.show-settings = false;
                     root.show-versions = false;
@@ -800,12 +803,25 @@ export component AppWindow inherits Window {
                     root.open-game-trophies(root.selected);
                 }
             }
+            MenuSeparator {}
             MenuItem {
-                title: "Open save folder";
-                activated => { root.open-save-folder(root.selected); }
+                title: "Open game folder";
+                icon: @image-url("icons/folder.svg");
+                activated => {
+                    if (root.selected >= 0 && root.selected < root.games.length) {
+                        root.open-url(root.games[root.selected].path);
+                    }
+                }
             }
             MenuItem {
+                title: "Open save folder";
+                icon: @image-url("icons/save.svg");
+                activated => { root.open-save-folder(root.selected); }
+            }
+            MenuSeparator {}
+            MenuItem {
                 title: "Game settings…";
+                icon: @image-url("icons/global-settings.svg");
                 enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
                 activated => {
                     root.show-versions = false;
@@ -814,22 +830,17 @@ export component AppWindow inherits Window {
                     root.open-game-settings(root.selected, true);
                 }
             }
-            MenuItem {
-                title: "Open game folder";
-                activated => {
-                    if (root.selected >= 0 && root.selected < root.games.length) {
-                        root.open-url(root.games[root.selected].path);
-                    }
-                }
-            }
             // STEP6:6c: favourites ("Pin to top"), not the per-game emulator pin of the Settings page.
             MenuItem {
                 title: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].pinned ? "Unpin" : "Pin to top";
+                icon: @image-url("icons/pin.svg");
                 enabled: root.selected >= 0 && root.selected < root.games.length;
                 activated => { root.pin-game(root.selected); }
             }
+            MenuSeparator {}
             MenuItem {
                 title: "Remove from list";
+                icon: @image-url("icons/remove-configuration.svg");
                 enabled: !root.running;
                 activated => { root.remove-game(); }
             }
