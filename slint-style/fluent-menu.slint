@@ -51,10 +51,10 @@ export component MenuBarItem {
     }
 }
 
-// The title bar row. 24px high and 28px of left padding (room for the app icon): app.slint's
+// The title bar row. 32px high and 28px of left padding (room for the app icon): app.slint's
 // TitleBar uses the same two values. Dragging anywhere on it moves the window.
 export component MenuBar inherits Rectangle {
-    min-height: max(24px, layout.min-height);
+    min-height: max(32px, layout.min-height);
     background: #0d0f14;
 
     WindowMoveArea {

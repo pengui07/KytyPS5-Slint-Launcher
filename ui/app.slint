@@ -1818,13 +1818,13 @@ export component AppWindow inherits Window {
     }
 
     // The rest of the title bar around the menu bar: the app icon, the drag area and the window buttons. The menu
-    // bar sits above the window's content area, so this is drawn one bar height (24px, the menu
+    // bar sits above the window's content area, so this is drawn one bar height (32px, the menu
     // bar's own) above it.
     TitleBar {
         x: 0px;
-        y: -24px;
+        y: -32px;
         width: root.width;
-        height: 24px;
+        height: 32px;
         maximized: root.maximized;
         minimize => { root.minimized = true; }
         toggle-maximize => { root.maximized = !root.maximized; }
