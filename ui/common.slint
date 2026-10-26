@@ -556,9 +556,10 @@ export component Dropdown inherits Rectangle {
                             item-touch := TouchArea {
                                 enabled: row.on;
                                 mouse-cursor: row.on ? pointer : default;
+                                // Pick before closing: closing the popup destroys this row, and `i` with it.
                                 clicked => {
-                                    root.close-list();
                                     root.pick(i);
+                                    root.close-list();
                                 }
                             }
                         }

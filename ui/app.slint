@@ -269,9 +269,10 @@ component GameCard inherits Rectangle {
     }
 }
 
-// Search field with a magnifier icon; filtering is not wired up yet.
+// Search field with a magnifier icon; `edited` fires on every change, the clear button included.
 component SearchBox inherits Rectangle {
     in-out property <string> text <=> input.text;
+    callback edited(string);
     public function unfocus() { input.clear-focus(); }
     height: 34px;
     border-radius: 0px;
@@ -325,6 +326,7 @@ component SearchBox inherits Rectangle {
                     font-size: 13px;
                     vertical-alignment: center;
                     single-line: true;
+                    edited => { root.edited(self.text); }
                     cursor-position-changed(pos) => {
                         if (pos.x + self.computed-x < 0px) {
                             self.computed-x = -pos.x;
@@ -362,6 +364,7 @@ component SearchBox inherits Rectangle {
                 mouse-cursor: pointer;
                 clicked => {
                     input.text = "";
+                    root.edited("");
                     input.focus();
                 }
             }
@@ -392,7 +395,7 @@ component TitleBar {
     callback close;
 
     // The menu titles' width, for the drag area after them: the same text and padding as the menu
-    // bar's items (8px either side, 28px before the first). Keep the titles in step with the MenuBar.
+    // bar's items (2px either side, 12px between, 34px before the first). Keep the titles in step with the MenuBar.
     menu-measure := HorizontalLayout {
         visible: false;
         spacing: 16px;
@@ -401,7 +404,7 @@ component TitleBar {
         Text { text: "Settings"; font-size: 12px; }
         Text { text: "Help"; font-size: 12px; }
     }
-    property <length> menus-end: 28px + menu-measure.preferred-width + 16px;
+    property <length> menus-end: 36px + menu-measure.preferred-width + 2px;
 
     // The app icon before the menu titles. Dragging it moves the window, a double-click maximizes
     // or restores it, like the empty bar.
@@ -592,6 +595,8 @@ export component AppWindow inherits Window {
     // STEP6:6c: library view state. The settings' app keys keep it across restarts.
     in-out property <bool> library-grid: false;
     in property <[GridRow]> grid-rows;     // grid view: rows of indices into `games`
+    in property <[int]> list-rows;         // list view: indices into `games` (the ones the search lets through)
+    callback search-changed(string);       // the search box text: the C++ side rebuilds list-rows and grid-rows
     in-out property <int> grid-columns: 4; // cards per row, recomputed from the library box width
     in-out property <string> sort-key: "name";
     in-out property <bool> sort-desc: false;
@@ -986,7 +991,10 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 min-width: 140px;
                 max-width: 320px;
-                search := SearchBox { height: 32px; }
+                search := SearchBox {
+                    height: 32px;
+                    edited(text) => { root.search-changed(text); }
+                }
             }
             VerticalLayout {
                 alignment: center;
@@ -1133,9 +1141,9 @@ export component AppWindow inherits Window {
                     table := ListView {
                         vertical-stretch: 1;
                         content-width: max(self.visible-width, Cols.total);
-                        for game[index] in root.games: GameRowView {
+                        for index in root.list-rows: GameRowView {
                             width: Cols.total;
-                            game: game;
+                            game: root.games[index];
                             selected: index == root.selected;
                             clicked => {
                                 search.unfocus();
@@ -1182,8 +1190,10 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            if root.games.length == 0: Text {
-                text: root.scanning ? "Scanning…" : "No games found. Add a game folder in Settings.";
+            if root.list-rows.length == 0: Text {
+                text: root.scanning ? "Scanning…"
+                    : root.games.length == 0 ? "No games found. Add a game folder in Settings."
+                    : "No games match \"" + search.text + "\".";
                 color: Theme.muted;
                 font-size: 14px;
                 horizontal-alignment: center;
@@ -1831,13 +1841,13 @@ export component AppWindow inherits Window {
     }
 
     // The rest of the title bar around the menu bar: the app icon, the drag area and the window buttons. The menu
-    // bar sits above the window's content area, so this is drawn one bar height (24px, the menu
+    // bar sits above the window's content area, so this is drawn one bar height (32px, the menu
     // bar's own) above it.
     TitleBar {
         x: 0px;
-        y: -24px;
+        y: -32px;
         width: root.width;
-        height: 24px;
+        height: 32px;
         maximized: root.maximized;
         minimize => { root.minimized = true; }
         toggle-maximize => { root.maximized = !root.maximized; }

@@ -278,6 +278,12 @@ constexpr std::chrono::seconds kMinPlaySession{10};
 
 // STEP6:6c: builds one library row. The icon is never decoded here: the row starts with an empty placeholder
 // and `request_icon` asks the decoder pool for it (the completion patches that one row in the model).
+std::string to_lower(std::string text)
+{
+	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	return text;
+}
+
 GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
                 const std::function<void(const std::string&)>& request_icon = {})
 {
@@ -1117,6 +1123,7 @@ int main(int argc, char** argv)
 	auto        games_model  = std::make_shared<slint::VectorModel<GameRow>>();
 	auto        grid_model   = std::make_shared<slint::VectorModel<GridRow>>(); // grid view: rows of indices into `games`
 	auto        grid_columns = std::make_shared<int>(4);
+	auto        search_query = std::make_shared<std::string>(); // the search box text, lower-cased
 	auto        size_cache   = std::make_shared<SizeCache>();
 	// Play time totals: read once here; from now on only the UI thread writes this copy (see finish_session).
 	const std::string play_time_file = path_utf8(paths.play_time_file());
@@ -1126,6 +1133,8 @@ int main(int argc, char** argv)
 	std::thread scan_thread;
 	ui->set_games(games_model);
 	ui->set_grid_rows(grid_model);
+	auto list_model = std::make_shared<slint::VectorModel<int>>(); // list view: indices into `games` the search lets through
+	ui->set_list_rows(list_model);
 
 	// STEP6:6c: the library order. Pinned games come first, then the saved sort key; both views use this one
 	// order, because the grid rows only hold indices into `games`.
@@ -1274,9 +1283,11 @@ int main(int argc, char** argv)
 
 	const std::string compat_cache = path_utf8(paths.compat_cache_file());
 
-	// STEP6:6c: builds both models from `games`, which is already in display order. The grid rows hold indices,
-	// so the list and the grid can never disagree; an icon that is already decoded is put in without a request.
-	auto rebuild = [games, games_model, grid_model, grid_columns, icon_cache, favourite_keys, request_icon]()
+	// STEP6:6c: builds the models from `games`, which is already in display order. The list and grid rows hold
+	// indices, so the two views can never disagree; an icon that is already decoded is put in without a request.
+	// Both views only list the games whose name or serial contains the search text.
+	auto rebuild = [games, games_model, grid_model, list_model, grid_columns, search_query, icon_cache, favourite_keys,
+	                request_icon]()
 	{
 		std::vector<GameRow> rows;
 		rows.reserve(games->size());
@@ -1294,15 +1305,28 @@ int main(int argc, char** argv)
 		}
 		games_model->set_vector(rows);
 
+		std::vector<int> shown;
+		shown.reserve(games->size());
+		for (size_t i = 0; i < games->size(); i++)
+		{
+			const GameEntry& g = (*games)[i];
+			if (search_query->empty() || to_lower(g.name).find(*search_query) != std::string::npos
+			    || to_lower(g.title_id).find(*search_query) != std::string::npos)
+			{
+				shown.push_back(static_cast<int>(i));
+			}
+		}
+		list_model->set_vector(shown);
+
 		std::vector<GridRow> grid;
 		const size_t         columns = static_cast<size_t>(std::max(1, *grid_columns));
-		for (size_t i = 0; i < games->size(); i += columns)
+		for (size_t i = 0; i < shown.size(); i += columns)
 		{
 			auto    cells = std::make_shared<slint::VectorModel<int>>();
 			GridRow row;
-			for (size_t k = i; k < games->size() && k < i + columns; k++)
+			for (size_t k = i; k < shown.size() && k < i + columns; k++)
 			{
-				cells->push_back(static_cast<int>(k));
+				cells->push_back(shown[k]);
 			}
 			row.cells = cells;
 			grid.push_back(std::move(row));
@@ -1500,6 +1524,20 @@ int main(int argc, char** argv)
 			    return;
 		    }
 		    *grid_columns = n;
+		    rebuild();
+	    });
+	// The search box: both views narrow to the matching games on every keystroke.
+	ui->on_search_changed(
+	    [search_query, rebuild](slint::SharedString text)
+	    {
+		    std::string  q = ToStd(text);
+		    const size_t b = q.find_first_not_of(' ');
+		    q              = b == std::string::npos ? std::string() : to_lower(q.substr(b, q.find_last_not_of(' ') - b + 1));
+		    if (q == *search_query)
+		    {
+			    return;
+		    }
+		    *search_query = std::move(q);
 		    rebuild();
 	    });
 	// STEP6:6c: list/grid toggle. The mode is one of the app keys.
