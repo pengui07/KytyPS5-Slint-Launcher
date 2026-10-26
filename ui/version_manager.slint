@@ -1,5 +1,5 @@
-import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
-import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Dropdown, Chevron, AppButton, AppCheckBox } from "common.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, TextCell, HeaderCell, ThemedEdit, IconButton, InlineEdit, Dropdown, Chevron, AppButton, AppCheckBox, PageHeader } from "common.slint";
 
 // ---- Version Manager: emulator builds the launcher can run ----
 
@@ -624,43 +624,32 @@ export component VersionManagerPage inherits Rectangle {
         padding-right: 24px;
         spacing: 8px;
 
-        // Title + back (back first: a control after growing content gets pushed off-screen).
-        HorizontalLayout {
-            spacing: 12px;
+        // Back, title, and the folder new builds download to (rarely changed, so it sits up here).
+        PageHeader {
+            title: "Version Manager";
+            back => { root.back(); }
+            Text {
+                text: "Builds folder";
+                color: Theme.muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                ThemedEdit {
+                    width: clamp(root.width * 0.34, 220px, 480px);
+                    height: 28px;
+                    icon: @image-url("icons/folder.svg");
+                    placeholder: "Where downloaded builds go";
+                    text <=> VM.versions-path;
+                    // Enter applies the typed folder, like Change… does.
+                    accepted => { VM.refresh-installed(); }
+                }
+            }
             VerticalLayout {
                 alignment: center;
                 AppButton {
-                    width: 110px;
-                    text: "← Library";
-                    clicked => { root.back(); }
-                }
-            }
-            Text {
-                text: "Version Manager";
-                color: Theme.text;
-                font-size: 20px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-        }
-
-
-        SectionLabel { text: "Path to save versions"; }
-        Rectangle {
-            border-width: 1px;
-            border-color: Theme.card-border;
-            HorizontalLayout {
-                padding: 10px;
-                spacing: 8px;
-                LineEdit {
-                    horizontal-stretch: 1;
-                    text <=> VM.versions-path;
-                    // Enter applies the typed folder, like Browse does.
-                    accepted => { VM.refresh-installed(); }
-                }
-                AppButton {
-                    width: 100px;
-                    text: "Browse";
+                    text: "Change…";
                     clicked => { VM.browse-path(); }
                 }
             }
@@ -684,15 +673,23 @@ export component VersionManagerPage inherits Rectangle {
                 spacing: 6px;
                 HorizontalLayout {
                     height: 28px;
-                    spacing: 6px;
-                    SectionLabel { text: "Installed"; vertical-alignment: center; }
+                    spacing: 8px;
+                    SectionLabel { text: "Installed"; font-size: 14px; font-weight: 600; vertical-alignment: center; }
+                    Text {
+                        text: VM.installed.length;
+                        color: Theme.muted;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { width: 6px; }
                     VerticalLayout {
                         alignment: center;
-                        // 0.30 of the room the search box had (the box minus the heading, selector and refresh icon).
-                        width: max(70px, (split-area.left-w - 270px) * 0.30);
+                        // A share of the room left after the heading, count, selector and refresh icon.
+                        width: clamp((split-area.left-w - 300px) * 0.45, 120px, 280px);
                         ThemedEdit {
                             height: 26px;
                             min-width: 60px;
+                            icon: @image-url("icons/search.svg");
                             placeholder: "Search builds";
                             text <=> VM.installed-filter;
                             edited(t) => {
@@ -705,7 +702,7 @@ export component VersionManagerPage inherits Rectangle {
                         alignment: center;
                         Dropdown {
                             width: 110px;
-                            model: ["Any", "Tracked", "Local"];
+                            model: ["All types", "Tracked", "Local"];
                             current-index <=> VM.installed-kind;
                             selected(i) => {
                                 VM.current-installed = -1;
