@@ -34,6 +34,7 @@ component TextCell inherits HorizontalLayout {
     in property <string> text;
     in property <color> color: Theme.text;
     in property <bool> bold: false;
+    in property <TextHorizontalAlignment> align: left; // right for numbers, so their digits line up
     width: root.w;
     padding-left: 8px;
     padding-right: 8px;
@@ -44,6 +45,7 @@ component TextCell inherits HorizontalLayout {
         color: root.color;
         font-size: 13px;
         font-weight: root.bold ? 700 : 400;
+        horizontal-alignment: root.align;
         overflow: elide;
         vertical-alignment: center;
     }
@@ -56,6 +58,7 @@ component HeaderCell inherits Rectangle {
     in property <string> tooltip; // shown after hovering for a moment
     in property <bool> sortable: false;
     in property <SortState> sort-state: SortState.none;
+    in property <TextHorizontalAlignment> align: left; // matches the column's TextCell
     callback clicked(); // a click on the label; the 6 px resize grip does not count as one
     width: root.w;
     background: head-touch.has-hover && root.sortable ? Theme.row-hover : transparent;
@@ -67,6 +70,7 @@ component HeaderCell inherits Rectangle {
         color: root.sort-state == SortState.none ? Theme.muted : Theme.text;
         font-size: 12px;
         font-weight: 600;
+        horizontal-alignment: root.align;
         vertical-alignment: center;
         overflow: elide;
     }

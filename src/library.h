@@ -29,6 +29,7 @@ struct GameEntry
 	// cannot read: that needs zarchive).
 	bool     archive      = false;
 	uint64_t play_seconds = 0; // total run time; 0 = never played (see PlayTimeDb, format_play_time)
+	int64_t  last_played  = 0; // unix seconds of the last recorded session; 0 = never (see format_last_played)
 };
 
 struct CompatEntry
@@ -99,10 +100,15 @@ bool save_play_times(const std::string& path, const PlayTimeDb& db);
 // Re-reads the file (so two launcher windows don't overwrite each other), adds one session, writes it back and
 // returns the new totals. A file from a newer launcher version is left untouched.
 PlayTimeDb record_play_session(const std::string& path, const std::string& key, uint64_t seconds, int64_t now);
-// Fills play_seconds from `db` (by favourite_key): what the Play Time column shows.
+// Fills play_seconds and last_played from `db` (by favourite_key): what the Play Time column shows.
 void apply_play_times(std::vector<GameEntry>& games, const PlayTimeDb& db);
 // "" for 0, "<1m", "42m", "12h 30m", "9h"; 100 hours and up keep just the hours ("123h").
 std::string format_play_time(uint64_t seconds);
+// "" for 0 (never), "today", "yesterday", "3 days ago" within a week, else the local date "2026-10-26".
+std::string format_last_played(int64_t when, int64_t now);
+// The emulator's exit code for the status line: "Exited normally" for 0, else the code in hex (how Windows
+// prints NTSTATUS crash codes) with its name when it is a well-known one.
+std::string describe_exit_code(int code);
 
 // The key a session is recorded under: the title id of sce_sys/param.json, else the eboot path (favourite_key
 // uses the same one). Library and typed-path launches have to agree, so both go through this.

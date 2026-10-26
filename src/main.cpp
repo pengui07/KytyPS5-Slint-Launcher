@@ -292,6 +292,8 @@ GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
 	r.status_code  = static_cast<int>(g.status);
 	r.comment      = slint::SharedString(g.comment);
 	r.play_time    = slint::SharedString(format_play_time(g.play_seconds));
+	const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
+	r.last_played  = slint::SharedString(format_last_played(g.last_played, static_cast<int64_t>(now.count())));
 	r.pinned       = pinned_keys.count(favourite_key(g)) != 0;
 	if (!g.icon.empty() && request_icon)
 	{
@@ -2602,7 +2604,7 @@ int main(int argc, char** argv)
 					        {
 						        (*trophy_after_exit)();
 					        }
-					        (*h)->set_status(slint::SharedString("Exited with code " + std::to_string(code)));
+					        (*h)->set_status(slint::SharedString(describe_exit_code(code)));
 					        // The game may have left the window half-painted, so repaint everything once it has exited.
 					        (*h)->window().request_redraw();
 				        }

@@ -28,6 +28,7 @@ export struct GameRow {
     status-code: int,
     comment: string,
     play-time: string, // e.g. "12h 30m"; empty when the game has never been played (format_play_time)
+    last-played: string, // "today", "3 days ago", "2026-10-26"; empty when never played (format_last_played)
     pinned: bool,      // "Pin to top": listed before the others in both views
     icon: image,
 }
@@ -69,9 +70,9 @@ component TableHeader inherits HorizontalLayout {
     HeaderCell { text: "Status"; w <=> Cols.status; sortable: true; sort-state: root.sort-state("status"); clicked => { root.header-clicked("status"); } }
     HeaderCell { text: "Serial"; w <=> Cols.serial; sortable: true; sort-state: root.sort-state("serial"); clicked => { root.header-clicked("serial"); } }
     HeaderCell { text: "Firmware"; w <=> Cols.firmware; sortable: true; sort-state: root.sort-state("firmware"); clicked => { root.header-clicked("firmware"); } }
-    HeaderCell { text: "Size"; w <=> Cols.size; sortable: true; sort-state: root.sort-state("size"); clicked => { root.header-clicked("size"); } }
+    HeaderCell { text: "Size"; w <=> Cols.size; align: right; sortable: true; sort-state: root.sort-state("size"); clicked => { root.header-clicked("size"); } }
     HeaderCell { text: "Game Version"; w <=> Cols.version; sortable: true; sort-state: root.sort-state("version"); clicked => { root.header-clicked("version"); } }
-    HeaderCell { text: "Play Time"; w <=> Cols.playtime; sortable: true; sort-state: root.sort-state("playtime"); clicked => { root.header-clicked("playtime"); } }
+    HeaderCell { text: "Play Time"; w <=> Cols.playtime; align: right; sortable: true; sort-state: root.sort-state("playtime"); clicked => { root.header-clicked("playtime"); } }
     HeaderCell { text: "Path"; w <=> Cols.path; sortable: true; sort-state: root.sort-state("path"); clicked => { root.header-clicked("path"); } }
     HeaderCell { text: "Comments"; w <=> Cols.comment; sortable: true; sort-state: root.sort-state("comment"); clicked => { root.header-clicked("comment"); } }
 }
@@ -111,8 +112,10 @@ component GameRowView inherits Rectangle {
                     }
                 }
             }
+            // The name only takes the width it needs, so the pin sits right after it; the spacer
+            // takes the rest, and a long name still elides before the pin.
             Text {
-                horizontal-stretch: 1;
+                horizontal-stretch: 0;
                 min-width: 0px;
                 text: root.game.name;
                 color: Theme.text;
@@ -130,6 +133,7 @@ component GameRowView inherits Rectangle {
                     height: 12px;
                 }
             }
+            Rectangle { horizontal-stretch: 1; }
         }
         HorizontalLayout {
             width: Cols.status;
@@ -157,9 +161,9 @@ component GameRowView inherits Rectangle {
         }
         TextCell { w: Cols.serial; text: root.game.serial; }
         TextCell { w: Cols.firmware; text: root.game.firmware == "" ? "—" : root.game.firmware; }
-        TextCell { w: Cols.size; text: root.game.size; }
+        TextCell { w: Cols.size; text: root.game.size; align: right; }
         TextCell { w: Cols.version; text: root.game.game-version == "" ? "—" : root.game.game-version; }
-        TextCell { w: Cols.playtime; text: root.game.play-time == "" ? "—" : root.game.play-time; }
+        TextCell { w: Cols.playtime; text: root.game.play-time == "" ? "—" : root.game.play-time; align: right; }
         TextCell { w: Cols.path; text: root.game.path; }
         TextCell { w: Cols.comment; text: root.game.comment; color: Theme.muted; }
     }
@@ -172,6 +176,16 @@ component GameRowView inherits Rectangle {
                 root.clicked();
                 root.menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
             }
+        }
+    }
+
+    // The full path on hover over the Path cell, which is usually too narrow for it. A tooltip only
+    // watches the pointer, so clicks still reach the row underneath.
+    Rectangle {
+        x: Cols.inset + Cols.name + Cols.status + Cols.serial + Cols.firmware + Cols.size + Cols.version + Cols.playtime;
+        width: Cols.path;
+        if root.game.path != "": Tooltip {
+            text: @markdown("\{root.game.path}");
         }
     }
 }
@@ -759,65 +773,86 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/remove-configuration.svg");
-                enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
-                clicked => { root.remove-game(); }
-            }
-            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/input-mapping.svg");
-                clicked => {
-                    root.show-settings = false;
-                    root.show-versions = false;
-                    root.show-trophies = false;
-                    Controls.opened();
-                    root.show-controls = true;
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/remove-configuration.svg");
+                    tooltip: "Remove from list";
+                    enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
+                    clicked => { root.remove-game(); }
                 }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/trophy.svg");
-                clicked => {
-                    root.show-trophies = true;
-                    Trophies.detail-open = false;
-                    Trophies.opened();
+            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/input-mapping.svg");
+                    tooltip: "Controls";
+                    clicked => {
+                        root.show-settings = false;
+                        root.show-versions = false;
+                        root.show-trophies = false;
+                        Controls.opened();
+                        root.show-controls = true;
+                    }
                 }
             }
             VerticalLayout {
                 alignment: center;
-                // Fixed width (not stretch): a stretch spacer here evaluates to infinity
-                // on window-resize reflow and pushes grid/selector/VM off-screen.
-                search := SearchBox { width: 320px; height: 32px; }
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/trophy.svg");
+                    tooltip: "Trophies";
+                    clicked => {
+                        root.show-trophies = true;
+                        Trophies.detail-open = false;
+                        Trophies.opened();
+                    }
+                }
             }
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: @image-url("icons/refresh.svg");
-                enabled: !root.scanning;
-                clicked => { root.refresh-library(); }
+            // The search box gives way first when the window narrows, so the right-hand
+            // controls never get pushed off-screen.
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                min-width: 140px;
+                max-width: 320px;
+                search := SearchBox { height: 32px; }
             }
-            // (No stretch spacer here: an empty stretch in this unbounded context
-            // evaluates to infinity and pushes grid/selector/VM off-screen.)
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: @image-url("icons/refresh.svg");
+                    tooltip: "Rescan library";
+                    enabled: !root.scanning;
+                    clicked => { root.refresh-library(); }
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
             // STEP6:6c: list/grid toggle (the icon shows the view a click switches to).
-            // (No tooltip here: debugging whether Tooltip suppresses paint at wide sizes.)
-            IconButton {
-                width: 32px;
-                height: 32px;
-                icon-size: 18px;
-                icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
-                clicked => {
-                    root.library-grid = !root.library-grid;
-                    root.library-view-changed(root.library-grid);
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    tooltip: root.library-grid ? "List view" : "Grid view";
+                    width: 32px;
+                    height: 32px;
+                    icon-size: 18px;
+                    icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
+                    clicked => {
+                        root.library-grid = !root.library-grid;
+                        root.library-view-changed(root.library-grid);
+                    }
                 }
             }
             // Which emulator build runs the game (the Version Manager's installed list).
@@ -863,9 +898,8 @@ export component AppWindow inherits Window {
 
         // The library table; the selected game's art sits inside it, behind the rows.
         library-box := Rectangle {
-            // No vertical-stretch: in this unbounded context it evaluates to infinity
-            // (preferred height) and pushes the status bar off-screen. The ListView
-            // inside manages its own viewport.
+            // Takes all the height the toolbar and status bar leave.
+            vertical-stretch: 1;
             background: Theme.bg;
             border-radius: 0px;
             border-width: 1px;
@@ -935,11 +969,7 @@ export component AppWindow inherits Window {
                         }
                     }
                     table := ListView {
-                        // Fixed height (not stretch): stretch in this unbounded context
-                        // evaluates to infinity and pushes the status bar off-screen.
-                        // 300px shows ~6 rows at the 598px-tall default window with the
-                        // status bar visible; the ListView scrolls the rest itself.
-                        height: 300px;
+                        vertical-stretch: 1;
                         content-width: max(self.visible-width, Cols.total);
                         for game[index] in root.games: GameRowView {
                             width: Cols.total;
@@ -1026,6 +1056,15 @@ export component AppWindow inherits Window {
                                 ? @markdown("This game is pinned to a build whose exe is missing: it runs with the library's build instead")
                                 : @markdown("The build this game is pinned to (Settings > Games)");
                         }
+                    }
+                    // How much the selected game has been played, and when it last ran.
+                    if root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].play-time != "": Text {
+                        text: "·  " + root.games[root.selected].play-time + " played"
+                            + (root.games[root.selected].last-played == "" ? "" : "  ·  last played " + root.games[root.selected].last-played);
+                        color: Theme.muted;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
                     }
                 }
                 Text {
