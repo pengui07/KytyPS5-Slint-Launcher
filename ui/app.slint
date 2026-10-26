@@ -669,7 +669,7 @@ export component AppWindow inherits Window {
     callback browse-run-dir();
     callback browse-game-dir();
     callback browse-addons-dir();
-    callback import-kyty-ini(); // Settings > Paths > Import from Kyty.ini...
+    callback import-kyty-ini(); // File > Import Kyty.ini...
     callback controller-color-edited(string);
     callback select-game(int);
     callback play-game(int);
@@ -681,7 +681,6 @@ export component AppWindow inherits Window {
     callback delete-save-data(int); // STEP6:6e: wipes <run folder>\_SaveData\<serial> (the dialog confirms)
     callback play();
     callback stop();
-    callback dry-run();
     callback save();
     callback discard-settings(); // Settings > Discard: put back the saved values
     callback open-url(string);
@@ -722,6 +721,10 @@ export component AppWindow inherits Window {
                 title: "Run folder";
                 enabled: root.run-dir != "";
                 activated => { root.open-url(root.run-dir); }
+            }
+            MenuItem {
+                title: "Import Kyty.ini…";
+                activated => { root.import-kyty-ini(); }
             }
         }
         Menu {
@@ -1361,12 +1364,8 @@ export component AppWindow inherits Window {
         browse-run-dir => { root.browse-run-dir(); }
         browse-game-dir => { root.browse-game-dir(); }
         browse-addons-dir => { root.browse-addons-dir(); }
-        import-ini => { root.import-kyty-ini(); }
         controller-color-edited(text) => { root.controller-color-edited(text); }
         remove-game-dir(i) => { root.remove-game-dir(i); }
-        play => { root.play(); }
-        stop => { root.stop(); }
-        dry-run => { root.dry-run(); }
         save => { root.save(); }
         discard => { root.discard-settings(); }
         games-opened => { root.games-opened(); }
@@ -1388,12 +1387,6 @@ export component AppWindow inherits Window {
                 root.show-settings = false;
                 root.refresh-library();
             }
-        }
-        open-versions => {
-            root.show-settings = false;
-            root.show-trophies = false;
-            root.show-versions = true;
-            VM.opened();
         }
         delete-cache-requested => { root.delete-cache-prompt-open = true; }
     }
