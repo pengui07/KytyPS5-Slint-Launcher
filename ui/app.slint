@@ -260,7 +260,7 @@ component SearchBox inherits Rectangle {
     border-radius: 0px;
     border-width: 1px;
     border-color: input.has-focus ? Theme.accent : Theme.card-border;
-    background: #ffffff0a;
+    background: #07090c;
     // Clicks anywhere in the box (icon, padding) focus the text; the input on top still
     // gets its own clicks for cursor placement.
     TouchArea {
@@ -467,8 +467,8 @@ export component AppWindow inherits Window {
     in-out property <bool> network-connected;
     in-out property <string> controller-color; // "#rrggbb", empty = the default lightbar
     in property <color> controller-swatch; // controller-color as a colour, set by the C++ side
-    in-out property <float> controller-vibration: 100;
-    in-out property <float> controller-volume: 50;
+    in-out property <int> controller-vibration: 100;
+    in-out property <int> controller-volume: 50;
     in-out property <int> keyboard-player: 0;
     in-out property <string> addons-dir;
     in property <bool> running;
@@ -686,51 +686,92 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Home: the game library.
+    // Home: the game library. Explicit size (not just visible): a bare layout
+    // child sizes to preferred, and the stretch descendants make that unbounded,
+    // pushing the bottom status bar off-screen.
     VerticalLayout {
         visible: !root.show-settings && !root.show-versions && !root.show-trophies;
-        padding: 18px;
-        padding-left: 24px;
-        padding-right: 24px;
-        spacing: 14px;
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        spacing: 0px;
 
-        // The bar behind the toolbar buttons.
+        // Header strip: full-bleed toolbar flush under the menu bar.
         Rectangle {
-            height: 48px;
-            background: Theme.card;
-            border-radius: 0px;
-            border-width: 1px;
-            border-color: Theme.card-border;
+            height: 50px;
+            background: Theme.panel;
+            // Divider between the menu bar and the toolbar.
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.card-border;
+            }
+            Rectangle {
+                x: 0px;
+                y: parent.height - 1px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.card-border;
+            }
             HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            padding-left: 24px;
+            padding-right: 24px;
             padding-top: 4px;
             padding-bottom: 4px;
             spacing: 4px;
-            // One button: play when nothing runs, stop while the game runs.
-            IconButton {
-                icon: root.running ? @image-url("icons/stop.svg") : @image-url("icons/play.svg");
-                enabled: root.running || (root.selected >= 0 && root.selected < root.games.length);
-                clicked => {
-                    if (root.running) {
-                        root.stop();
-                    } else {
-                        root.play-game(root.selected);
+            // Primary Play/Stop + Settings with labels, like the reference.
+            // Fixed widths: the label must never overflow into the next button.
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                AppButton {
+                    width: 120px;
+                    text: root.running ? "Stop" : "Play";
+                    icon: root.running ? @image-url("icons/stop.svg") : @image-url("icons/play.svg");
+                    primary: true;
+                    enabled: root.running || (root.selected >= 0 && root.selected < root.games.length);
+                    clicked => {
+                        if (root.running) {
+                            root.stop();
+                        } else {
+                            root.play-game(root.selected);
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                AppButton {
+                    width: 150px;
+                    text: "Settings";
+                    icon: @image-url("icons/global-settings.svg");
+                    clicked => {
+                        root.show-trophies = false;
+                        root.show-settings = true;
                     }
                 }
             }
             IconButton {
-                icon: @image-url("icons/global-settings.svg");
-                clicked => { root.show-trophies = false;
-                        root.show-settings = true; }
-            }
-            IconButton {
+                width: 32px;
+                height: 32px;
+                icon-size: 18px;
                 icon: @image-url("icons/remove-configuration.svg");
                 enabled: !root.running && root.selected >= 0 && root.selected < root.games.length;
                 clicked => { root.remove-game(); }
             }
             // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
             IconButton {
+                width: 32px;
+                height: 32px;
+                icon-size: 18px;
                 icon: @image-url("icons/input-mapping.svg");
                 clicked => {
                     root.show-settings = false;
@@ -741,6 +782,9 @@ export component AppWindow inherits Window {
                 }
             }
             IconButton {
+                width: 32px;
+                height: 32px;
+                icon-size: 18px;
                 icon: @image-url("icons/trophy.svg");
                 clicked => {
                     root.show-trophies = true;
@@ -750,18 +794,27 @@ export component AppWindow inherits Window {
             }
             VerticalLayout {
                 alignment: center;
-                search := SearchBox { width: 240px; }
+                // Fixed width (not stretch): a stretch spacer here evaluates to infinity
+                // on window-resize reflow and pushes grid/selector/VM off-screen.
+                search := SearchBox { width: 320px; height: 32px; }
             }
             IconButton {
+                width: 32px;
+                height: 32px;
+                icon-size: 18px;
                 icon: @image-url("icons/refresh.svg");
                 enabled: !root.scanning;
                 clicked => { root.refresh-library(); }
             }
-            Rectangle { horizontal-stretch: 1; }
+            // (No stretch spacer here: an empty stretch in this unbounded context
+            // evaluates to infinity and pushes grid/selector/VM off-screen.)
             // STEP6:6c: list/grid toggle (the icon shows the view a click switches to).
+            // (No tooltip here: debugging whether Tooltip suppresses paint at wide sizes.)
             IconButton {
+                width: 32px;
+                height: 32px;
+                icon-size: 18px;
                 icon: root.library-grid ? @image-url("icons/list-view.svg") : @image-url("icons/grid-view.svg");
-                tooltip: root.library-grid ? "List view" : "Grid view";
                 clicked => {
                     root.library-grid = !root.library-grid;
                     root.library-view-changed(root.library-grid);
@@ -771,7 +824,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 alignment: center;
                 Selector {
-                    width: 230px;
+                    width: 200px;
                     model: root.emu-builds;
                     current-index <=> root.emu-build-index;
                     selected => { root.choose-emu-build(self.current-index); }
@@ -780,6 +833,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 alignment: center;
                 AppButton {
+                    width: 160px;
                     text: "Version Manager";
                     clicked => {
                         root.show-trophies = false;
@@ -789,11 +843,29 @@ export component AppWindow inherits Window {
                 }
             }
             }
+            Rectangle {
+                x: 0px;
+                // Header is fixed 40px tall: literal, since a parent.height binding
+                // does not paint here.
+                y: 50px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.faint;
+            }
         }
+
+        VerticalLayout {
+            vertical-stretch: 1;
+            padding: 18px;
+            padding-left: 24px;
+            padding-right: 24px;
+            spacing: 14px;
 
         // The library table; the selected game's art sits inside it, behind the rows.
         library-box := Rectangle {
-            vertical-stretch: 1;
+            // No vertical-stretch: in this unbounded context it evaluates to infinity
+            // (preferred height) and pushes the status bar off-screen. The ListView
+            // inside manages its own viewport.
             background: Theme.bg;
             border-radius: 0px;
             border-width: 1px;
@@ -863,7 +935,11 @@ export component AppWindow inherits Window {
                         }
                     }
                     table := ListView {
-                        vertical-stretch: 1;
+                        // Fixed height (not stretch): stretch in this unbounded context
+                        // evaluates to infinity and pushes the status bar off-screen.
+                        // 300px shows ~6 rows at the 598px-tall default window with the
+                        // status bar visible; the ListView scrolls the rest itself.
+                        height: 300px;
                         content-width: max(self.visible-width, Cols.total);
                         for game[index] in root.games: GameRowView {
                             width: Cols.total;
@@ -926,12 +1002,10 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             spacing: 14px;
             VerticalLayout {
-                horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
                 // STEP7:1: the selected game's name, then the build it is pinned to in brackets.
                 HorizontalLayout {
-                    horizontal-stretch: 1;
                     alignment: start;
                     spacing: 6px;
                     Text {
@@ -997,20 +1071,7 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            // STEP6:6e: delete the selected game's save data (<run folder>/_SaveData/<serial>); the
-            // confirmation dialog below asks first. Off while a game runs, and for entries without a title id.
-            VerticalLayout {
-                alignment: center;
-                IconButton {
-                    icon: @image-url("icons/remove-configuration.svg");
-                    enabled: !root.running && root.selected >= 0 && root.selected < root.games.length
-                        && root.games[root.selected].serial != "";
-                    clicked => {
-                        root.delete-save-row = root.selected;
-                        root.delete-save-prompt-open = true;
-                    }
-                }
-            }
+        }
         }
     }
 
@@ -1580,6 +1641,7 @@ export component ConsoleWindow inherits Window {
     background: Theme.bg;
     in property <[string]> log-lines;
     callback clear();
+    callback open-last-log();
     // STEP6:6a: follow new output only while the view is at the bottom.
     property <bool> stick: true;
     // STEP6:6a: mirrors log-lines.length so a model change can re-pin after the content grew.
@@ -1615,6 +1677,10 @@ export component ConsoleWindow inherits Window {
                 horizontal-stretch: 1;
             }
             AppButton {
+                text: "Last log";
+                clicked => { root.open-last-log(); }
+            }
+            AppButton {
                 text: "Clear";
                 clicked => { root.clear(); }
             }
@@ -1625,15 +1691,19 @@ export component ConsoleWindow inherits Window {
             border-radius: 0px;
             clip: true;
             log := ListView {
-                for line in root.log-lines: Text {
+                // Read-only inputs, so log text can be highlighted and copied (Ctrl+C).
+                for line in root.log-lines: TextInput {
                     height: 16px;
                     x: 8px;
+                    width: parent.width - 16px;
                     text: line;
                     color: #b9c4d2;
                     font-family: "Consolas";
                     font-size: 12px;
-                    overflow: elide;
                     vertical-alignment: center;
+                    single-line: true;
+                    read-only: true;
+                    wrap: no-wrap;
                 }
                 // STEP6:6a: an upward move pauses following; at (or near) the bottom resumes it.
                 changed content-y => {

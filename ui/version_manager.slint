@@ -613,48 +613,34 @@ export component VersionManagerPage inherits Rectangle {
     property <length> col-path-eff: root.col-path + max(0px, build-list.visible-width - root.cols-total);
 
     VerticalLayout {
+        // Explicit size (see Controls page): a bare layout child sizes to preferred,
+        // and stretch descendants make that unbounded, pushing right-side content off-screen.
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
         padding: 18px;
         padding-left: 24px;
         padding-right: 24px;
         spacing: 8px;
 
+        // Title + back (back first: a control after growing content gets pushed off-screen).
         HorizontalLayout {
-            spacing: 10px;
-            Text {
-                overflow: elide;
-                text: "Version Manager";
-                color: Theme.text;
-                font-size: 18px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-            Rectangle { horizontal-stretch: 1; }
-            Rectangle {
-                width: 58px;
-                height: 40px;
-                border-radius: 0px;
-                background: back-touch.pressed ? #2b3345 : back-touch.has-hover ? #2b3345 : #1d212a;
-                animate background { duration: 100ms; }
-                Image {
-                    x: 9px;
-                    y: (parent.height - self.height) / 2;
-                    source: @image-url("icons/chevron-thin-left.svg");
-                    colorize: Theme.muted;
-                    width: 9px;
-                    height: 20px;
-                }
-                Image {
-                    x: 21px;
-                    y: (parent.height - self.height) / 2;
-                    source: @image-url("icons/library.svg");
-                    colorize: Theme.text;
-                    width: 30px;
-                    height: 30px;
-                }
-                back-touch := TouchArea {
-                    mouse-cursor: pointer;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 110px;
+                    text: "← Library";
                     clicked => { root.back(); }
                 }
+            }
+            Text {
+                text: "Version Manager";
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 700;
+                vertical-alignment: center;
             }
         }
 

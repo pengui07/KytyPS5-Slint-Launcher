@@ -420,8 +420,8 @@ export component SettingsPage inherits VerticalLayout {
     in-out property <int> trophy-duration: 6; // seconds
     in-out property <string> controller-color; // "#rrggbb", empty = the default lightbar
     in property <color> controller-swatch; // controller-color as a colour (the C++ side parses it)
-    in-out property <float> controller-vibration: 100;
-    in-out property <float> controller-volume: 50;
+    in-out property <int> controller-vibration: 100;
+    in-out property <int> controller-volume: 50;
     in-out property <int> keyboard-player: 0;
     in-out property <bool> hdr;
     in-out property <string> height-text;
@@ -536,16 +536,24 @@ export component SettingsPage inherits VerticalLayout {
         }
         HorizontalLayout {
             spacing: 2px;
+            // Back first (not after a stretch spacer): a stretch here evaluates to
+            // infinity and pushes the back button off-screen, trapping the user.
+            VerticalLayout {
+                alignment: center;
+                AppButton {
+                    width: 110px;
+                    height: 28px;
+                    text: "← Library";
+                    clicked => { root.back(); }
+                }
+            }
             for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
+                // Fixed width (not fill): HBox children grow by default and push
+                // later tabs off-screen.
+                width: 110px;
                 text: tab;
                 active: i == root.settings-tab;
                 clicked => { root.settings-tab = i; }
-            }
-            Rectangle { horizontal-stretch: 1; }
-            AppButton {
-                height: 28px;
-                text: "← Library";
-                clicked => { root.back(); }
             }
         }
     }
@@ -575,7 +583,11 @@ export component SettingsPage inherits VerticalLayout {
             width: general-view.visible-width;
             padding-right: 12px;
             spacing: Form.gap;
+            // Fixed width (not fill): an unbounded left column grows and pushes
+            // the right column off-screen. 700px fits the fields; total stays
+            // under the 1000px minimum window width.
             Column {
+                width: 700px;
                 Card {
                     title: "User profile";
                     Field {
@@ -833,34 +845,37 @@ export component SettingsPage inherits VerticalLayout {
                             }
                         }
                     }
+                    // AppSpinBox (not AppSlider): AppSlider does not paint here
+                    // (thumb/value missing in all variants tried); SpinBox does.
                     FormRow {
                         label: "Vibration intensity";
-                        AppSlider {
-                            horizontal-stretch: 1;
+                        AppSpinBox {
+                            width: 90px;
                             minimum: 0;
                             maximum: 100;
                             value <=> root.controller-vibration;
                         }
                         Text {
                             width: 40px;
-                            text: round(root.controller-vibration) + "%";
+                            text: root.controller-vibration + "%";
                             color: Theme.text;
                             font-size: 13px;
                             horizontal-alignment: right;
                             vertical-alignment: center;
                         }
                     }
+                    // AppSpinBox (not AppSlider): see Vibration intensity above.
                     FormRow {
                         label: "Speaker volume";
-                        AppSlider {
-                            horizontal-stretch: 1;
+                        AppSpinBox {
+                            width: 90px;
                             minimum: 0;
                             maximum: 100;
                             value <=> root.controller-volume;
                         }
                         Text {
                             width: 40px;
-                            text: round(root.controller-volume) + "%";
+                            text: root.controller-volume + "%";
                             color: Theme.text;
                             font-size: 13px;
                             horizontal-alignment: right;
@@ -887,7 +902,10 @@ export component SettingsPage inherits VerticalLayout {
             width: graphics-view.visible-width;
             padding-right: 12px;
             spacing: Form.gap;
+            // Fixed width (see General tab): an unbounded left column grows and
+            // pushes the right column off-screen at wide window sizes.
             Column {
+                width: 700px;
                 Card {
                     title: "Graphics & display";
                     FormRow {
@@ -1014,7 +1032,9 @@ export component SettingsPage inherits VerticalLayout {
             width: advanced-view.visible-width;
             padding-right: 12px;
             spacing: Form.gap;
+            // Fixed width (see General tab).
             Column {
+                width: 700px;
                 Card {
                     title: "Launch";
                     Field {
@@ -1149,7 +1169,9 @@ export component SettingsPage inherits VerticalLayout {
             width: debug-view.visible-width;
             padding-right: 12px;
             spacing: Form.gap;
+            // Fixed width (see General tab).
             Column {
+                width: 700px;
                 Card {
                     title: "Debug";
                     ToggleRow {

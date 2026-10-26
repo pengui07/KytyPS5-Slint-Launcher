@@ -5,18 +5,25 @@
 #include <algorithm>
 #include <cctype>
 #include <atomic>
+#include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <mutex>
+#include <set>
+#include <sstream>
 #include <utility>
 
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <csignal>
+#include <ctime>
 #include <fcntl.h>
+#include <sys/select.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #ifdef __linux__
@@ -95,6 +102,381 @@ std::string QuoteArg(const std::string& a)
 	}
 	out.append(backslashes * 2, '\\');
 	return out + "\"";
+}
+
+// ---- Per-build --help probing: old builds die on unknown options ----
+
+// How long "<exe> --help" gets before it counts as a hang (killed, build unchecked).
+constexpr uint64_t kHelpProbeTimeoutMs = 5000;
+
+// Runs "<exe> --help" and returns whatever it printed (stdout and stderr merged: usage
+// goes to either depending on the build). Empty on any failure: missing exe or pipe,
+// spawn error, timeout kill, crash, or silence.
+std::string CaptureHelp(const std::string& exe)
+{
+#ifdef _WIN32
+	SECURITY_ATTRIBUTES sa {sizeof(sa), nullptr, TRUE};
+	HANDLE              rd = nullptr;
+	HANDLE              wr = nullptr;
+	if (CreatePipe(&rd, &wr, &sa, 0) == FALSE)
+	{
+		return {};
+	}
+	SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+	HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
+
+	STARTUPINFOW si {};
+	si.cb         = sizeof(si);
+	si.dwFlags    = STARTF_USESTDHANDLES;
+	si.hStdInput  = nul != INVALID_HANDLE_VALUE ? nul : nullptr;
+	si.hStdOutput = wr;
+	si.hStdError  = wr;
+
+	const fs::path  dir = utf8_path(exe).parent_path();
+	std::wstring    cmd = Widen(QuoteArg(exe) + " --help"); // mutable: CreateProcessW may write into it
+	PROCESS_INFORMATION pi {};
+	const BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+	                               dir.empty() ? nullptr : dir.wstring().c_str(), &si, &pi);
+	CloseHandle(wr);
+	if (nul != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(nul);
+	}
+	if (ok == FALSE)
+	{
+		CloseHandle(rd);
+		return {};
+	}
+	CloseHandle(pi.hThread);
+
+	// Drain while waiting: a chatty --help must never wedge the pipe and look like a hang.
+	std::string    out;
+	const uint64_t deadline = GetTickCount64() + kHelpProbeTimeoutMs;
+	for (;;)
+	{
+		const DWORD status = WaitForSingleObject(pi.hProcess, 250);
+		for (;;)
+		{
+			DWORD avail = 0;
+			if (PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr) == FALSE || avail == 0)
+			{
+				break;
+			}
+			char        buf[4096];
+			DWORD       got = 0;
+			const DWORD n   = avail < sizeof(buf) ? avail : static_cast<DWORD>(sizeof(buf));
+			if (ReadFile(rd, buf, n, &got, nullptr) == FALSE || got == 0)
+			{
+				break;
+			}
+			out.append(buf, got);
+		}
+		if (status == WAIT_OBJECT_0)
+		{
+			break;
+		}
+		if (GetTickCount64() >= deadline)
+		{
+			TerminateProcess(pi.hProcess, 1);
+			WaitForSingleObject(pi.hProcess, 2000);
+			CloseHandle(rd);
+			CloseHandle(pi.hProcess);
+			return {};
+		}
+	}
+	CloseHandle(rd);
+	CloseHandle(pi.hProcess);
+	return out;
+#else
+	int fds[2] = {-1, -1};
+	if (pipe(fds) != 0)
+	{
+		return {};
+	}
+	fcntl(fds[0], F_SETFD, FD_CLOEXEC); // a grandchild must not hold our read end open
+	const pid_t pid = fork();
+	if (pid < 0)
+	{
+		close(fds[0]);
+		close(fds[1]);
+		return {};
+	}
+	if (pid == 0)
+	{
+		dup2(fds[1], STDOUT_FILENO);
+		dup2(fds[1], STDERR_FILENO);
+		close(fds[0]);
+		close(fds[1]);
+		const int nul = open("/dev/null", O_RDONLY);
+		if (nul >= 0)
+		{
+			dup2(nul, STDIN_FILENO);
+			if (nul != STDIN_FILENO)
+			{
+				close(nul);
+			}
+		}
+#ifdef __linux__
+		prctl(PR_SET_PDEATHSIG, SIGKILL); // an orphaned probe dies with the launcher
+#endif
+		execl(exe.c_str(), exe.c_str(), "--help", static_cast<char*>(nullptr));
+		_exit(127);
+	}
+	close(fds[1]);
+
+	std::string out;
+	bool        finished = false; // child reaped
+	bool        eof      = false; // write end closed
+	struct timespec start {};
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	const auto elapsed_ms = [&]
+	{
+		struct timespec now {};
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		return static_cast<uint64_t>(now.tv_sec - start.tv_sec) * 1000u +
+		       static_cast<uint64_t>(now.tv_nsec - start.tv_nsec) / 1000000u;
+	};
+	while ((!finished || !eof) && elapsed_ms() < kHelpProbeTimeoutMs)
+	{
+		fd_set         rfds;
+		FD_ZERO(&rfds);
+		FD_SET(fds[0], &rfds);
+		struct timeval slice {0, 100000}; // 100 ms
+		const int      ready = select(fds[0] + 1, &rfds, nullptr, nullptr, &slice);
+		if (ready < 0)
+		{
+			if (errno == EINTR)
+			{
+				continue;
+			}
+			break;
+		}
+		if (ready > 0 && !eof)
+		{
+			char          buf[4096];
+			const ssize_t n = read(fds[0], buf, sizeof(buf));
+			if (n > 0)
+			{
+				out.append(buf, static_cast<size_t>(n));
+			} else
+			{
+				eof = true;
+			}
+		}
+		int         status = 0;
+		const pid_t r      = waitpid(pid, &status, WNOHANG);
+		if (r == pid)
+		{
+			finished = true;
+		}
+	}
+	if (!finished)
+	{
+		kill(pid, SIGKILL);
+		int status = 0;
+		waitpid(pid, &status, 0);
+		close(fds[0]);
+		return {}; // hung: the build is unchecked
+	}
+	// Reaped in time: drain whatever is left, then hand over (possibly empty) output.
+	for (;;)
+	{
+		fd_set         rfds;
+		FD_ZERO(&rfds);
+		FD_SET(fds[0], &rfds);
+		struct timeval slice {0, 0};
+		if (select(fds[0] + 1, &rfds, nullptr, nullptr, &slice) <= 0)
+		{
+			break;
+		}
+		char          buf[4096];
+		const ssize_t n = read(fds[0], buf, sizeof(buf));
+		if (n <= 0)
+		{
+			break;
+		}
+		out.append(buf, static_cast<size_t>(n));
+	}
+	close(fds[0]);
+	return out;
+#endif
+}
+
+// Every "--option" token heading a "  --" usage line (the --help format).
+std::set<std::string> ParseHelpOptions(const std::string& text)
+{
+	std::set<std::string> out;
+	size_t                pos = 0;
+	while (pos < text.size())
+	{
+		size_t eol = text.find('\n', pos);
+		if (eol == std::string::npos)
+		{
+			eol = text.size();
+		}
+		std::string line = text.substr(pos, eol - pos);
+		if (!line.empty() && line.back() == '\r')
+		{
+			line.pop_back();
+		}
+		if (line.rfind("  --", 0) == 0)
+		{
+			const size_t end = line.find_first_of(" \t=", 3);
+			const std::string opt = line.substr(2, end == std::string::npos ? end : end - 2);
+			if (opt.size() > 2)
+			{
+				out.insert(opt);
+			}
+		}
+		pos = eol + 1;
+	}
+	return out;
+}
+
+// The usable --help option list, or false when the build could not be checked (missing,
+// failed spawn, timeout kill, crash, or silence). Cached per exe path, size and mtime,
+// so a rebuild is checked again but normal launches add no delay.
+bool SupportedEmuOptions(const std::string& exe, std::set<std::string>& options)
+{
+	static std::mutex                    mutex;
+	static std::map<std::string, std::pair<bool, std::set<std::string>>> cache; // key -> (usable, options)
+
+	std::error_code     ec;
+	const uintmax_t     size  = fs::file_size(utf8_path(exe), ec);
+	std::error_code     ec2;
+	const auto          mtime = fs::last_write_time(utf8_path(exe), ec2);
+	if (ec || ec2 || exe.empty())
+	{
+		return false;
+	}
+	const std::string key =
+	    exe + "|" + std::to_string(size) + "|" + std::to_string(mtime.time_since_epoch().count());
+	{
+		std::lock_guard lock(mutex);
+		const auto      it = cache.find(key);
+		if (it != cache.end())
+		{
+			options = it->second.second;
+			return it->second.first;
+		}
+	}
+	const std::set<std::string> found = ParseHelpOptions(CaptureHelp(exe));
+	const bool                  usable = !found.empty();
+	{
+		std::lock_guard lock(mutex);
+		cache[key] = {usable, found};
+		if (usable)
+		{
+			options = found;
+		}
+	}
+	return usable;
+}
+
+bool IsOptionToken(const std::string& tok)
+{
+	return tok.size() > 2 && tok[0] == '-' && tok[1] == '-';
+}
+
+std::string OptionName(const std::string& tok)
+{
+	const size_t eq = tok.find('=');
+	return tok.substr(0, eq);
+}
+
+// Options every build is assumed to accept (without --game there is no launch at all).
+bool AlwaysSentOption(const std::string& opt)
+{
+	return opt == "--game" || opt == "--screen-width" || opt == "--screen-height" || opt == "--printf-direction" ||
+	       opt == "--shader-log-folder" || opt == "--redzone";
+}
+
+const char* OptionHint(const std::string& opt)
+{
+	if (opt == "--trophy-duration")
+	{
+		return "trophy popup time";
+	}
+	return nullptr;
+}
+
+// Drops options rejected by `keep` (with their values: a following token that is not
+// itself an option) and names them in `dropped`, in order.
+template <typename Keep>
+void FilterArgs(std::vector<std::string>& args, Keep keep, std::vector<std::string>& dropped)
+{
+	std::vector<std::string> out;
+	for (size_t i = 0; i < args.size();)
+	{
+		const std::string& tok = args[i];
+		if (IsOptionToken(tok) && !keep(OptionName(tok)))
+		{
+			dropped.push_back(OptionName(tok));
+			i++;
+			if (i < args.size() && !IsOptionToken(args[i]))
+			{
+				i++; // its value
+			}
+		}
+		else
+		{
+			out.push_back(tok);
+			i++;
+		}
+	}
+	args = std::move(out);
+}
+
+// Drops what this build's --help does not list (warning per option) or, when the build
+// could not be checked, everything but the basic set. Hand-typed extra_args always pass
+// through as written.
+void FilterUnsupportedOptions(LaunchPlan& p, const std::string& exe)
+{
+	if (exe.empty())
+	{
+		return; // nothing to check against; the missing-emulator warning below still fires
+	}
+	std::set<std::string> supported;
+	if (SupportedEmuOptions(exe, supported))
+	{
+		std::vector<std::string> dropped;
+		FilterArgs(p.args, [&](const std::string& opt) { return opt == "--game" || supported.count(opt) != 0; }, dropped);
+		std::set<std::string> warned;
+		for (const auto& opt: dropped)
+		{
+			if (!warned.insert(opt).second)
+			{
+				continue;
+			}
+			std::string w = "This build doesn't support " + opt;
+			if (const char* hint = OptionHint(opt))
+			{
+				w += " (" + std::string(hint) + ")";
+			}
+			w += "; skipped";
+			p.warnings.push_back(std::move(w));
+		}
+		std::set<std::string> extra_warned;
+		std::istringstream      parts(p.extra_args);
+		for (std::string tok; parts >> tok;)
+		{
+			if (!IsOptionToken(tok))
+			{
+				continue;
+			}
+			const std::string name = OptionName(tok);
+			if (name != "--game" && supported.count(name) == 0 && extra_warned.insert(name).second)
+			{
+				p.warnings.push_back("Extra argument " + name + " isn't in this build's --help; passing it through anyway");
+			}
+		}
+	} else
+	{
+		std::vector<std::string> dropped;
+		FilterArgs(p.args, [&](const std::string& opt) { return AlwaysSentOption(opt); }, dropped);
+		(void)dropped;
+		p.warnings.push_back("Couldn't check " + exe + " for supported options; sending only the basic set");
+	}
 }
 
 } // namespace
@@ -273,6 +655,11 @@ LaunchPlan make_plan(const Settings& s)
 		}
 	}
 	p.extra_args = s.extra_args;
+
+	// Old builds die on unknown options: keep only what this build's --help lists
+	// (warning per dropped option), or the basic set when it can't be checked.
+	// Hand-typed extra_args always pass through as written.
+	FilterUnsupportedOptions(p, s.emulator);
 
 	if (!fs::exists(utf8_path(s.emulator)))
 	{

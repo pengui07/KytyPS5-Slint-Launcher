@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
 // The launcher's copy of Slint's fluent/menu.slint (v1.18.1), copied over the fetched one by
-// CMakeLists.txt: Slint has no per-app menu styling. The menu bar is unchanged; the popup menus
-// are shaped like the shadPS4 launcher's: near-square corners, rows highlighted edge to edge in
-// the accent colour, a slim frame.
+// CMakeLists.txt: Slint has no per-app menu styling. The menu bar shares the toolbar's #303030
+// so the whole top reads one uniform colour (app.slint keeps a same-colour backing behind it,
+// since MenuBar exposes no background of its own); the popup menus are shaped like the shadPS4
+// launcher's: near-square corners, rows highlighted edge to edge in the accent colour, a slim frame.
 
 import { FluentPalette, FluentFontSettings } from "styling.slint";
 import { MenuBarItemBase, MenuBarBase, MenuItemBase } from "../common/menu-base.slint";
@@ -20,8 +21,9 @@ export component MenuBarItem {
 
     base := MenuBarItemBase {
         horizontal-padding: 11px;
-        top-padding: 4px;
-        bottom-padding: 6px;
+        top-padding: 1px;
+        bottom-padding: 2px;
+        font-size: 12px;
         default-foreground: FluentPalette.foreground;
         hover-foreground: FluentPalette.foreground;
         pressed-foreground: FluentPalette.text-secondary;
@@ -33,7 +35,10 @@ export component MenuBarItem {
 
 export component MenuBar inherits MenuBarBase {
     spacing: 10px;
-    min-layout-height: 40px;
+    // Bar height: max(this, an item's own min height = font line + the paddings above),
+    // so shrinking past the text needs a smaller font-size on MenuBarItem as well.
+    min-layout-height: 22px;
+    background: #303030;
 }
 
 // Padding only above and below, so the highlighted row reaches both edges.
