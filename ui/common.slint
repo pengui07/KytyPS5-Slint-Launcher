@@ -55,14 +55,15 @@ export global Theme {
 }
 
 // Put one in each window: points the std widgets (scroll bars, menus, LineEdit) at the same light or
-// dark palette as Theme.
+// dark palette as Theme, and hands the menus (slint-style/fluent-menu.slint) the scheme itself.
 export component PaletteSync {
-    property <bool> light: Theme.light;
+    property <int> scheme: Theme.scheme;
     function apply() {
-        Palette.color-scheme = root.light ? ColorScheme.light : ColorScheme.dark;
+        Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
+        Palette.launcher-scheme = root.scheme;
     }
     init => { root.apply(); }
-    changed light => { root.apply(); }
+    changed scheme => { root.apply(); }
 }
 
 export // Which sort arrow a sortable table header shows.
