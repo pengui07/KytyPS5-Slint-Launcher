@@ -12,51 +12,44 @@ can switch over without losing anything.
 
 ## Features
 
-**Library**
-- Scans one or more game folders for games (any folder with an `eboot.bin`) and reads each game's
-  `sce_sys/param.json` for its name, title ID, version and icon. A `.zar` archive added as a game is listed too
-  (by file name, since the launcher cannot look inside it).
-- List and grid views, sortable columns (sort is remembered) and "Pin to top" favourites.
-- Play time and "last played" per game, kept in `playtime.json`, so hiding or rescanning a game keeps its totals.
-- Compatibility status from the shared KytyPS5 compatibility list.
-- Right-click menu per game: Run, Trophies, Cheats, Open game folder, Open save folder, Game
-  settings, Pin to top, Remove from list. Delete save data asks first and wipes only that game's saves. Removed games can be brought back from **Settings > Games**.
+This launcher covers what the upstream Qt launcher does (library with list and grid views, global and per-game
+settings, input mapping, cheats, trophy viewer, compatibility status, remove save data). Below is only what is
+different.
 
-**Settings**
-- Every emulator option the current KytyPS5 understands, on four tabs: **General** (profile, language, audio,
-  paths, controller, trophy popups), **Graphics**, **Advanced** (extra arguments, environment variables, GitHub
-  token, release cache) and **Debug**.
-- **Per-game settings**: open Game settings on any game to change options for that game only. The page shows what
-  the game actually resolves to, including anything the emulator build itself forces (see the cfg guide below).
-- **Per-game emulator pin**: run a specific game with a specific build (**Settings > Games**).
-- Three themes: dark, light and classic.
+**New here**
+- **One small exe, no Qt.** Static runtime on Windows, so no DLLs or VC++ redistributable to install.
+- **Version Manager.** Download KytyPS5 releases from GitHub and keep several builds side by side, switch builds
+  from the toolbar, add other GitHub repositories as release sources, add local builds, and rename, pin, hide or
+  delete them. Checks for newer `-latest` builds at start-up and hourly. An optional GitHub token is kept in
+  Windows Credential Manager, never in the settings file.
+- **Per-game build pin.** Run a game with a specific build (**Settings > Games**).
+- **Build cfg files.** A build can ship `cfgGlobal.json` and `cfg<TITLEID>.json` with the settings it needs; the
+  launcher applies them and warns when one overrides your setting. See the
+  [guide](#guide-for-build-makers-cfg-files).
+- **Per-game settings show the real values**, including anything the build's cfg files force.
+- **More emulator options**: environment variables for the emulator (global or per game), extra arguments, and
+  switches the Qt launcher has no checkbox for (splash screen, VR, PlayGo hack, GPU-assisted validation, graphics
+  debug dump).
+- **Play time and last played** per game, **Pin to top** favourites, a remembered sort order, and hiding games
+  from the list (restorable in **Settings > Games**).
+- **Console window** with the emulator's live output and the full last log.
+- **`--dry-run`** prints exactly what would be launched (config layers, command line, environment), and
+  **`--play`** launches without a window.
+- **First-start setup**: choose app data or portable mode, choose where saves go, and import the Qt launcher's
+  `Kyty.ini` and game list in one step (also later from **File > Import Kyty.ini...**).
+- **Portable mode**: put a `portable.txt` next to the exe and everything stays in that folder.
+- **Classic theme** next to dark and light.
 
-**Version Manager**
-- Download KytyPS5 releases from GitHub, keep several side by side, and switch with one click from the toolbar.
-- Add other GitHub repositories as extra release sources (each gets its own tab), add local builds with Add
-  Custom, rename, pin, hide and delete builds.
-- Checks for newer `-latest` builds at start-up and hourly (can be turned off).
-- Each build's About panel lists the cfg files it ships with.
-- An optional GitHub token (stored in Windows Credential Manager, never in the settings file) lifts GitHub's rate
-  limit and allows private repositories.
+**Works differently**
+- Settings are saved as JSON (`kyty.json` and `configs/games/<TITLEID>.json`) instead of `Kyty.ini`. Your
+  `Kyty.ini` is read but never changed.
+- A `.zar` archive can be added as a game, but it shows by file name only: the launcher can't read inside it yet.
 
-**Controls**
-- Remap the keyboard, mouse and gamepad for every PS5 control, with a controller diagram, capture-by-pressing on
-  Windows, touch pad options and mouse sensitivity. Saved in the format the emulator's `--keymap` reads.
-
-**Cheats**
-- Per-game cheat list, compatible with the Qt launcher's GoldHEN-style JSON files in `<run folder>/_Patches/`.
-- Browse and import cheats from the online HEN Cheats Collection; files that don't match the installed game
-  version or use features the emulator can't apply yet are refused with the reason.
-
-**Trophies**
-- Trophy overview of all games and a page per game with icons, grades and unlock state, in your console language.
-
-**Everything else**
-- First-start setup: keep data in your user folder or next to the launcher (portable), choose where saves go, and
-  import the Qt launcher's settings and games in one step.
-- Console window with the emulator's live output and the full last log.
-- `--dry-run` and `--play` command-line modes (see below).
+**Not ported yet**
+- Additional Content (DLC) per game, Compress to ZAR, game config import/export, and the built-in self-updater.
+  These are in progress.
+- The Controls page's live controller preview (in progress), the game's title music, the borderless fullscreen
+  option and the "System" theme.
 
 ## Getting started
 
