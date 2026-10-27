@@ -16,6 +16,7 @@ can switch over without losing anything.
 - [Help and troubleshooting](#help-and-troubleshooting)
 - [Building the launcher](#building-the-launcher)
 - [Releases](#releases)
+- [Credits](#credits)
 
 Guides:
 - [Configs.md](Configs.md): config files. How build makers ship `cfgGlobal.json` / `cfg<TITLEID>.json`, every
@@ -160,3 +161,11 @@ git push origin v1.2.0
 (`-DKYTY_LAUNCHER_VERSION=v1.2.0`) and attaches `KytyPS5-Slint-Launcher-<tag>-Windows-x64.zip` and
 `-Linux-x86_64.tar.gz` to the release. Released launchers look for a newer release at startup (**Settings >
 General > Launcher**) and from **Help > Check for updates**, then download it, swap the executable and restart.
+
+## Credits
+
+- **The [KytyPS5](https://github.com/KytyPS5/KytyPS5) team**, for the emulator this launcher runs, and for the
+  upstream Qt launcher whose features, settings, input mapping, cheat format and controller diagram this one
+  follows.
+- **The [shadPS4](https://github.com/shadps4-emu/shadPS4) team**, for the PS4 emulator and its launcher, whose
+  look inspired this one's menus and pages.
