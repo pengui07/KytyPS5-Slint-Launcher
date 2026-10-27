@@ -5,7 +5,7 @@
 // pad below, and Restore Defaults / Save / Cancel along the bottom.
 
 import { ScrollView } from "std-widgets.slint";
-import { Theme, Card, Dropdown, AppButton, AppCheckBox, AppSlider } from "common.slint";
+import { Theme, Card, Dropdown, AppButton, AppCheckBox, AppSlider, PageHeader } from "common.slint";
 
 // One row: a PS5 control and the binding it shows.
 export struct ControlRow {
@@ -415,24 +415,9 @@ export component ControlsPage inherits Rectangle {
         spacing: 10px;
 
         // Title and the way back to the library.
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: start;
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    width: 110px;
-                    text: "← Library";
-                    clicked => { root.close(); }
-                }
-            }
-            Text {
-                text: "Controls";
-                color: Theme.text;
-                font-size: 20px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
+        PageHeader {
+            title: "Controls";
+            back => { root.close(); }
         }
 
         HorizontalLayout {
