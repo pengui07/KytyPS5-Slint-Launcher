@@ -373,7 +373,6 @@ export component Dropdown inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> compact: false; // 24 px tall with 12 px text, for table cells
     in property <bool> tracks-selection: true;
-    in property <bool> flat: false; // no frame until hovered or open (a cell of a table row)
     in property <string> placeholder; // shown, muted, while nothing is picked
     in property <string> text: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
     in property <color> text-color: Theme.text;
@@ -414,12 +413,11 @@ export component Dropdown inherits Rectangle {
 
     height: root.compact ? 24px : 26px;
     min-width: root.compact ? 40px : 90px;
-    background: root.flat ? Theme.tab-inactive : Theme.log-bg;
+    background: Theme.log-bg;
     border-width: 1px;
     border-radius: 0px;
-    border-color: !root.enabled ? (root.flat ? transparent : Theme.card-border)
-        : root.is-open || (root.tab-focused && fs.has-focus) || touch.has-hover ? Theme.accent
-        : root.flat ? transparent : Theme.card-border;
+    border-color: !root.enabled ? Theme.card-border
+        : root.is-open || (root.tab-focused && fs.has-focus) || touch.has-hover ? Theme.accent : Theme.card-border;
     opacity: root.enabled ? 1 : 0.45;
     forward-focus: fs;
     accessible-role: combobox;

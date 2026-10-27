@@ -266,36 +266,31 @@ component GameConfigRowView inherits Rectangle {
         }
         TextCell { w: root.serial-w; text: root.game.serial == "" ? "—" : root.game.serial; }
         TextCell { w: root.version-w; text: root.game.game-version == "" ? "—" : root.game.game-version; }
+        // The Emulator column: a drop-down of the library default and every installed build, filling the whole
+        // cell with its own frame. The row's TouchArea opens it (see below).
+        emu-cell := Dropdown {
+            width: root.emu-w;
+            height: root.height;
+            enabled: root.game.can-config;
+            model: root.emu-choices;
+            current-index: root.game.pin + 1;
+            popup-width: max(root.emu-w, 220px);
+            text: !root.game.can-config ? "—" : root.game.pinned ? root.game.emu : "Library default";
+            text-color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+            selected(i) => { root.set-emu(i - 1); }
+        }
         TextCell {
             w: root.settings-w;
             text: !root.game.can-config ? "—" : root.game.custom ? "Custom" : "Global";
             color: root.game.custom ? Theme.text : Theme.muted;
-        }
-        // The Emulator column: a drop-down of the library default and every installed build, filling the cell.
-        // The row's TouchArea opens it (see below).
-        // The whole height of the row, less a 1 px line so neighbouring rows' boxes stay apart.
-        VerticalLayout {
-            width: root.emu-w;
-            padding-left: 4px;
-            padding-bottom: 1px;
-            emu-cell := Dropdown {
-                height: root.height - 1px;
-                flat: true;
-                enabled: root.game.can-config;
-                model: root.emu-choices;
-                current-index: root.game.pin + 1;
-                popup-width: max(root.emu-w - 4px, 220px);
-                text: !root.game.can-config ? "—" : root.game.pinned ? root.game.emu : "Library default";
-                text-color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
-                selected(i) => { root.set-emu(i - 1); }
-            }
         }
     }
 
     touch := TouchArea {
         clicked => {
             // A click in the Emu column opens its drop-down; anywhere else selects the row.
-            if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x) {
+            if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x
+                && self.mouse-x < emu-cell.absolute-position.x - root.absolute-position.x + emu-cell.width) {
                 emu-cell.open();
             } else {
                 root.clicked();
@@ -1332,11 +1327,10 @@ export component SettingsPage inherits VerticalLayout {
                             }
                             HeaderCell { text: "Serial"; w <=> root.gw-serial; }
                             HeaderCell { text: "Version"; w <=> root.gw-version; }
-                            HeaderCell { text: "Settings"; w <=> root.gw-settings; tooltip: "Custom: the game has its own settings (Game settings…). Global: it uses yours."; }
                             // Lined up with the text inside the drop-downs below.
                             HorizontalLayout {
                                 width: root.gw-emu;
-                                padding-left: 14px;
+                                padding-left: 10px;
                                 Text {
                                     text: "Emulator";
                                     color: Theme.muted;
@@ -1345,6 +1339,7 @@ export component SettingsPage inherits VerticalLayout {
                                     vertical-alignment: center;
                                 }
                             }
+                            HeaderCell { text: "Settings"; w <=> root.gw-settings; tooltip: "Custom: the game has its own settings (Game settings…). Global: it uses yours."; }
                         }
                         Rectangle {
                             y: parent.height - 1px;
