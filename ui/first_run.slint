@@ -158,6 +158,10 @@ export component FirstRunWindow inherits Window {
     callback add-game-dir();
     callback remove-game-dir(int);
     callback pick-addons-dir();
+    // The Theme drop-down: C++ sets the picked theme's colours.
+    callback theme-changed(int);
+    property <int> theme-scheme: Theme.scheme;
+    changed theme-scheme => { root.theme-changed(self.theme-scheme); }
 
     PaletteSync { }
 
@@ -215,7 +219,7 @@ export component FirstRunWindow inherits Window {
                     label: "Theme";
                     Dropdown {
                         horizontal-stretch: 1;
-                        model: ["Dark", "Light", "Classic"];
+                        model: Theme.names;
                         current-index <=> Theme.scheme;
                     }
                 }

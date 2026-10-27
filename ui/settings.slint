@@ -477,6 +477,8 @@ export component SettingsPage inherits VerticalLayout {
     callback set-game-emu(int, int);         // the Emulator drop-down: library index, build index (-1: library default)
     callback restore-game(int);              // STEP7:2: Games tab: put a removed game back on the library
     callback reset-game();                   // per-game mode: drop the game's overrides
+    callback reload-themes();                // Theme: read the themes folder again
+    callback open-themes-folder();           // Theme: show the themes folder (made, with example.json, if missing)
 
     changed settings-tab => {
         if (self.settings-tab == 4) {
@@ -772,10 +774,19 @@ export component SettingsPage inherits VerticalLayout {
                         vertical-stretch: 1;
                         FormRow {
                             label: "Theme";
+                            hint: "Dark, Light and Classic are built in. Every .json file in the themes folder is another theme: it starts from one of them and changes the colours it lists. Open folder makes the folder (with an example.json to copy); Reload picks up new and edited files.";
                             Dropdown {
                                 horizontal-stretch: 1;
-                                model: ["Dark", "Light", "Classic"];
+                                model: Theme.names;
                                 current-index <=> Theme.scheme;
+                            }
+                            AppButton {
+                                text: "Reload";
+                                clicked => { root.reload-themes(); }
+                            }
+                            AppButton {
+                                text: "Open folder";
+                                clicked => { root.open-themes-folder(); }
                             }
                         }
                         // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.

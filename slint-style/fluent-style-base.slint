@@ -5,8 +5,8 @@
 //! It is used by the compiler to avoid loading the entire widget library.
 
 // The launcher's copy of Slint's fluent/style-base.slint (v1.18.1), copied over the fetched one by
-// CMakeLists.txt. The only change is Palette.launcher-scheme, the one way the launcher's Theme can
-// reach its menu style (slint-style/fluent-menu.slint), which cannot import the app's own files.
+// CMakeLists.txt. The only change is Palette's launcher-* properties, the one way the launcher's Theme
+// can reach its menu style (slint-style/fluent-menu.slint), which cannot import the app's own files.
 
 import { FluentPalette } from "styling.slint";
 
@@ -36,6 +36,14 @@ export global Palette {
     out property <brush> selection-foreground: FluentPalette.selection-foreground;
     out property <brush> border: FluentPalette.border;
     in-out property <ColorScheme> color-scheme <=> FluentPalette.color-scheme;
-    // Theme.scheme, set by common.slint's PaletteSync: 0 dark, 1 light, 2 classic.
-    in-out property <int> launcher-scheme: 0;
+    // Theme's colours for the menus, set by common.slint's PaletteSync (the defaults are the classic theme's).
+    in-out property <bool> launcher-light: false;
+    in-out property <color> launcher-popup: #2f2e2c;
+    in-out property <color> launcher-border: #45433f;
+    in-out property <color> launcher-text: #d6d6d6;
+    in-out property <color> launcher-muted: #8f8f8d;
+    in-out property <color> launcher-accent: #5a86b8;
+    in-out property <color> launcher-on-accent: #ffffff;
+    in-out property <color> launcher-chrome-text: #8b939f;
+    in-out property <color> launcher-chrome-text-hover: #ffffff;
 }

@@ -3,67 +3,80 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 
 export global Theme {
-    // 0 dark, 1 light, 2 classic (the 2017 Steam skin's warm greys): the launcher setting "theme"
-    // (Settings > General > Appearance). Each colour below is "light ? … : classic ? … : dark".
-    in-out property <int> scheme: 0;
-    out property <bool> light: scheme == 1;
-    out property <bool> classic: scheme == 2;
+    // The launcher setting "theme" (Settings > General > Launcher): main.cpp loads the built-in themes and
+    // the files in <data root>/themes (themes.cpp), lists them in `names` and sets every colour below whenever
+    // `scheme` (the index into `names`) changes. The defaults are the classic theme's, the one a new install
+    // starts with, so a window looks right before main.cpp has set anything.
+    in-out property <[string]> names: ["Dark", "Light", "Classic"];
+    in-out property <int> scheme: 2;
+    // A light theme: the std widgets' light palette, and a black hover wash instead of a white one.
+    in-out property <bool> light: false;
+    // Bumped by main.cpp after it sets the colours, so PaletteSync passes them on to the menus.
+    in-out property <int> revision: 0;
 
     // 0 unknown, 1 in game, 2 main menu, 3 logo, 4 doesn't boot
     public pure function status-color(code: int) -> color {
         return code == 1 ? #30a46c : code == 2 ? #3a86ff : code == 3 ? #f5a524 : code == 4 ? #e5484d : #565f70;
     }
-    // A see-through wash over whatever is behind: white on the dark themes, black on the light one.
+    // A see-through wash over whatever is behind: white on the dark themes, black on the light ones.
     public pure function tint(alpha: float) -> color {
         return (root.light ? #000000 : #ffffff).with-alpha(alpha);
     }
-    out property <color> row-hover: light ? #0000000d : classic ? #ffffff0f : #ffffff0f;
-    out property <color> row-selected: light ? #00000017 : classic ? #3e5470cc : #ffffff1a;
-    out property <color> row-outline: light ? #1a2130b3 : classic ? #d6d6d6aa : #e7ecf3cc;
-    out property <color> card-glass: light ? #ffffffc8 : classic ? #1e1d1bc0 : #11141ab8;
-    out property <color> bg: light ? #eef1f5 : classic ? #2b2a28 : #0a0c10;
-    out property <color> panel: light ? #e6eaf0 : classic ? #232220 : #0d0f14;
-    out property <color> card: light ? #ffffff : classic ? #1e1d1b : #11141a;
-    out property <color> card-border: light ? #c5ccd8 : classic ? #45433f : #2b3345;
-    out property <color> border-hover: light ? #8f9cb2 : classic ? #6a6763 : #3e4c66;
-    out property <color> text: light ? #1a2130 : classic ? #d6d6d6 : #d0d7e6;
-    out property <color> muted: light ? #586377 : classic ? #8f8f8d : #707b90;
-    out property <color> faint: light ? #858fa1 : classic ? #6b6a67 : #565f70;
-    out property <color> placeholder: light ? #7d879ab3 : classic ? #6b6a67b3 : #4a5566b3;
-    out property <color> accent: light ? #2b6fe0 : classic ? #5a86b8 : #3a86ff;
-    out property <color> accent-hover: light ? #4a86ee : classic ? #6f98c6 : #5aa0ff;
-    out property <color> accent-pressed: light ? #1f5cc4 : classic ? #4a7099 : #2f74e0;
-    out property <color> accent-border-hover: light ? #1f5cc4 : classic ? #8fb0d6 : #6db0ff;
-    out property <color> accent-soft: light ? #d4e2fa : classic ? #3a4a5e : #1f3550; // banners, the selected nav row
-    out property <color> on-accent: #ffffff; // text and icons on accent or danger fills
-    out property <color> text-strong: light ? #000000 : #ffffff; // the picked row in a drop-down list
-    out property <color> danger: light ? #d93036 : classic ? #c9453f : #e5484d;
-    out property <color> danger-hover: light ? #e5484d : classic ? #db5a54 : #f06065;
-    out property <color> log-bg: light ? #ffffff : classic ? #1a1a19 : #07090c; // also the inside of edit boxes and pickers
-    out property <color> log-text: light ? #2a3140 : classic ? #c4c4c4 : #b9c4d2;
-    out property <color> popup: light ? #ffffff : classic ? #2f2e2c : #141923;
-    out property <color> tab-inactive: light ? #dfe4eb : classic ? #262523 : #141820;
-    out property <color> control-hover: light ? #e1e6ee : classic ? #3a3936 : #1d212a;
-    out property <color> button-top: light ? #ffffff : classic ? #4a4946 : #232834;
-    out property <color> button-bottom: light ? #f0f2f6 : classic ? #3c3b38 : #191d26;
-    out property <color> button-hover: light ? #e8ecf2 : classic ? #55534f : #262c38;
-    out property <color> button-pressed: light ? #dde2ea : classic ? #343331 : #14171d;
-    // The title bar's menu titles and window buttons (slint-style/fluent-menu.slint keeps its own copy).
-    out property <color> chrome-text: light ? #586377 : #8b939f;
-    out property <color> chrome-text-hover: light ? #1a2130 : #ffffff;
-    out property <color> scrim: light ? #00000052 : classic ? #000000a6 : #000000a6; // behind dialogs
+    in-out property <color> row-hover: #ffffff0f;
+    in-out property <color> row-selected: #3e5470cc;
+    in-out property <color> row-outline: #d6d6d6aa;
+    in-out property <color> card-glass: #1e1d1bc0;
+    in-out property <color> bg: #2b2a28;
+    in-out property <color> panel: #232220;
+    in-out property <color> card: #1e1d1b;
+    in-out property <color> card-border: #45433f;
+    in-out property <color> border-hover: #6a6763;
+    in-out property <color> text: #d6d6d6;
+    in-out property <color> muted: #8f8f8d;
+    in-out property <color> faint: #6b6a67;
+    in-out property <color> placeholder: #6b6a67b3;
+    in-out property <color> accent: #5a86b8;
+    in-out property <color> accent-hover: #6f98c6;
+    in-out property <color> accent-pressed: #4a7099;
+    in-out property <color> accent-border-hover: #8fb0d6;
+    in-out property <color> accent-soft: #3a4a5e; // banners, the selected nav row
+    in-out property <color> on-accent: #ffffff; // text and icons on accent or danger fills
+    in-out property <color> text-strong: #ffffff; // the picked row in a drop-down list
+    in-out property <color> danger: #c9453f;
+    in-out property <color> danger-hover: #db5a54;
+    in-out property <color> log-bg: #1a1a19; // also the inside of edit boxes and pickers
+    in-out property <color> log-text: #c4c4c4;
+    in-out property <color> popup: #2f2e2c;
+    in-out property <color> tab-inactive: #262523;
+    in-out property <color> control-hover: #3a3936;
+    in-out property <color> button-top: #4a4946;
+    in-out property <color> button-bottom: #3c3b38;
+    in-out property <color> button-hover: #55534f;
+    in-out property <color> button-pressed: #343331;
+    // The title bar's menu titles and window buttons.
+    in-out property <color> chrome-text: #8b939f;
+    in-out property <color> chrome-text-hover: #ffffff;
+    in-out property <color> scrim: #000000a6; // behind dialogs
 }
 
 // Put one in each window: points the std widgets (scroll bars, menus, LineEdit) at the same light or
-// dark palette as Theme, and hands the menus (slint-style/fluent-menu.slint) the scheme itself.
+// dark palette as Theme, and hands the menus (slint-style/fluent-menu.slint) the colours they draw with.
 export component PaletteSync {
-    property <int> scheme: Theme.scheme;
+    property <int> revision: Theme.revision;
     function apply() {
         Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
-        Palette.launcher-scheme = root.scheme;
+        Palette.launcher-light = Theme.light;
+        Palette.launcher-popup = Theme.popup;
+        Palette.launcher-border = Theme.card-border;
+        Palette.launcher-text = Theme.text;
+        Palette.launcher-muted = Theme.muted;
+        Palette.launcher-accent = Theme.accent;
+        Palette.launcher-on-accent = Theme.on-accent;
+        Palette.launcher-chrome-text = Theme.chrome-text;
+        Palette.launcher-chrome-text-hover = Theme.chrome-text-hover;
     }
     init => { root.apply(); }
-    changed scheme => { root.apply(); }
+    changed revision => { root.apply(); }
 }
 
 export // Which sort arrow a sortable table header shows.

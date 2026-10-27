@@ -237,6 +237,9 @@ add_executable(kyty_slint_launcher WIN32
 	# Help > Check for updates (this repo's GitHub releases)
 	src/self_update.cpp
 	src/self_update.h
+	# Settings > General > Theme: the built-in themes and <data root>/themes/*.json
+	src/themes.cpp
+	src/themes.h
 	$<$<BOOL:${WIN32}>:src/app.rc>
 )
 slint_target_sources(kyty_slint_launcher ui/app.slint)

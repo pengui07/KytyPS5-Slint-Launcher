@@ -17,6 +17,7 @@
 #include "version_manager.h"
 #include "addcont.h"
 #include "self_update.h"
+#include "themes.h"
 #include "zar.h"
 
 #include <atomic>
@@ -61,6 +62,46 @@ constexpr size_t kMaxLogLines = 4000;
 std::string ToStd(const slint::SharedString& s)
 {
 	return std::string(std::string_view(s));
+}
+
+// Gives a window's Theme global the colours of `t` (the drop-down's index is set by the caller).
+template <class Window>
+void ApplyTheme(const Window& w, const LauncherTheme& t)
+{
+	const auto& g     = w.template global<Theme>();
+	size_t      i     = 0;
+	auto        color = [&]
+	{
+		const uint32_t v = t.colors[i++];
+		return slint::Color::from_argb_uint8(static_cast<uint8_t>(v & 0xff), static_cast<uint8_t>(v >> 24), static_cast<uint8_t>(v >> 16),
+		                                     static_cast<uint8_t>(v >> 8));
+	};
+#define KYTY_SET_THEME_COLOR(id, name) g.set_##id(color());
+	KYTY_THEME_COLORS(KYTY_SET_THEME_COLOR)
+#undef KYTY_SET_THEME_COLOR
+	g.set_light(t.light);
+	g.set_revision(g.get_revision() + 1);
+}
+
+// The Theme drop-down's names.
+std::shared_ptr<slint::VectorModel<slint::SharedString>> ThemeNames(const std::vector<LauncherTheme>& themes)
+{
+	auto names = std::make_shared<slint::VectorModel<slint::SharedString>>();
+	for (const LauncherTheme& t: themes)
+	{
+		names->push_back(slint::SharedString(t.name));
+	}
+	return names;
+}
+
+// One status line for the problems load_themes found: the first, and how many more.
+std::string ThemeProblemsNote(const std::vector<std::string>& problems)
+{
+	if (problems.empty())
+	{
+		return std::string();
+	}
+	return "Theme " + problems.front() + (problems.size() > 1 ? " (and " + std::to_string(problems.size() - 1) + " more in the console)" : std::string());
 }
 
 #ifdef _WIN32
@@ -604,6 +645,19 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 	const bool portable_ok = folder_writable(portable_dir);
 
 	auto setup = FirstRunWindow::create();
+	// The per-user root's themes: the data folder is not chosen yet.
+	const std::vector<LauncherTheme> themes = load_themes(paths.themes_dir());
+	setup->global<Theme>().set_names(ThemeNames(themes));
+	setup->global<Theme>().set_scheme(find_theme(themes, kDefaultTheme));
+	ApplyTheme(*setup, themes[static_cast<size_t>(setup->global<Theme>().get_scheme())]);
+	setup->on_theme_changed(
+	    [&](int scheme)
+	    {
+		    if (scheme >= 0 && static_cast<size_t>(scheme) < themes.size())
+		    {
+			    ApplyTheme(*setup, themes[static_cast<size_t>(scheme)]);
+		    }
+	    });
 	setup->set_app_data_root(slint::SharedString(path_utf8(paths.root)));
 	setup->set_portable_root(slint::SharedString(path_utf8(portable_dir)));
 	setup->set_portable_enabled(portable_ok);
@@ -699,7 +753,7 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 			out.note = out.import.text() + " (defaults kept)";
 		}
 	}
-	s.theme = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
+	s.theme = scheme >= 0 && static_cast<size_t>(scheme) < themes.size() ? themes[static_cast<size_t>(scheme)].id : std::string(kDefaultTheme);
 	// The folders picked here go after the imported ones (a folder already on the list is not added twice).
 	for (size_t i = 0; i < game_dirs->row_count(); i++)
 	{
@@ -880,6 +934,11 @@ int main(int argc, char** argv)
 	}
 
 	auto ui = AppWindow::create();
+
+	// Launcher themes: the built-in ones and the files in <data root>/themes (themes.h). Reload reads the folder again.
+	std::vector<std::string> theme_problems;
+	auto                     themes = std::make_shared<std::vector<LauncherTheme>>(load_themes(paths.themes_dir(), &theme_problems));
+	ui->global<Theme>().set_names(ThemeNames(*themes));
 
 	auto log_model  = std::make_shared<slint::VectorModel<slint::SharedString>>();
 
@@ -1067,7 +1126,9 @@ int main(int argc, char** argv)
 		// STEP7:3: the update check is a launcher setting, not an emulator one.
 		ui->set_check_updates(v.check_updates);
 		ui->set_check_launcher_updates(v.check_launcher_updates);
-		ui->global<Theme>().set_scheme(v.theme == "light" ? 1 : v.theme == "classic" ? 2 : 0);
+		const int theme = find_theme(*themes, v.theme);
+		ui->global<Theme>().set_scheme(theme);
+		ApplyTheme(*ui, (*themes)[static_cast<size_t>(theme)]);
 		push_columns(v.columns);
 		push_emu(v);
 	};
@@ -1075,7 +1136,10 @@ int main(int argc, char** argv)
 #ifdef _WIN32
 	ui->set_is_windows(true);
 #endif
-	ui->set_status(slint::SharedString(imported ? "Imported settings from " + import_report.source : startup_note.empty() ? "Ready" : startup_note));
+	ui->set_status(slint::SharedString(imported               ? "Imported settings from " + import_report.source
+	                                   : !startup_note.empty() ? startup_note
+	                                   : !theme_problems.empty() ? ThemeProblemsNote(theme_problems)
+	                                                             : std::string("Ready")));
 	if (imported)
 	{
 		ui->set_import_summary_text(slint::SharedString(import_report.text()));
@@ -1208,7 +1272,10 @@ int main(int argc, char** argv)
 		s.check_updates          = ui->get_check_updates();
 		s.check_launcher_updates = ui->get_check_launcher_updates();
 		const int scheme = ui->global<Theme>().get_scheme();
-		s.theme          = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
+		if (scheme >= 0 && static_cast<size_t>(scheme) < themes->size())
+		{
+			s.theme = (*themes)[static_cast<size_t>(scheme)].id;
+		}
 		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
 		s.library_sort      = ToStd(ui->get_sort_key());
 		s.library_sort_desc = ui->get_sort_desc();
@@ -1313,6 +1380,10 @@ int main(int argc, char** argv)
 	if (!startup_note.empty())
 	{
 		append_text("warning: " + startup_note);
+	}
+	for (const std::string& problem: theme_problems)
+	{
+		append_text("warning: theme " + problem);
 	}
 	if (imported)
 	{
@@ -2940,7 +3011,7 @@ int main(int argc, char** argv)
 	    });
 
 	ui->on_open_console(
-	    [console, log_model, pending_lines, weak_app = slint::ComponentWeakHandle<AppWindow>(ui), &paths]
+	    [console, log_model, pending_lines, themes, weak_app = slint::ComponentWeakHandle<AppWindow>(ui), &paths]
 	    {
 		    if (!console->has_value())
 		    {
@@ -3011,25 +3082,73 @@ int main(int argc, char** argv)
 		    }
 		    if (auto h = weak_app.lock())
 		    {
-			    (**console)->global<Theme>().set_scheme((*h)->global<Theme>().get_scheme());
+			    const int scheme = (*h)->global<Theme>().get_scheme();
+			    (**console)->global<Theme>().set_scheme(scheme);
+			    if (scheme >= 0 && static_cast<size_t>(scheme) < themes->size())
+			    {
+				    ApplyTheme(*(**console), (*themes)[static_cast<size_t>(scheme)]);
+			    }
 		    }
 		    (**console)->show();
 		    (**console)->invoke_scroll_to_end();
 	    });
 
 	ui->on_theme_changed(
-	    [console, weak_ui = slint::ComponentWeakHandle<AppWindow>(ui)](int scheme)
+	    [console, themes, weak_ui = slint::ComponentWeakHandle<AppWindow>(ui)](int scheme)
 	    {
+		    if (scheme < 0 || static_cast<size_t>(scheme) >= themes->size())
+		    {
+			    return;
+		    }
+		    const LauncherTheme& t = (*themes)[static_cast<size_t>(scheme)];
 		    if (console->has_value())
 		    {
 			    (**console)->global<Theme>().set_scheme(scheme);
+			    ApplyTheme(*(**console), t);
 		    }
-#ifdef _WIN32
 		    if (auto h = weak_ui.lock())
 		    {
+			    ApplyTheme(*(*h), t);
+#ifdef _WIN32
 			    RoundWindow(**h);
-		    }
 #endif
+		    }
+	    });
+	// Settings > General > Theme: read the folder again, keeping the picked theme when its file is still there.
+	ui->on_reload_themes(
+	    [&]
+	    {
+		    const int         scheme  = ui->global<Theme>().get_scheme();
+		    const std::string current = scheme >= 0 && static_cast<size_t>(scheme) < themes->size() ? (*themes)[static_cast<size_t>(scheme)].id
+		                                                                                            : std::string(kDefaultTheme);
+		    std::vector<std::string> problems;
+		    *themes         = load_themes(paths.themes_dir(), &problems);
+		    const int index = find_theme(*themes, current);
+		    ui->global<Theme>().set_names(ThemeNames(*themes));
+		    ui->global<Theme>().set_scheme(index);
+		    // Applied here too: an edited file keeps its index, so the drop-down reports no change.
+		    ui->invoke_theme_changed(index);
+		    for (const std::string& problem: problems)
+		    {
+			    append_text("warning: theme " + problem);
+		    }
+		    const auto files = std::count_if(themes->begin(), themes->end(), [](const LauncherTheme& t) { return !t.file.empty(); });
+		    ui->set_status(slint::SharedString(!problems.empty() ? ThemeProblemsNote(problems)
+		                                       : (*themes)[static_cast<size_t>(index)].id != current
+		                                           ? "The \"" + current + "\" theme is gone, so " + (*themes)[static_cast<size_t>(index)].name + " is used"
+		                                           : "Themes reloaded: " + std::to_string(files) + (files == 1 ? " file" : " files") + " in " + path_utf8(paths.themes_dir())));
+	    });
+	ui->on_open_themes_folder(
+	    [&]
+	    {
+		    const int      scheme = ui->global<Theme>().get_scheme();
+		    const fs::path dir    = paths.themes_dir();
+		    if (!prepare_themes_folder(dir, (*themes)[static_cast<size_t>(std::clamp(scheme, 0, static_cast<int>(themes->size()) - 1))]))
+		    {
+			    ui->set_status(slint::SharedString("Could not create " + path_utf8(dir)));
+			    return;
+		    }
+		    open_in_system(path_utf8(dir));
 	    });
 
 	ui->on_open_url(
