@@ -7,6 +7,8 @@ import { SettingsPage, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEd
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
 import { ControlsPage, Controls, ControlRow } from "controls.slint";
 import { CheatsPage, Cheats, CheatRow, RemoteCheatRow } from "cheats.slint";
+import { AddonsPage, Addons, AddonRow } from "addons.slint";
+import { PromptDialog, Prompt } from "prompt.slint";
 // The first-launch setup: a window of its own, shown before the main one (see main.cpp).
 import { FirstRunWindow } from "first_run.slint";
 
@@ -14,7 +16,7 @@ import { FirstRunWindow } from "first_run.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
-export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow, Cheats, CheatRow, RemoteCheatRow }
+export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow, Cheats, CheatRow, RemoteCheatRow, Addons, AddonRow, Prompt }
 // Theme.scheme is the launcher's light/dark setting (main.cpp).
 import { PaletteSync } from "common.slint";
 export { Theme }
@@ -34,6 +36,7 @@ export struct GameRow {
     play-time: string, // e.g. "12h 30m"; empty when the game has never been played (format_play_time)
     last-played: string, // "today", "3 days ago", "2026-10-26"; empty when never played (format_last_played)
     pinned: bool,      // "Pin to top": listed before the others in both views
+    archive: bool,     // a .zar game (Compress to ZAR is for folders)
     icon: image,
 }
 
@@ -568,6 +571,19 @@ export component AppWindow inherits Window {
             root.show-cheats = false;
         }
     }
+    // The Additional Content page of one game (library menu > Additional Content…).
+    in-out property <bool> show-addons: false;
+    callback open-game-addons(int); // library index
+    property <bool> addons-covered: show-settings || show-versions || show-trophies || show-controls || show-cheats;
+    changed addons-covered => {
+        if (self.addons-covered) {
+            root.show-addons = false;
+        }
+    }
+    // Library menu > Compress to ZAR…: packs a game folder into <folder>.zar (the C++ side asks and shows progress).
+    callback compress-game(int);
+    // Library menu > Open game folder: the folder, or the .zar file selected in its folder.
+    callback open-game-folder(int);
     // Settings page in per-game mode (the C++ side loads the game's values into the properties below).
     in property <bool> game-mode;
     in property <string> game-mode-name;
@@ -585,6 +601,10 @@ export component AppWindow inherits Window {
     in property <bool> selected-emu-missing;
     // STEP7:3: the Version Manager's automatic check for newer builds (Settings > General).
     in-out property <bool> check-updates: true;
+    // Help > Check for updates: the launcher's own releases (src/self_update.cpp).
+    in-out property <bool> check-launcher-updates: true;
+    in property <string> launcher-version;
+    callback check-launcher-update(); // asked from the Help menu: always answers, even "up to date"
     in-out property <bool> pin-dialog-open;
     in-out property <int> pin-dialog-row: -1;
     in-out property <int> pin-pick: -1;
@@ -825,7 +845,7 @@ export component AppWindow inherits Window {
             MenuItem {
                 title: "Check for updates";
                 icon: @image-url("icons/refresh.svg");
-                enabled: false; // placeholder
+                activated => { root.check-launcher-update(); }
             }
         }
     }
@@ -866,24 +886,50 @@ export component AppWindow inherits Window {
                     root.show-versions = false;
                     root.show-trophies = false;
                     root.show-controls = false;
+                    root.show-addons = false;
                     root.open-game-cheats(root.selected);
                     root.show-cheats = true;
+                }
+            }
+            MenuItem {
+                title: "Additional Content…";
+                icon: @image-url("icons/folder.svg");
+                enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
+                activated => {
+                    root.show-settings = false;
+                    root.show-versions = false;
+                    root.show-trophies = false;
+                    root.show-controls = false;
+                    root.show-cheats = false;
+                    root.open-game-addons(root.selected);
+                    root.show-addons = true;
                 }
             }
             MenuSeparator {}
             MenuItem {
                 title: "Open game folder";
                 icon: @image-url("icons/folder.svg");
-                activated => {
-                    if (root.selected >= 0 && root.selected < root.games.length) {
-                        root.open-url(root.games[root.selected].path);
-                    }
-                }
+                activated => { root.open-game-folder(root.selected); }
             }
             MenuItem {
                 title: "Open save folder";
                 icon: @image-url("icons/save.svg");
                 activated => { root.open-save-folder(root.selected); }
+            }
+            MenuItem {
+                title: "Delete save data…";
+                icon: @image-url("icons/remove-configuration.svg");
+                enabled: !root.running && root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
+                activated => {
+                    root.delete-save-row = root.selected;
+                    root.delete-save-prompt-open = true;
+                }
+            }
+            MenuItem {
+                title: "Compress to ZAR…";
+                icon: @image-url("icons/save.svg");
+                enabled: !root.running && root.selected >= 0 && root.selected < root.games.length && !root.games[root.selected].archive;
+                activated => { root.compress-game(root.selected); }
             }
             MenuSeparator {}
             MenuItem {
@@ -1381,6 +1427,8 @@ export component AppWindow inherits Window {
         removed-games: root.removed-games;
         removed-selected <=> root.removed-selected;
         check-updates <=> root.check-updates;
+        check-launcher-updates <=> root.check-launcher-updates;
+        launcher-version: root.launcher-version;
         microphone <=> root.microphone;
         present-mode <=> root.present-mode;
         printf-dir <=> root.printf-dir;
@@ -1495,6 +1543,14 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         back => { root.show-cheats = false; }
+    }
+
+    if root.show-addons: AddonsPage {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        back => { root.show-addons = false; }
     }
 
     // Games tab > Set Emu...: pick one of the installed builds to pin the game to.
@@ -1904,6 +1960,14 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
+
+    // Questions and long tasks (Compress to ZAR, game config import, the launcher's own update).
+    if Prompt.open: PromptDialog {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
     }
 
     // The rest of the title bar around the menu bar: the app icon, the drag area and the window buttons. The menu

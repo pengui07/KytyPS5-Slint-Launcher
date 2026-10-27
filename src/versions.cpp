@@ -209,6 +209,11 @@ bool Unzip(const fs::path& archive, const fs::path& dir, std::string* error)
 
 } // namespace
 
+bool unpack_release_archive(const std::string& archive, const std::string& dir, std::string* error)
+{
+	return Unzip(utf8_path(archive), utf8_path(dir), error);
+}
+
 std::string parse_repo_link(const std::string& link)
 {
 	std::string s = link;

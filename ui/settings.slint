@@ -63,6 +63,9 @@ export global Devices {
 // confirmation dialogs (a row index is a library index, the Games tab lists the library in order).
 export global GameActions {
     callback delete-save-data(int);
+    // Game configs as JSON keyed by serial (the Qt launcher's Import/Export format).
+    callback import-configs();
+    callback export-config(int);
 }
 
 // Sizes shared by the form rows, so the controls of every group line up.
@@ -388,6 +391,9 @@ export component SettingsPage inherits VerticalLayout {
     in-out property <int> removed-selected: -1;
     // STEP7:3: check for newer "-latest" builds at startup and every hour (Settings > General).
     in-out property <bool> check-updates: true;
+    // Look for a newer launcher release at startup (Help > Check for updates asks any time).
+    in-out property <bool> check-launcher-updates: true;
+    in property <string> launcher-version; // this build's release tag, "" for a development build
     in-out property <length> gw-name: 300px;
     in-out property <length> gw-serial: 110px;
     in-out property <length> gw-version: 110px;
@@ -745,6 +751,12 @@ export component SettingsPage inherits VerticalLayout {
                             hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
                             on: root.check-updates };
                             toggled(on) => { root.check-updates = on; }
+                        }
+                        ToggleRow {
+                            item: { env: "check_launcher_updates", label: "Check for launcher updates on startup",
+                            hint: "Looks for a newer release of this launcher on GitHub when it starts" + (root.launcher-version != "" ? " (this is " + root.launcher-version + ")" : " (this is a development build, which never updates itself)") + ". Help > Check for updates asks at any time.",
+                            on: root.check-launcher-updates };
+                            toggled(on) => { root.check-launcher-updates = on; }
                         }
                     }
                 }
@@ -1342,12 +1354,23 @@ export component SettingsPage inherits VerticalLayout {
                 clicked => { root.pick-game-emu(root.games-selected); }
             }
             // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
-            // confirmation. Games without a title id (a .zar archive, for one) have no save folder.
+            // confirmation. Games without a title id have no save folder.
             AppButton {
                 text: "Delete save data…";
                 enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
                     && root.game-configs[root.games-selected].serial != "" && !root.running;
                 clicked => { GameActions.delete-save-data(root.games-selected); }
+            }
+            // Game configs as JSON keyed by serial: the format of the Qt launcher's Import/Export.
+            AppButton {
+                text: "Import configs…";
+                clicked => { GameActions.import-configs(); }
+            }
+            AppButton {
+                text: "Export config…";
+                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
+                    && root.game-configs[root.games-selected].serial != "";
+                clicked => { GameActions.export-config(root.games-selected); }
             }
         }
 

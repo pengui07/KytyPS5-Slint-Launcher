@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "settings.h"
+#include "zar.h"
 
 #include <algorithm>
 #include <cctype>
@@ -33,6 +34,8 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr uintmax_t kMaxParamJsonBytes = 4u * 1024u * 1024u;
+// Icons and backdrops read out of a .zar are held in memory before decoding.
+constexpr uint64_t kMaxImageBytes = 32u * 1024u * 1024u;
 
 std::string Trim(const std::string& s)
 {
@@ -135,6 +138,28 @@ std::string FirmwareVersion(const std::string& encoded)
 		v += "." + encoded.substr(6, 2);
 	}
 	return v;
+}
+
+// Name, serial and versions from a game's sce_sys/param.json text; a field it lacks keeps its value.
+void ApplyParam(GameEntry& g, const std::string& text)
+{
+	JsonValue root;
+	if (!parse_json(text, root) || root.type != JsonValue::Type::Object)
+	{
+		return;
+	}
+	std::string title = LocalizedTitle(root);
+	if (!title.empty())
+	{
+		g.name = title;
+	}
+	g.title_id     = StringMember(root, "titleId");
+	g.game_version = StringMember(root, "appVersion");
+	if (g.game_version.empty())
+	{
+		g.game_version = StringMember(root, "contentVersion");
+	}
+	g.firmware_version = FirmwareVersion(StringMember(root, "requiredSystemSoftwareVersion"));
 }
 
 // Size on disk, as Explorer shows it: compressed (and sparse) files count what they really
@@ -412,17 +437,33 @@ std::string read_title_id(const std::string& game)
 {
 	std::error_code ec;
 	fs::path        dir = utf8_path(game);
-	if (!fs::is_directory(dir, ec))
+	std::string     text;
+	if (is_zar_path(game) && fs::is_regular_file(dir, ec))
 	{
-		dir = dir.parent_path();
-	}
-	const fs::path param = dir / "sce_sys" / "param.json";
-	if (!fs::is_regular_file(param, ec) || fs::file_size(param, ec) > kMaxParamJsonBytes)
+		// A .zar is the game itself: its param.json is inside.
+		if (!read_game_file(zar_member_path(game, "sce_sys/param.json"), kMaxParamJsonBytes, text))
+		{
+			return {};
+		}
+		if (text.rfind("\xEF\xBB\xBF", 0) == 0)
+		{
+			text.erase(0, 3);
+		}
+	} else
 	{
-		return {};
+		if (!fs::is_directory(dir, ec))
+		{
+			dir = dir.parent_path();
+		}
+		const fs::path param = dir / "sce_sys" / "param.json";
+		if (!fs::is_regular_file(param, ec) || fs::file_size(param, ec) > kMaxParamJsonBytes)
+		{
+			return {};
+		}
+		text = read_text_file(path_utf8(param));
 	}
 	JsonValue root;
-	if (!parse_json(read_text_file(path_utf8(param)), root) || root.type != JsonValue::Type::Object)
+	if (!parse_json(text, root) || root.type != JsonValue::Type::Object)
 	{
 		return {};
 	}
@@ -730,12 +771,12 @@ std::string play_time_key(const std::string& eboot)
 	{
 		return {};
 	}
-	// Only a folder or an eboot.bin holds a param.json: a .zar archive is the game file itself, and the folder
-	// around it belongs to no game. favourite_key keys such a game by the file, so this has to do the same.
+	// Only a folder, an eboot.bin or a .zar (its param.json is inside) has a title id: a loose .bin/.elf sits in a
+	// folder that may belong to no game, so favourite_key keys such a game by the file, and this does the same.
 	std::string     title_id;
 	const fs::path  path = utf8_path(eboot);
 	std::error_code ec;
-	if (fs::is_directory(path, ec) || LowerKey(path_utf8(path.filename())) == "eboot.bin")
+	if (fs::is_directory(path, ec) || LowerKey(path_utf8(path.filename())) == "eboot.bin" || is_zar_path(eboot))
 	{
 		title_id = read_title_id(eboot);
 	}
@@ -764,22 +805,7 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		const fs::path  param = dir / "sce_sys" / "param.json";
 		if (fs::is_regular_file(param, pec) && fs::file_size(param, pec) <= kMaxParamJsonBytes)
 		{
-			JsonValue root;
-			if (parse_json(read_text_file(path_utf8(param)), root) && root.type == JsonValue::Type::Object)
-			{
-				std::string title = LocalizedTitle(root);
-				if (!title.empty())
-				{
-					g.name = title;
-				}
-				g.title_id     = StringMember(root, "titleId");
-				g.game_version = StringMember(root, "appVersion");
-				if (g.game_version.empty())
-				{
-					g.game_version = StringMember(root, "contentVersion");
-				}
-				g.firmware_version = FirmwareVersion(StringMember(root, "requiredSystemSoftwareVersion"));
-			}
+			ApplyParam(g, read_text_file(path_utf8(param)));
 		}
 		for (const char* art: {"pic1.png", "pic0.png"})
 		{
@@ -806,26 +832,18 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		games.push_back(std::move(g));
 	};
 
-	// STEP6:6e: a .zar file as a game root (case-insensitive extension). Nothing inside the archive is read:
-	// name, serial and icon can't come from it without zarchive, so none are invented.
+	// A .zar archive is a game of its own: the archive is the game file, and its name, serial, icon and art are
+	// read from inside it. A .zar without an eboot.bin (an add-on, a broken pack) is not a game; a file that isn't
+	// a readable archive is listed by its file name, so the user still sees it.
 	auto add_archive = [&](const fs::path& file)
 	{
-		std::string ext = path_utf8(file.extension());
-		for (auto& c: ext)
-		{
-			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		}
-		if (ext != ".zar")
-		{
-			return;
-		}
 		const std::string path = path_utf8(file);
-		if (!seen.insert(path_key(path)).second)
+		if (!is_zar_path(path) || seen.count(path_key(path)) != 0)
 		{
 			return;
 		}
 		GameEntry g;
-		g.name    = path_utf8(file.stem());
+		g.name = path_utf8(file.stem());
 		if (g.name.empty())
 		{
 			g.name = path_utf8(file.filename());
@@ -833,6 +851,35 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		g.dir     = path;
 		g.eboot   = path;
 		g.archive = true;
+		if (const auto reader = ZarReader::Open(path))
+		{
+			if (!reader->FileExists("eboot.bin"))
+			{
+				return;
+			}
+			std::string text;
+			if (reader->ReadFile("sce_sys/param.json", kMaxParamJsonBytes, text))
+			{
+				if (text.rfind("\xEF\xBB\xBF", 0) == 0)
+				{
+					text.erase(0, 3);
+				}
+				ApplyParam(g, text);
+			}
+			for (const char* art: {"sce_sys/pic1.png", "sce_sys/pic0.png"})
+			{
+				if (reader->FileExists(art))
+				{
+					g.background = zar_member_path(path, art);
+					break;
+				}
+			}
+			if (reader->FileExists("sce_sys/icon0.png"))
+			{
+				g.icon = zar_member_path(path, "sce_sys/icon0.png");
+			}
+		}
+		seen.insert(path_key(path));
 		std::error_code sec;
 		g.size = static_cast<uint64_t>(fs::file_size(file, sec));
 		if (sec)
@@ -841,15 +888,26 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		}
 		games.push_back(std::move(g));
 	};
+	// The .zar files directly in `dir`.
+	auto add_archives_in = [&](const fs::path& dir)
+	{
+		std::error_code dec;
+		for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, dec), end; !dec && it != end; it.increment(dec))
+		{
+			std::error_code fec;
+			if (it->is_regular_file(fec) && !it->is_symlink(fec))
+			{
+				add_archive(it->path());
+			}
+		}
+	};
 
 	for (const auto& root_text: SplitRoots(roots))
 	{
 		const fs::path root = utf8_path(root_text);
 		if (!fs::is_directory(root, ec))
 		{
-			// STEP6:6e: a .zar archive listed as a root is a game of its own. The emulator reads ZArchive
-			// files directly, but the launcher can't look inside one: the name is the file stem and there is
-			// no title id, version or icon (that would need zarchive).
+			// A .zar archive listed as a root (File > Add game…) is a game of its own.
 			if (fs::is_regular_file(root, ec))
 			{
 				add_archive(root);
@@ -866,6 +924,8 @@ std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes)
 		{
 			fs::path cur = pending.front();
 			pending.pop_front();
+			// Archives sit next to game folders, at any depth (as in the Qt launcher).
+			add_archives_in(cur);
 			for (fs::directory_iterator it(cur, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
 			     it.increment(ec))
 			{
@@ -942,6 +1002,13 @@ void apply_compat(std::vector<GameEntry>& games, const CompatDb& db)
 
 bool load_image_rgba(const std::string& path, int max_w, int max_h, std::vector<uint8_t>& rgba, int& w, int& h)
 {
+	// "<game>.zar!/sce_sys/icon0.png": the image is read out of the archive first.
+	std::string bytes;
+	const bool  in_archive = split_zar_member_path(path, nullptr, nullptr);
+	if (in_archive && !read_game_file(path, kMaxImageBytes, bytes))
+	{
+		return false;
+	}
 #ifdef _WIN32
 	const HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 	bool          ok = false;
@@ -951,10 +1018,20 @@ bool load_image_rgba(const std::string& path, int max_w, int max_h, std::vector<
 		IWICBitmapFrameDecode* frame   = nullptr;
 		IWICBitmapScaler*      scaler  = nullptr;
 		IWICFormatConverter*   conv    = nullptr;
-		if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))) &&
-		    SUCCEEDED(factory->CreateDecoderFromFilename(utf8_path(path).wstring().c_str(), nullptr, GENERIC_READ,
-		                                                 WICDecodeMetadataCacheOnDemand, &decoder)) &&
-		    SUCCEEDED(decoder->GetFrame(0, &frame)))
+		IWICStream*            stream  = nullptr;
+		// A file inside a .zar is decoded from memory; the bytes outlive the decoder.
+		bool created = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)));
+		if (created && in_archive)
+		{
+			created = SUCCEEDED(factory->CreateStream(&stream)) &&
+			          SUCCEEDED(stream->InitializeFromMemory(reinterpret_cast<BYTE*>(bytes.data()), static_cast<DWORD>(bytes.size()))) &&
+			          SUCCEEDED(factory->CreateDecoderFromStream(stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder));
+		} else if (created)
+		{
+			created = SUCCEEDED(factory->CreateDecoderFromFilename(utf8_path(path).wstring().c_str(), nullptr, GENERIC_READ,
+			                                                      WICDecodeMetadataCacheOnDemand, &decoder));
+		}
+		if (created && SUCCEEDED(decoder->GetFrame(0, &frame)))
 		{
 			UINT sw = 0;
 			UINT sh = 0;
@@ -974,7 +1051,7 @@ bool load_image_rgba(const std::string& path, int max_w, int max_h, std::vector<
 				h  = static_cast<int>(dh);
 			}
 		}
-		for (IUnknown* o: std::initializer_list<IUnknown*>{conv, scaler, frame, decoder, factory})
+		for (IUnknown* o: std::initializer_list<IUnknown*>{conv, scaler, frame, decoder, stream, factory})
 		{
 			if (o != nullptr)
 			{
@@ -991,7 +1068,9 @@ bool load_image_rgba(const std::string& path, int max_w, int max_h, std::vector<
 	int       iw = 0;
 	int       ih = 0;
 	int       channels = 0;
-	stbi_uc*  pixels   = stbi_load(path.c_str(), &iw, &ih, &channels, 4);
+	stbi_uc*  pixels   = in_archive ? stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()), &iw,
+	                                                         &ih, &channels, 4)
+	                                : stbi_load(path.c_str(), &iw, &ih, &channels, 4);
 	if (pixels == nullptr || iw <= 0 || ih <= 0)
 	{
 		return false;
