@@ -163,8 +163,9 @@ FetchContent_Declare(
 	GIT_REPOSITORY https://github.com/Exzap/ZArchive.git
 	GIT_TAG d2c717730092c7bf8cbb033b12fd4001b7c4d932
 	GIT_SHALLOW FALSE
-	PATCH_COMMAND "${GIT_EXECUTABLE}" apply --ignore-whitespace
-		"${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/patches/zarchive-reader.patch"
+	PATCH_COMMAND "${CMAKE_COMMAND}" "-DGIT=${GIT_EXECUTABLE}"
+		"-DPATCH=${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/patches/zarchive-reader.patch"
+		-P "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/patches/apply_once.cmake"
 	# Not a real folder: ZArchive's own CMakeLists (the command-line tool) is not used.
 	SOURCE_SUBDIR kyty-library-only
 )
