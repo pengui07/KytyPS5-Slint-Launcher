@@ -174,7 +174,8 @@ component Part inherits Rectangle {
     in property <string> shape; // the outline, on the box
     in property <string> glyph; // a symbol stroked over it (face buttons, D-pad arrows, Options)
     in property <string> label; // shoulders
-    in property <float> label-dy;
+    in property <float> label-x: -1; // where the label is centred, on the box (-1 = the middle)
+    in property <float> label-y: -1;
     in property <bool> ghost; // drawn only while lit (the stick directions and the touch pad halves)
     in property <float> cap; // a stick: the diameter of the cap, which moves with the stick
     in property <float> cap-x; // the stick's position, -1..1
@@ -238,15 +239,12 @@ component Part inherits Rectangle {
         fill: transparent;
     }
     if root.label != "": Text {
-        y: root.label-dy * root.k * 1px;
-        width: parent.width;
-        height: parent.height;
+        x: root.label-x < 0 ? (parent.width - self.width) / 2 : root.label-x * root.k * 1px - self.width / 2;
+        y: root.label-y < 0 ? (parent.height - self.height) / 2 : root.label-y * root.k * 1px - self.height / 2;
         text: root.label;
         color: root.live ? Theme.on-accent : root.active ? Theme.accent-hover : Theme.text;
         font-size: max(7px, 9px * root.k);
         font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
     }
     if root.tip != "": Tooltip {
         text: @markdown("\{root.tip}");
@@ -329,10 +327,10 @@ component ControllerDiagram inherits Rectangle {
     }
 
     // The controls, in upstream's order (later ones paint over earlier ones).
-    Part { k: root.k; id: "L2"; tip: "L2"; x0: 90; y0: 8; w: 58; h: 18; shape: "M 0 18 L 2 9 C 10 0 48 0 56 9 L 58 18 Z"; label: "L2"; label-dy: 1; }
-    Part { k: root.k; id: "R2"; tip: "R2"; x0: 332; y0: 8; w: 58; h: 18; shape: "M 0 18 L 2 9 C 10 0 48 0 56 9 L 58 18 Z"; label: "R2"; label-dy: 1; }
-    Part { k: root.k; id: "L1"; tip: "L1"; x0: 84; y0: 32; w: 64; h: 12; shape: "M 0 12 L 2 6 C 10 0 54 0 62 6 L 64 12 Z"; label: "L1"; label-dy: 1; }
-    Part { k: root.k; id: "R1"; tip: "R1"; x0: 332; y0: 32; w: 64; h: 12; shape: "M 0 12 L 2 6 C 10 0 54 0 62 6 L 64 12 Z"; label: "R1"; label-dy: 1; }
+    Part { k: root.k; id: "L2"; tip: "L2"; x0: 74.15; y0: 20.19; w: 58; h: 20; shape: "M 1 19 L 3 10 C 11 1 47 1 55 10 L 57 19 Z"; label: "L2"; label-x: 29; label-y: 11; }
+    Part { k: root.k; id: "R2"; tip: "R2"; x0: 347.85; y0: 20.19; w: 58; h: 20; shape: "M 1 19 L 3 10 C 11 1 47 1 55 10 L 57 19 Z"; label: "R2"; label-x: 29; label-y: 11; }
+    Part { k: root.k; id: "L1"; tip: "L1"; x0: 75.32; y0: 41.19; w: 59.45; h: 25.01; shape: "M 4.6 24.01 L 7.33 22.99 L 10.16 21.99 L 13.08 21.03 L 16.09 20.09 L 19.19 19.18 L 22.38 18.29 L 25.65 17.43 L 29 16.6 L 32.43 15.79 L 35.93 15.02 L 39.52 14.26 L 43.17 13.53 L 46.89 12.83 L 50.68 12.16 L 54.53 11.51 L 58.45 10.88 A 5 5 0 0 0 56.92 1 L 52.92 1.64 L 48.97 2.3 L 45.09 3 L 41.27 3.72 L 37.51 4.46 L 33.82 5.24 L 30.2 6.05 L 26.65 6.88 L 23.17 7.74 L 19.77 8.64 L 16.44 9.56 L 13.19 10.52 L 10.02 11.51 L 6.93 12.53 L 3.93 13.58 L 1 14.68 A 5 5 0 0 0 4.6 24.01 Z"; label: "L1"; label-x: 27.82; label-y: 11.74; }
+    Part { k: root.k; id: "R1"; tip: "R1"; x0: 345.23; y0: 41.19; w: 59.45; h: 25.01; shape: "M 1 10.88 L 4.92 11.51 L 8.77 12.16 L 12.56 12.83 L 16.28 13.53 L 19.94 14.26 L 23.52 15.02 L 27.02 15.79 L 30.45 16.6 L 33.8 17.43 L 37.07 18.29 L 40.26 19.18 L 43.36 20.09 L 46.37 21.03 L 49.29 21.99 L 52.12 22.99 L 54.85 24.01 A 5 5 0 0 0 58.45 14.68 L 55.53 13.58 L 52.52 12.53 L 49.43 11.51 L 46.26 10.52 L 43.01 9.56 L 39.68 8.64 L 36.28 7.74 L 32.8 6.88 L 29.25 6.05 L 25.63 5.24 L 21.94 4.46 L 18.18 3.72 L 14.36 3 L 10.48 2.3 L 6.53 1.64 L 2.53 1 A 5 5 0 0 0 1 10.88 Z"; label: "R1"; label-x: 31.63; label-y: 11.74; }
     Part { k: root.k; id: "TouchPad"; tip: "Touch pad click"; x0: 156; y0: 45; w: 84; h: 100; shape: "M 2 17 C 0 8 12 7 22 6 C 42.5 4.5 63.25 3.75 84 3.75 L 84 97 L 38 97 C 25 97 18 92 15 80 C 9 62 6 39 2 17 Z"; ghost: true; }
     Part { k: root.k; id: "TouchPadRight"; tip: "Touch pad right"; x0: 240; y0: 45; w: 84; h: 100; shape: "M 0 3.75 C 20.75 3.75 41.5 4.5 62 6 C 72 7 84 8 82 17 C 78 39 75 62 69 80 C 66 92 59 97 46 97 L 0 97 Z"; ghost: true; clickable: Controls.tab == 1; }
     Part { k: root.k; id: "Options"; tip: "Options"; x0: 330; y0: 80; w: 9; h: 20; shape: "M 4 0 L 5 0 Q 9 0 9 4 L 9 16 Q 9 20 5 20 L 4 20 Q 0 20 0 16 L 0 4 Q 0 0 4 0 Z"; glyph: "M 4.5 6 L 4.5 14"; }
