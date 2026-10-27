@@ -44,6 +44,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <dwmapi.h>
 #include <shellapi.h>
 #include <shobjidl.h>
 #else
@@ -61,6 +62,29 @@ std::string ToStd(const slint::SharedString& s)
 {
 	return std::string(std::string_view(s));
 }
+
+#ifdef _WIN32
+// Without a native frame Windows 11 draws square corners and no border; DWM gives the window back its rounded
+// corners and a 1px border in the theme's card-border colour. Earlier Windows ignore both attributes. DWM only
+// rounds a frameless window that has some DWM frame, so a 1px one is extended into the client area (the page
+// paints over it). Returns false while the native window does not exist yet.
+bool RoundWindow(const AppWindow& ui)
+{
+	HWND hwnd = ui.window().win32_hwnd();
+	if (hwnd == nullptr)
+	{
+		return false;
+	}
+	const MARGINS frame = {1, 1, 1, 1};
+	DwmExtendFrameIntoClientArea(hwnd, &frame);
+	const DWORD corner = 2; // DWMWCP_ROUND
+	DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof(corner));
+	const slint::Color c      = ui.global<Theme>().get_card_border();
+	const COLORREF     border = RGB(c.red(), c.green(), c.blue());
+	DwmSetWindowAttribute(hwnd, 34 /* DWMWA_BORDER_COLOR */, &border, sizeof(border));
+	return true;
+}
+#endif
 
 #ifdef _WIN32
 // Modern Explorer dialog; returns "" when cancelled.
@@ -2994,12 +3018,18 @@ int main(int argc, char** argv)
 	    });
 
 	ui->on_theme_changed(
-	    [console](int scheme)
+	    [console, weak_ui = slint::ComponentWeakHandle<AppWindow>(ui)](int scheme)
 	    {
 		    if (console->has_value())
 		    {
 			    (**console)->global<Theme>().set_scheme(scheme);
 		    }
+#ifdef _WIN32
+		    if (auto h = weak_ui.lock())
+		    {
+			    RoundWindow(**h);
+		    }
+#endif
 	    });
 
 	ui->on_open_url(
@@ -3519,6 +3549,19 @@ int main(int argc, char** argv)
 		ui->window().set_position(slint::LogicalPosition(slint::Point<float>{static_cast<float>(s.window_x), static_cast<float>(s.window_y)}));
 	}
 	refresh();
+#ifdef _WIN32
+	// The native window is created once the event loop runs: try until it exists (at most two seconds).
+	slint::Timer round_timer;
+	round_timer.start(slint::TimerMode::Repeated, std::chrono::milliseconds(50),
+	                  [weak, &round_timer, tries = 0]() mutable
+	                  {
+		                  auto h = weak.lock();
+		                  if (!h || RoundWindow(**h) || ++tries >= 40)
+		                  {
+			                  round_timer.stop();
+		                  }
+	                  });
+#endif
 	ui->run();
 	// STEP6:6e: keep the geometry for the next start. Read once, after run() returns: the native window is gone
 	// but the component handle still reports its last size and position (never saved on every resize).
