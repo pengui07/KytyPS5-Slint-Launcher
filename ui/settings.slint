@@ -273,12 +273,13 @@ component GameConfigRowView inherits Rectangle {
         }
         // The Emulator column: a drop-down of the library default and every installed build, filling the cell.
         // The row's TouchArea opens it (see below).
+        // The whole height of the row, less a 1 px line so neighbouring rows' boxes stay apart.
         VerticalLayout {
             width: root.emu-w;
-            alignment: center;
             padding-left: 4px;
+            padding-bottom: 1px;
             emu-cell := Dropdown {
-                height: 30px;
+                height: root.height - 1px;
                 flat: true;
                 enabled: root.game.can-config;
                 model: root.emu-choices;
