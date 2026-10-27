@@ -5,6 +5,7 @@
 //   kyty_slint_launcher.exe --play           start the emulator with the saved settings (no window)
 
 #include "app.h"
+#include "cheats_page.h"
 #include "input_mapping.h" // STEP6:6f: the Controls page's bindings and capture
 #include "launch.h"
 #include "library.h"
@@ -798,6 +799,14 @@ int main(int argc, char** argv)
 		ui->set_readback_tiled(v.readback_tiled);
 		ui->set_tessellation(v.tessellation);
 		ui->set_sync_raw(v.sync_raw);
+		ui->set_occlusion_queries(v.occlusion_queries);
+		ui->set_shader_cache(v.shader_cache);
+		ui->set_gpu_assisted_validation(v.gpu_assisted_validation);
+		ui->set_graphics_debug_dump(v.graphics_debug_dump);
+		ui->set_spirv_debug_printf(v.spirv_debug_printf);
+		ui->set_splash(v.splash);
+		ui->set_vr(v.vr);
+		ui->set_playgo_hack(v.playgo_hack);
 		ui->set_hdr(v.hdr);
 		ui->set_vulkan_validation(v.vulkan_validation);
 		ui->set_shader_validation(v.shader_validation);
@@ -917,6 +926,14 @@ int main(int argc, char** argv)
 		t.readback_tiled = ui->get_readback_tiled();
 		t.tessellation = ui->get_tessellation();
 		t.sync_raw = ui->get_sync_raw();
+		t.occlusion_queries = ui->get_occlusion_queries();
+		t.shader_cache = ui->get_shader_cache();
+		t.gpu_assisted_validation = ui->get_gpu_assisted_validation();
+		t.graphics_debug_dump = ui->get_graphics_debug_dump();
+		t.spirv_debug_printf = ui->get_spirv_debug_printf();
+		t.splash = ui->get_splash();
+		t.vr = ui->get_vr();
+		t.playgo_hack = ui->get_playgo_hack();
 		t.hdr = ui->get_hdr();
 		t.vulkan_validation = ui->get_vulkan_validation();
 		t.shader_validation = ui->get_shader_validation();
@@ -1799,6 +1816,16 @@ int main(int argc, char** argv)
 		    if (i >= 0)
 		    {
 			    open_game_trophies(static_cast<size_t>(i));
+		    }
+	    });
+	// Library menu > Cheats…: the game's cheat file in the run folder, and the online collection.
+	CheatsPage cheats_page(ui);
+	ui->on_open_game_cheats(
+	    [&](int i)
+	    {
+		    if (i >= 0 && static_cast<size_t>(i) < games->size())
+		    {
+			    cheats_page.Open((*games)[static_cast<size_t>(i)], ToStd(ui->get_run_dir()));
 		    }
 	    });
 	ui->on_open_save_folder(

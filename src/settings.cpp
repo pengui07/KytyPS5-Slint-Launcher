@@ -468,6 +468,8 @@ void ReadEmu(const JsonValue& root, Settings& s, std::set<std::string>* seen)
 	r.flag("readback_linear_images", s.readback);
 	r.flag("readback_tiled_images", s.readback_tiled);
 	r.flag("tessellation_enabled", s.tessellation);
+	r.flag("occlusion_queries_enabled", s.occlusion_queries);
+	r.flag("shader_cache_enabled", s.shader_cache);
 	r.flag("sync_raw_image_buffers", s.sync_raw);
 	r.flag("hdr_enabled", s.hdr);
 	r.flag("vulkan_validation_enabled", s.vulkan_validation);
@@ -475,6 +477,12 @@ void ReadEmu(const JsonValue& root, Settings& s, std::set<std::string>* seen)
 	r.flag("renderdoc_enabled", s.renderdoc);
 	r.flag("command_buffer_dump_enabled", s.cmd_dump);
 	r.flag("profiler_enabled", s.profiler);
+	r.flag("gpu_assisted_validation_enabled", s.gpu_assisted_validation);
+	r.flag("graphics_debug_dump_enabled", s.graphics_debug_dump);
+	r.flag("spirv_debug_printf_enabled", s.spirv_debug_printf);
+	r.flag("splash_enabled", s.splash);
+	r.flag("vr_enabled", s.vr);
+	r.flag("playgo_hack_enabled", s.playgo_hack);
 	r.str("user_name", s.user_name);
 	r.num("user_id", s.user_id);
 	r.num("console_language", s.console_language);
@@ -532,6 +540,8 @@ EmuEntries EmuKeys(const Settings& s)
 	e.emplace_back("readback_linear_images", b(s.readback));
 	e.emplace_back("readback_tiled_images", b(s.readback_tiled));
 	e.emplace_back("tessellation_enabled", b(s.tessellation));
+	e.emplace_back("occlusion_queries_enabled", b(s.occlusion_queries));
+	e.emplace_back("shader_cache_enabled", b(s.shader_cache));
 	e.emplace_back("sync_raw_image_buffers", b(s.sync_raw));
 	e.emplace_back("hdr_enabled", b(s.hdr));
 	e.emplace_back("vulkan_validation_enabled", b(s.vulkan_validation));
@@ -539,6 +549,12 @@ EmuEntries EmuKeys(const Settings& s)
 	e.emplace_back("renderdoc_enabled", b(s.renderdoc));
 	e.emplace_back("command_buffer_dump_enabled", b(s.cmd_dump));
 	e.emplace_back("profiler_enabled", b(s.profiler));
+	e.emplace_back("gpu_assisted_validation_enabled", b(s.gpu_assisted_validation));
+	e.emplace_back("graphics_debug_dump_enabled", b(s.graphics_debug_dump));
+	e.emplace_back("spirv_debug_printf_enabled", b(s.spirv_debug_printf));
+	e.emplace_back("splash_enabled", b(s.splash));
+	e.emplace_back("vr_enabled", b(s.vr));
+	e.emplace_back("playgo_hack_enabled", b(s.playgo_hack));
 	e.emplace_back("user_name", Quote(s.user_name));
 	e.emplace_back("user_id", std::to_string(s.user_id));
 	e.emplace_back("console_language", std::to_string(s.console_language));
@@ -738,6 +754,13 @@ bool WriteGameRoot(const std::filesystem::path& file, JsonValue root)
 bool parse_json(const std::string& text, JsonValue& out)
 {
 	return JsonParser(text).Parse(out);
+}
+
+std::string dump_json(const JsonValue& v)
+{
+	std::string out;
+	Dump(v, out, 0);
+	return out + "\n";
 }
 
 bool load_settings(const std::filesystem::path& path, Settings& s, std::string* note)

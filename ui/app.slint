@@ -6,6 +6,7 @@ import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager
 import { SettingsPage, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
 import { ControlsPage, Controls, ControlRow } from "controls.slint";
+import { CheatsPage, Cheats, CheatRow, RemoteCheatRow } from "cheats.slint";
 // The first-launch setup: a window of its own, shown before the main one (see main.cpp).
 import { FirstRunWindow } from "first_run.slint";
 
@@ -13,7 +14,7 @@ import { FirstRunWindow } from "first_run.slint";
 // STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
-export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow }
+export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow, Cheats, CheatRow, RemoteCheatRow }
 // Theme.scheme is the launcher's light/dark setting (main.cpp).
 import { PaletteSync } from "common.slint";
 export { Theme }
@@ -557,6 +558,16 @@ export component AppWindow inherits Window {
     in-out property <bool> show-trophies: false;
     // STEP6:6f: the Controls page (keyboard/mouse and gamepad bindings).
     in-out property <bool> show-controls: false;
+    // The Cheats page of one game (library menu > Cheats…).
+    in-out property <bool> show-cheats: false;
+    callback open-game-cheats(int); // library index
+    // Opening any other page leaves the Cheats page.
+    property <bool> other-page-open: show-settings || show-versions || show-trophies || show-controls;
+    changed other-page-open => {
+        if (self.other-page-open) {
+            root.show-cheats = false;
+        }
+    }
     // Settings page in per-game mode (the C++ side loads the game's values into the properties below).
     in property <bool> game-mode;
     in property <string> game-mode-name;
@@ -621,6 +632,14 @@ export component AppWindow inherits Window {
     in-out property <bool> readback-tiled;
     in-out property <bool> tessellation;
     in-out property <bool> sync-raw;
+    in-out property <bool> occlusion-queries;
+    in-out property <bool> shader-cache: true;
+    in-out property <bool> gpu-assisted-validation;
+    in-out property <bool> graphics-debug-dump;
+    in-out property <bool> spirv-debug-printf;
+    in-out property <bool> splash: true;
+    in-out property <bool> vr;
+    in-out property <bool> playgo-hack;
     in-out property <bool> hdr;
     in-out property <bool> vulkan-validation;
     in-out property <bool> shader-validation;
@@ -836,6 +855,19 @@ export component AppWindow inherits Window {
                     root.show-versions = false;
                     root.show-trophies = true;
                     root.open-game-trophies(root.selected);
+                }
+            }
+            MenuItem {
+                title: "Cheats…";
+                icon: @image-url("icons/bug.svg");
+                enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
+                activated => {
+                    root.show-settings = false;
+                    root.show-versions = false;
+                    root.show-trophies = false;
+                    root.show-controls = false;
+                    root.open-game-cheats(root.selected);
+                    root.show-cheats = true;
                 }
             }
             MenuSeparator {}
@@ -1377,6 +1409,14 @@ export component AppWindow inherits Window {
         shader-opt <=> root.shader-opt;
         shader-validation <=> root.shader-validation;
         sync-raw <=> root.sync-raw;
+        occlusion-queries <=> root.occlusion-queries;
+        shader-cache <=> root.shader-cache;
+        gpu-assisted-validation <=> root.gpu-assisted-validation;
+        graphics-debug-dump <=> root.graphics-debug-dump;
+        spirv-debug-printf <=> root.spirv-debug-printf;
+        splash <=> root.splash;
+        vr <=> root.vr;
+        playgo-hack <=> root.playgo-hack;
         tessellation <=> root.tessellation;
         trophy <=> root.trophy;
         trophy-duration <=> root.trophy-duration;
@@ -1447,6 +1487,14 @@ export component AppWindow inherits Window {
             root.show-controls = false;
             Controls.close(); // Back leaves without saving, and stops a capture that is still listening
         }
+    }
+
+    if root.show-cheats: CheatsPage {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        back => { root.show-cheats = false; }
     }
 
     // Games tab > Set Emu...: pick one of the installed builds to pin the game to.

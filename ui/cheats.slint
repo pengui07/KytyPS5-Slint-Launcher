@@ -1,0 +1,410 @@
+// Cheats page: one game's cheat file (<run folder>/_Patches/<TITLEID>.json, the emulator's --game-patch) and the
+// online collection it can be filled from. The C++ side (src/cheats_page.cpp) fills the Cheats global.
+
+import { ListView } from "std-widgets.slint";
+import { Theme, AppButton, AppCheckBox, PageHeader } from "common.slint";
+
+export struct CheatRow {
+    name: string,
+    author: string,
+    enabled: bool,
+}
+
+// One file of the online collection.
+export struct RemoteCheatRow {
+    version: string,
+    format: string,     // "JSON", "MC4", "SHN"
+    title: string,
+    installed: bool,    // made for the installed game version
+    supported: bool,    // only JSON files can be used
+}
+
+export global Cheats {
+    in property <string> game-name;
+    in property <string> serial;
+    in property <string> game-version;
+
+    // The local file.
+    in property <[CheatRow]> mods;
+    in property <bool> has-file;       // a file was loaded (it may hold no cheats)
+    in property <bool> dirty;          // ticks changed since the last save
+    in property <string> local-status;
+    in property <string> file-path;
+    callback toggle(int, bool);
+    callback set-all(bool);
+    callback save();
+    callback reload();
+    callback open-folder();
+
+    // The online collection.
+    in property <[RemoteCheatRow]> remote;
+    in property <bool> remote-loading;
+    in property <string> remote-status;
+    in-out property <int> remote-selected: -1;
+    in property <[string]> preview;      // the selected file's cheat names
+    in property <string> preview-info;   // its name, credits and version
+    in property <string> preview-status; // why it can't be imported, or what Import does
+    in property <bool> preview-loading;
+    in property <bool> can-import;
+    callback refresh();
+    callback select-remote(int);
+    callback import();
+}
+
+// A titled box like the Settings cards.
+component Panel inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    background: Theme.card;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    VerticalLayout {
+        padding: 14px;
+        padding-top: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 10px;
+            height: 22px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Text {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                text: root.subtitle;
+                color: Theme.muted;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        @children
+    }
+}
+
+component Note inherits Text {
+    color: Theme.muted;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+// A sunken list box.
+component ListBox inherits Rectangle {
+    background: Theme.log-bg;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    clip: true;
+    @children
+}
+
+component Tag inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent;
+    width: tag-text.preferred-width + 10px;
+    height: 16px;
+    border-width: 1px;
+    border-color: root.accent ? Theme.accent : Theme.card-border;
+    tag-text := Text {
+        text: root.text;
+        color: root.accent ? Theme.accent : Theme.muted;
+        font-size: 10px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component CheatsPage inherits Rectangle {
+    callback back();
+    background: Theme.bg;
+    property <bool> confirm-import;
+    // The library stays underneath: keep its clicks and wheel from reaching it.
+    TouchArea { }
+
+    VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        padding: 18px;
+        padding-left: 24px;
+        padding-right: 24px;
+        spacing: 12px;
+
+        PageHeader {
+            title: "Cheats · " + Cheats.game-name;
+            back => { root.back(); }
+            Text {
+                text: Cheats.serial + "  ·  version " + (Cheats.game-version == "" ? "unknown" : Cheats.game-version);
+                color: Theme.muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        Note {
+            text: "Cheats are experimental. Tick the ones you want and save; they apply the next time the game starts, and only when the file matches the installed version.";
+        }
+
+        cols := HorizontalLayout {
+            property <length> half: (self.width - self.spacing) / 2;
+            vertical-stretch: 1;
+            spacing: 10px;
+
+            // ---- The game's own cheat file ----
+            Panel {
+                width: cols.half;
+                title: "Installed";
+                subtitle: Cheats.mods.length > 0 ? Cheats.mods.length + " cheats" : "";
+                ListBox {
+                    vertical-stretch: 1;
+                    ListView {
+                        for mod[i] in Cheats.mods: Rectangle {
+                            height: 30px;
+                            background: row-touch.has-hover ? Theme.row-hover : transparent;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 10px;
+                                AppCheckBox {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    text: mod.name;
+                                    checked: mod.enabled;
+                                }
+                                if mod.author != "": Text {
+                                    width: min(self.preferred-width, 160px);
+                                    text: mod.author;
+                                    color: Theme.faint;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            // Over the whole row, the check box included: the box only shows the model's value.
+                            row-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { Cheats.toggle(i, !mod.enabled); }
+                            }
+                        }
+                    }
+                    if Cheats.mods.length == 0: Text {
+                        x: 16px;
+                        width: parent.width - 32px;
+                        text: Cheats.has-file ? "The cheat file holds no cheats." : "No cheats yet for this game. Pick a file from the online collection and import it.";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Note {
+                    text: Cheats.local-status;
+                    color: Cheats.dirty ? Theme.text : Theme.muted;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    AppButton {
+                        width: 110px;
+                        text: "Save";
+                        primary: true;
+                        enabled: Cheats.dirty;
+                        clicked => { Cheats.save(); }
+                    }
+                    AppButton {
+                        text: "Enable all";
+                        enabled: Cheats.mods.length > 0;
+                        clicked => { Cheats.set-all(true); }
+                    }
+                    AppButton {
+                        text: "Disable all";
+                        enabled: Cheats.mods.length > 0;
+                        clicked => { Cheats.set-all(false); }
+                    }
+                    AppButton {
+                        text: "Reload";
+                        clicked => { Cheats.reload(); }
+                    }
+                    AppButton {
+                        text: "Open folder";
+                        clicked => { Cheats.open-folder(); }
+                    }
+                }
+            }
+
+            // ---- The online collection ----
+            Panel {
+                width: cols.half;
+                title: "Online";
+                subtitle: "TeeKay87 / HEN Cheats Collection";
+                ListBox {
+                    height: 170px;
+                    ListView {
+                        for f[i] in Cheats.remote: Rectangle {
+                            height: 30px;
+                            background: i == Cheats.remote-selected ? Theme.row-selected : f.supported && file-touch.has-hover ? Theme.row-hover : transparent;
+                            file-touch := TouchArea {
+                                enabled: f.supported;
+                                clicked => {
+                                    Cheats.remote-selected = i;
+                                    Cheats.select-remote(i);
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 10px;
+                                Text {
+                                    width: 64px;
+                                    text: f.version;
+                                    color: f.supported ? Theme.text : Theme.faint;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Tag { text: f.format; }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    text: f.title;
+                                    color: f.supported ? Theme.text : Theme.faint;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                if f.installed: VerticalLayout {
+                                    alignment: center;
+                                    Tag { text: "INSTALLED VERSION"; accent: true; }
+                                }
+                            }
+                        }
+                    }
+                    if Cheats.remote.length == 0: Text {
+                        x: 16px;
+                        width: parent.width - 32px;
+                        text: Cheats.remote-loading ? "Loading the collection…" : "Nothing found.";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Note {
+                    text: Cheats.remote-status;
+                }
+                ListBox {
+                    vertical-stretch: 1;
+                    ListView {
+                        for name in Cheats.preview: Rectangle {
+                            height: 24px;
+                            Text {
+                                x: 10px;
+                                width: parent.width - 20px;
+                                text: "•  " + name;
+                                color: Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                    if Cheats.preview.length == 0: Text {
+                        x: 16px;
+                        width: parent.width - 32px;
+                        text: Cheats.preview-loading ? "Loading the file…" : "Select a JSON file to see its cheats. MC4 and SHN files can't be used yet.";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                if Cheats.preview-info != "": Note {
+                    text: Cheats.preview-info;
+                    color: Theme.text;
+                }
+                Note {
+                    text: Cheats.preview-status;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    AppButton {
+                        width: 110px;
+                        text: "Import";
+                        primary: true;
+                        enabled: Cheats.can-import;
+                        clicked => {
+                            if (Cheats.has-file) {
+                                root.confirm-import = true;
+                            } else {
+                                Cheats.import();
+                            }
+                        }
+                    }
+                    AppButton {
+                        text: "Refresh";
+                        enabled: !Cheats.remote-loading;
+                        clicked => { Cheats.refresh(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // Import over an existing file replaces it (and its ticks).
+    if root.confirm-import: Rectangle {
+        background: Theme.scrim;
+        TouchArea { }
+        Rectangle {
+            width: min(460px, root.width - 48px);
+            height: confirm-layout.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 3;
+            background: Theme.card;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            confirm-layout := VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Text {
+                    text: "Replace the installed cheats?";
+                    color: Theme.text;
+                    font-size: 15px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: "The cheat file of " + Cheats.serial + " is replaced by the downloaded one, and its cheats start unticked.";
+                    color: Theme.muted;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    AppButton {
+                        width: 110px;
+                        text: "Replace";
+                        primary: true;
+                        clicked => {
+                            root.confirm-import = false;
+                            Cheats.import();
+                        }
+                    }
+                    AppButton {
+                        width: 110px;
+                        text: "Cancel";
+                        clicked => { root.confirm-import = false; }
+                    }
+                }
+            }
+        }
+    }
+}
