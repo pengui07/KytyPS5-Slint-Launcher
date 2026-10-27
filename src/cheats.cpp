@@ -1,6 +1,7 @@
 #include "cheats.h"
 
 #include "net.h"
+#include "text.h"
 
 #include <algorithm>
 #include <cctype>
@@ -20,30 +21,9 @@ constexpr size_t kFileLimit  = 8 * 1024 * 1024;
 
 const char* const kBaseUrl = "https://raw.githubusercontent.com/TeeKay87/HEN-Cheats-Collection/master/cheats/";
 
-std::string Upper(std::string s)
-{
-	std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-	return s;
-}
-
-std::string Trim(const std::string& s)
-{
-	size_t b = 0;
-	size_t e = s.size();
-	while (b < e && std::isspace(static_cast<unsigned char>(s[b])) != 0)
-	{
-		b++;
-	}
-	while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0)
-	{
-		e--;
-	}
-	return s.substr(b, e - b);
-}
-
 bool EqualNoCase(const std::string& a, const std::string& b)
 {
-	return Upper(a) == Upper(b);
+	return to_upper(a) == to_upper(b);
 }
 
 const JsonValue* Member(const JsonValue& o, const char* key)
@@ -112,7 +92,7 @@ std::string Download(const std::string& url, size_t limit, std::string& body)
 bool cheats_supported(const std::string& title_id)
 {
 	static const std::regex pattern("^PPSA[0-9]{5}$");
-	return std::regex_match(Upper(Trim(title_id)), pattern);
+	return std::regex_match(to_upper(trim(title_id)), pattern);
 }
 
 fs::path cheat_file_path(const std::string& run_dir, const std::string& title_id)
@@ -121,7 +101,7 @@ fs::path cheat_file_path(const std::string& run_dir, const std::string& title_id
 	{
 		return {};
 	}
-	return utf8_path(run_dir) / "_Patches" / (Upper(Trim(title_id)) + ".json");
+	return utf8_path(run_dir) / "_Patches" / (to_upper(trim(title_id)) + ".json");
 }
 
 std::string parse_cheat_doc(const std::string& text, CheatDoc& out)
@@ -247,7 +227,7 @@ std::string save_cheat_file(const fs::path& path, CheatDoc& doc, const std::vect
 std::string validate_cheat_import(const CheatDoc& doc, const std::string& title_id, const std::string& version, const std::string& process)
 {
 	const JsonValue& root = doc.root;
-	if (!cheats_supported(title_id) || !EqualNoCase(StringMember(root, "id"), Trim(title_id)))
+	if (!cheats_supported(title_id) || !EqualNoCase(StringMember(root, "id"), trim(title_id)))
 	{
 		return "This file is not for this game's title ID.";
 	}
@@ -334,7 +314,7 @@ std::string RemoteCheat::url() const
 std::vector<RemoteCheat> fetch_remote_cheats(const std::string& title_id, std::string& error)
 {
 	error.clear();
-	const std::string        id = Upper(Trim(title_id));
+	const std::string        id = to_upper(trim(title_id));
 	std::vector<RemoteCheat> files;
 	std::set<std::string>    seen;
 	for (const char* format: {"json", "mc4", "shn"})
@@ -343,13 +323,13 @@ std::vector<RemoteCheat> fetch_remote_cheats(const std::string& title_id, std::s
 		std::string e = Download(std::string(kBaseUrl) + format + ".txt", kIndexLimit, body);
 		if (!e.empty())
 		{
-			error += (error.empty() ? "" : "\n") + Upper(format) + " index: " + e;
+			error += (error.empty() ? "" : "\n") + to_upper(format) + " index: " + e;
 			continue;
 		}
 		std::istringstream lines(body);
 		for (std::string line; std::getline(lines, line);)
 		{
-			line = Trim(line);
+			line = trim(line);
 			if (line.rfind("\xEF\xBB\xBF", 0) == 0)
 			{
 				line.erase(0, 3);
@@ -366,7 +346,7 @@ std::vector<RemoteCheat> fetch_remote_cheats(const std::string& title_id, std::s
 			{
 				continue;
 			}
-			f.title = Trim(line.substr(eq + 1));
+			f.title = trim(line.substr(eq + 1));
 			files.push_back(std::move(f));
 		}
 	}

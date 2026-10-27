@@ -1,6 +1,7 @@
 #include "platform.h"
 
 #include "settings.h"
+#include "text.h"
 
 #include <algorithm>
 #include <cctype>
@@ -248,20 +249,6 @@ std::vector<std::string> list_gpu_devices()
 
 namespace {
 
-std::string Trim(std::string s)
-{
-	while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())) != 0)
-	{
-		s.pop_back();
-	}
-	size_t b = 0;
-	while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])) != 0)
-	{
-		b++;
-	}
-	return s.substr(b);
-}
-
 // Whether `name` is an executable in one of the PATH folders.
 bool ProgramExists(const std::string& name)
 {
@@ -343,7 +330,7 @@ std::string run_capture(const std::vector<std::string>& args, bool* ok)
 	{
 		*ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
 	}
-	return Trim(out);
+	return trim(out);
 }
 
 void open_in_system(const std::string& target)

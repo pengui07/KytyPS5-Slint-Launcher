@@ -1,6 +1,7 @@
 #include "qt_ini.h"
 
 #include "library.h"
+#include "text.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -47,21 +48,6 @@ int HexDigit(char c)
 		return c - 'A' + 10;
 	}
 	return -1;
-}
-
-std::string Trim(const std::string& s)
-{
-	size_t b = 0;
-	size_t e = s.size();
-	while (b < e && std::isspace(static_cast<unsigned char>(s[b])) != 0)
-	{
-		b++;
-	}
-	while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0)
-	{
-		e--;
-	}
-	return s.substr(b, e - b);
 }
 
 // A UTF-16 unit from an escape: pairs of surrogates are joined, anything else is appended as UTF-8.
@@ -327,7 +313,7 @@ bool parse_qt_ini(const std::string& text_in, QtIni& out, std::string* error)
 	int         sections = 0;
 	for (const auto& raw_line: lines)
 	{
-		const std::string line = Trim(raw_line);
+		const std::string line = trim(raw_line);
 		if (line.empty() || line[0] == ';')
 		{
 			continue;
@@ -351,13 +337,13 @@ bool parse_qt_ini(const std::string& text_in, QtIni& out, std::string* error)
 			out.lines_ignored++;
 			continue;
 		}
-		const std::string key = DecodeName(Trim(line.substr(0, eq)));
+		const std::string key = DecodeName(trim(line.substr(0, eq)));
 		if (key.empty())
 		{
 			out.lines_ignored++;
 			continue;
 		}
-		out.values[prefix + key] = ParseValue(Trim(line.substr(eq + 1)));
+		out.values[prefix + key] = ParseValue(trim(line.substr(eq + 1)));
 		entries++;
 	}
 	if (entries == 0 && sections == 0)

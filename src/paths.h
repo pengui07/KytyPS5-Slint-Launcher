@@ -45,6 +45,13 @@ struct Paths
 	}
 };
 
+// The emulator's executable, as it sits next to the launcher or inside a downloaded build.
+#ifdef _WIN32
+inline constexpr const char* kEmulatorExe = "kyty_emulator.exe";
+#else
+inline constexpr const char* kEmulatorExe = "kyty_emulator";
+#endif
+
 // The folder holding the launcher executable.
 std::filesystem::path exe_dir(const char* argv0);
 

@@ -1,6 +1,7 @@
 #include "net.h"
 
 #include "settings.h"
+#include "text.h"
 
 #include <cstdlib>
 #include <mutex>
@@ -69,7 +70,7 @@ std::wstring Widen(const std::string& s)
 // GET with redirects (GitHub sends release assets to another host). The body goes to `sink`.
 // `range` ("100-199", "-65536") asks for part of the file; a server that ignores it answers
 // 200 with the whole file, which is refused here (*range_ignored) before any of it is read.
-// http_get, plus a mode for GitHub's asset API (`redirect` set): the file is asked for as raw bytes and a
+// With `redirect` set (GitHub's asset API) the file is asked for as raw bytes and a
 // redirect is not followed but handed back in *redirect, so the token never goes to the host it points at.
 static bool HttpRequest(const std::string& url, const std::function<bool(const char*, size_t)>& sink, uint64_t* content_length,
                         std::string* error, const std::string& range, bool* range_ignored, HttpValidator* validator, std::string* redirect)
@@ -294,12 +295,12 @@ size_t WriteCallback(char* data, size_t size, size_t count, void* user)
 	return size * count;
 }
 
-// Keeps the ETag response header for a conditional request.
+// Keeps the ETag response header for a conditional request (header names are case-insensitive).
 size_t HeaderCallback(char* data, size_t size, size_t count, void* user)
 {
 	auto*             c = static_cast<CurlContext*>(user);
 	const std::string line(data, size * count);
-	if (c->validator != nullptr && line.size() > 5 && (line.compare(0, 5, "ETag:") == 0 || line.compare(0, 5, "etag:") == 0))
+	if (c->validator != nullptr && line.size() > 5 && to_lower(line.substr(0, 5)) == "etag:")
 	{
 		size_t b = line.find_first_not_of(" \t", 5);
 		size_t e = line.find_last_not_of(" \t\r\n");

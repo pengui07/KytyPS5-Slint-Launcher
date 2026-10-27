@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "settings.h"
+#include "text.h"
 #include "versions.h"
 
 #include <algorithm>
@@ -38,17 +39,6 @@ constexpr const char* kAssetSuffix = "";
 
 // The work folder next to the launcher; a leftover one (a crash mid-update) is deleted at the next start.
 constexpr const char* kWorkDir = ".kyty-update";
-
-std::string Lower(std::string s)
-{
-	std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return s;
-}
-
-bool EndsWith(const std::string& s, const std::string& tail)
-{
-	return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0;
-}
 
 // "v1.10.2" -> {1, 10, 2}; anything that isn't a digit separates numbers.
 std::vector<long> Numbers(const std::string& tag)
@@ -189,7 +179,7 @@ bool fetch_latest_launcher_release(LauncherRelease& out, std::string* error)
 				continue;
 			}
 			const std::string name = Text(a, "name");
-			if (EndsWith(Lower(name), Lower(kAssetSuffix)))
+			if (to_lower(name).ends_with(to_lower(kAssetSuffix)))
 			{
 				out.asset_name = name;
 				out.asset_url  = Text(a, "browser_download_url");

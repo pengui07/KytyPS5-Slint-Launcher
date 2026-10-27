@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "settings.h"
+#include "text.h"
 #include "zar.h"
 
 #include <algorithm>
@@ -37,30 +38,6 @@ constexpr uintmax_t kMaxParamJsonBytes = 4u * 1024u * 1024u;
 // Icons and backdrops read out of a .zar are held in memory before decoding.
 constexpr uint64_t kMaxImageBytes = 32u * 1024u * 1024u;
 
-std::string Trim(const std::string& s)
-{
-	size_t b = 0;
-	size_t e = s.size();
-	while (b < e && std::isspace(static_cast<unsigned char>(s[b])) != 0)
-	{
-		b++;
-	}
-	while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0)
-	{
-		e--;
-	}
-	return s.substr(b, e - b);
-}
-
-std::string Upper(std::string s)
-{
-	for (auto& c: s)
-	{
-		c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-	}
-	return s;
-}
-
 const JsonValue* Member(const JsonValue& v, const std::string& key)
 {
 	if (v.type != JsonValue::Type::Object)
@@ -74,7 +51,7 @@ const JsonValue* Member(const JsonValue& v, const std::string& key)
 std::string StringMember(const JsonValue& v, const std::string& key)
 {
 	const JsonValue* m = Member(v, key);
-	return m != nullptr && m->type == JsonValue::Type::String ? Trim(m->s) : std::string();
+	return m != nullptr && m->type == JsonValue::Type::String ? trim(m->s) : std::string();
 }
 
 std::string LocalizedTitle(const JsonValue& root)
@@ -227,7 +204,7 @@ uint64_t DirectorySize(const fs::path& dir)
 
 GameStatus StatusFromText(const std::string& text)
 {
-	const std::string v = Trim(text);
+	const std::string v = trim(text);
 	if (v == "InGame" || v == "In game")
 	{
 		return GameStatus::InGame;
@@ -254,7 +231,7 @@ std::vector<std::string> SplitRoots(const std::string& roots)
 	std::string              part;
 	while (std::getline(ss, part, ';'))
 	{
-		part = Trim(part);
+		part = trim(part);
 		if (!part.empty())
 		{
 			out.push_back(part);
@@ -579,7 +556,7 @@ bool ReadPlayTimeFile(const std::string& path, PlayTimeDb& db)
 	}
 	for (const auto& [key, entry]: games->o)
 	{
-		if (entry.type != JsonValue::Type::Object || Trim(key).empty())
+		if (entry.type != JsonValue::Type::Object || trim(key).empty())
 		{
 			continue;
 		}
@@ -971,7 +948,7 @@ CompatDb parse_compat(const std::string& json)
 	}
 	for (const auto& [id, entry]: root.o)
 	{
-		if (entry.type != JsonValue::Type::Object || Trim(id).empty())
+		if (entry.type != JsonValue::Type::Object || trim(id).empty())
 		{
 			continue;
 		}
@@ -982,7 +959,7 @@ CompatDb parse_compat(const std::string& json)
 		{
 			e.comment = c->s;
 		}
-		db[Upper(Trim(id))] = std::move(e);
+		db[to_upper(trim(id))] = std::move(e);
 	}
 	return db;
 }
@@ -991,7 +968,7 @@ void apply_compat(std::vector<GameEntry>& games, const CompatDb& db)
 {
 	for (auto& g: games)
 	{
-		auto it = db.find(Upper(Trim(g.title_id)));
+		auto it = db.find(to_upper(trim(g.title_id)));
 		if (it != db.end())
 		{
 			g.status  = it->second.status;

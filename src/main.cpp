@@ -18,6 +18,7 @@
 #include "addcont.h"
 #include "self_update.h"
 #include "themes.h"
+#include "text.h"
 #include "zar.h"
 
 #include <atomic>
@@ -283,23 +284,10 @@ bool IsSerial(const std::string& text)
 	return true;
 }
 
-std::string ToUpper(std::string text)
-{
-	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-	return text;
-}
-
 // "#rrggbb" or "rrggbb" (any case) as "#rrggbb"; "" when it is not a colour.
-std::string NormalizeHexColor(std::string text)
+std::string NormalizeHexColor(const std::string& typed)
 {
-	while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())))
-	{
-		text.erase(text.begin());
-	}
-	while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
-	{
-		text.pop_back();
-	}
+	std::string text = trim(typed);
 	if (!text.empty() && text[0] == '#')
 	{
 		text.erase(text.begin());
@@ -308,8 +296,7 @@ std::string NormalizeHexColor(std::string text)
 	{
 		return {};
 	}
-	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return "#" + text;
+	return "#" + to_lower(text);
 }
 
 // The swatch next to the lightbar field: the colour typed, or transparent while it is not a colour.
@@ -451,12 +438,6 @@ constexpr std::chrono::seconds kMinPlaySession{10};
 
 // Builds one library row. The icon is never decoded here: the row starts with an empty placeholder
 // and `request_icon` asks the decoder pool for it (the completion patches that one row in the model).
-std::string to_lower(std::string text)
-{
-	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return text;
-}
-
 GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
                 const std::function<void(const std::string&)>& request_icon = {})
 {
@@ -482,28 +463,10 @@ GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
 	return r;
 }
 
-// Helper for the environment table and the .zar entries.
-std::string TrimText(const std::string& s)
-{
-	size_t b = 0;
-	size_t e = s.size();
-	while (b < e && std::isspace(static_cast<unsigned char>(s[b])) != 0)
-	{
-		b++;
-	}
-	while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0)
-	{
-		e--;
-	}
-	return s.substr(b, e - b);
-}
-
 // A .zar archive (the emulator's ZArchive format), whatever the case of the extension.
 bool IsArchivePath(const std::string& path)
 {
-	std::string ext = path_utf8(utf8_path(path).extension());
-	std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return ext == ".zar";
+	return to_lower(path_utf8(utf8_path(path).extension())) == ".zar";
 }
 
 // Whether `child` is `parent` or sits inside it; both must be canonical paths.
@@ -605,12 +568,6 @@ bool same_path(const std::string& a, const std::string& b)
 	}
 	return utf8_path(a).lexically_normal() == utf8_path(b).lexically_normal();
 }
-
-#ifdef _WIN32
-constexpr const char* kEmulatorExe = "kyty_emulator.exe";
-#else
-constexpr const char* kEmulatorExe = "kyty_emulator";
-#endif
 
 // What the first-launch setup wrote down; `note` says what went wrong, if anything.
 struct FirstRunOutcome
@@ -835,18 +792,13 @@ int main(int argc, char** argv)
 			s.run_dir = path_utf8(paths.run_dir);
 		}
 		std::error_code ec;
-#ifdef _WIN32
-		const char* const exe_name = "kyty_emulator.exe";
-#else
-		const char* const exe_name = "kyty_emulator";
-#endif
-		if (s.emulator.empty() && fs::exists(here / exe_name, ec))
+		if (s.emulator.empty() && fs::exists(here / kEmulatorExe, ec))
 		{
-			s.emulator = path_utf8(here / exe_name);
+			s.emulator = path_utf8(here / kEmulatorExe);
 		}
 #ifdef _WIN32
 		// Same folder the Version Manager downloads the newest main build to.
-		const fs::path latest = (s.versions_dir.empty() ? paths.versions_dir : utf8_path(s.versions_dir)) / "KytyPS5-main-latest" / exe_name;
+		const fs::path latest = (s.versions_dir.empty() ? paths.versions_dir : utf8_path(s.versions_dir)) / "KytyPS5-main-latest" / kEmulatorExe;
 		if (s.emulator.empty() && fs::exists(latest, ec))
 		{
 			s.emulator = path_utf8(latest);
@@ -1219,7 +1171,7 @@ int main(int argc, char** argv)
 			{
 				continue;
 			}
-			const std::string name  = TrimText(ToStd(row->name));
+			const std::string name  = trim(ToStd(row->name));
 			const std::string value = ToStd(row->value);
 			if (name.empty())
 			{
@@ -1532,7 +1484,8 @@ int main(int argc, char** argv)
 			        {
 				        bg_loading->erase(path);
 				        auto ui_h = weak_ui.lock();
-				        if (!ok || !ui_h)
+				        const size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(hgt) * 4;
+				        if (!ok || !ui_h || w <= 0 || hgt <= 0 || rgba.size() < bytes)
 				        {
 					        return;
 				        }
@@ -1541,7 +1494,7 @@ int main(int argc, char** argv)
 					        bg_cache->clear();
 				        }
 				        BgBuffer buf(static_cast<uint32_t>(w), static_cast<uint32_t>(hgt));
-				        std::memcpy(buf.begin(), rgba.data(), rgba.size());
+				        std::memcpy(buf.begin(), rgba.data(), bytes);
 				        auto it = bg_cache->emplace(path, std::move(buf)).first;
 				        if (*bg_wanted == path)
 				        {
@@ -1843,7 +1796,7 @@ int main(int argc, char** argv)
 	sync_game_dirs();
 
 	// Trophies page: progress of every library game that has a trophy package. The overview is
-	// scanned off the UI thread (bg_threads joins the scans when the launcher exits) and cached by file stamp.
+	// scanned on the worker pool, off the UI thread, and cached by file stamp.
 	auto trophy_rows     = std::make_shared<std::vector<size_t>>(); // overview row -> library index
 	auto trophy_cache    = std::make_shared<TrophyCache>();
 	auto trophy_scan_gen = std::make_shared<std::atomic<uint64_t>>(0);
@@ -2181,6 +2134,11 @@ int main(int argc, char** argv)
 		    ui->set_selected(-1);
 		    (*want_bg)(std::string());
 		    save();
+		    // Settings > Games (its rows and the Removed list) and the bottom bar's build name follow too.
+		    if (*games_changed)
+		    {
+			    (*games_changed)();
+		    }
 	    });
 	ui->on_add_game(
 	    [&, sync_game_dirs]
@@ -2289,24 +2247,6 @@ int main(int argc, char** argv)
 	    });
 	ui->on_controller_color_edited([&](const slint::SharedString& text) { ui->set_controller_swatch(ParseHexColor(ToStd(text))); });
 
-	ui->on_browse_emulator(
-	    [&]
-	    {
-		    auto p = PickPath(ToStd(ui->get_emulator()), false, L"Emulator (*.exe)", L"*.exe");
-		    if (!p.empty())
-		    {
-			    ui->set_emulator(slint::SharedString(p));
-		    }
-	    });
-	ui->on_browse_game(
-	    [&]
-	    {
-		    auto p = PickPath(ToStd(ui->get_game()), false, L"Game (eboot.bin, .bin, .elf, .zar)", L"eboot.bin;*.bin;*.elf;*.zar");
-		    if (!p.empty())
-		    {
-			    ui->set_game(slint::SharedString(p));
-		    }
-	    });
 	ui->on_browse_run_dir(
 	    [&]
 	    {
@@ -2696,7 +2636,7 @@ int main(int argc, char** argv)
 		    int         skipped = 0;
 		    for (const auto& [key, game]: root.o)
 		    {
-			    const std::string tid = ToUpper(key);
+			    const std::string tid = to_upper(key);
 			    if (!IsSerial(tid) || game.type != JsonValue::Type::Object)
 			    {
 				    skipped++;
@@ -3197,95 +3137,95 @@ int main(int argc, char** argv)
 
 	auto play = [&]
 	{
-		    save();
-		    LaunchPlan plan = make_launch_plan(s, paths);
-		    std::string pre = "---- play ----\n";
-		    for (const auto& w: plan.warnings)
-		    {
-			    pre += "warning: " + w + "\n";
-		    }
-		    append_text(pre + command_line(plan) + "\n");
+		save();
+		LaunchPlan plan = make_launch_plan(s, paths);
+		std::string pre = "---- play ----\n";
+		for (const auto& w: plan.warnings)
+		{
+			pre += "warning: " + w + "\n";
+		}
+		append_text(pre + command_line(plan) + "\n");
 
-		    // The reader thread keeps the unfinished last line until more output arrives.
-		    auto partial   = std::make_shared<std::string>();
-		    auto on_output = [partial, append_text](std::string chunk)
-		    {
-			    std::string text = *partial + chunk;
-			    size_t      cut  = text.rfind('\n');
-			    if (cut == std::string::npos)
+		// The reader thread keeps the unfinished last line until more output arrives.
+		auto partial   = std::make_shared<std::string>();
+		auto on_output = [partial, append_text](std::string chunk)
+		{
+			std::string text = *partial + chunk;
+			size_t      cut  = text.rfind('\n');
+			if (cut == std::string::npos)
+			{
+				*partial = std::move(text);
+				return;
+			}
+			*partial = text.substr(cut + 1);
+			text.resize(cut);
+			std::string clean;
+			clean.reserve(text.size());
+			for (char c: text)
+			{
+				if (c != '\r')
+				{
+					clean += c;
+				}
+			}
+			slint::invoke_from_event_loop([append_text, clean] { append_text(clean); });
+		};
+		auto on_exit = [partial, append_text, weak, trophy_after_exit, finish_session, flush](int code)
+		{
+			std::string rest = *partial;
+			slint::invoke_from_event_loop(
+			    [append_text, weak, rest, code, trophy_after_exit, finish_session, flush]
 			    {
-				    *partial = std::move(text);
-				    return;
-			    }
-			    *partial = text.substr(cut + 1);
-			    text.resize(cut);
-			    std::string clean;
-			    clean.reserve(text.size());
-			    for (char c: text)
-			    {
-				    if (c != '\r')
+				    if (!rest.empty())
 				    {
-					    clean += c;
+					    append_text(rest);
 				    }
-			    }
-			    slint::invoke_from_event_loop([append_text, clean] { append_text(clean); });
-		    };
-		    auto on_exit = [partial, append_text, weak, trophy_after_exit, finish_session, flush](int code)
-		    {
-			    std::string rest = *partial;
-			    slint::invoke_from_event_loop(
-			        [append_text, weak, rest, code, trophy_after_exit, finish_session, flush]
-			        {
-				        if (!rest.empty())
-				        {
-					        append_text(rest);
-				        }
-				        append_text("---- emulator exited, code " + std::to_string(code) + " ----");
-				        (*flush)(); // show the last lines now, not in 30 ms
-				        // The session is over: add its time to the totals. This runs even when the window handle is gone,
-				        // and is a no-op when the close path recorded it first.
-				        (*finish_session)();
-				        if (auto h = weak.lock())
-				        {
-					        (*h)->set_running(false);
-					        // The game may have written unlock files; refresh the trophy page if it is open.
-					        if (*trophy_after_exit)
-					        {
-						        (*trophy_after_exit)();
-					        }
-					        (*h)->set_status(slint::SharedString(describe_exit_code(code)));
-					        // The game may have left the window half-painted, so repaint everything once it has exited.
-					        (*h)->window().request_redraw();
-				        }
-			        });
-		    };
+				    append_text("---- emulator exited, code " + std::to_string(code) + " ----");
+				    (*flush)(); // show the last lines now, not in 30 ms
+				    // The session is over: add its time to the totals. This runs even when the window handle is gone,
+				    // and is a no-op when the close path recorded it first.
+				    (*finish_session)();
+				    if (auto h = weak.lock())
+				    {
+					    (*h)->set_running(false);
+					    // The game may have written unlock files; refresh the trophy page if it is open.
+					    if (*trophy_after_exit)
+					    {
+						    (*trophy_after_exit)();
+					    }
+					    (*h)->set_status(slint::SharedString(describe_exit_code(code)));
+					    // The game may have left the window half-painted, so repaint everything once it has exited.
+					    (*h)->window().request_redraw();
+				    }
+			    });
+		};
 
-		    std::string error;
-		    if (!child.Start(plan, on_output, on_exit, &error))
-		    {
-			    append_text("error: " + error);
-			    ui->set_status(slint::SharedString(error));
-			    return;
-		    }
-		    ui->set_running(true);
-		    // The launched game's key, taken now: the selection may name another game by the time it exits.
-		    session->emplace(Session{play_time_key(ToStd(ui->get_game())), std::chrono::steady_clock::now()});
-		    {
-			    // Name shown in "<game> is running": the library entry, else the game's folder.
-			    const std::string eboot = ToStd(ui->get_game());
-			    std::string       name  = path_utf8(utf8_path(eboot).parent_path().filename());
-			    for (const auto& g: *games)
-			    {
-				    if (path_key(g.eboot) == path_key(eboot) && !g.name.empty())
-				    {
-					    name = g.name;
-					    break;
-				    }
-			    }
-			    ui->set_running_name(slint::SharedString(name));
-		    }
-		    const std::string log_file = plan.log_file.empty() ? path_utf8(utf8_path(plan.cwd) / "last-run.log") : plan.log_file;
-		    ui->set_status(slint::SharedString("Running - output is also in " + log_file));
+		std::string error;
+		if (!child.Start(plan, on_output, on_exit, &error))
+		{
+			append_text("error: " + error);
+			ui->set_status(slint::SharedString(error));
+			return;
+		}
+		ui->set_running(true);
+		// The launched game's key, taken now: the selection may name another game by the time it exits.
+		session->emplace(Session{play_time_key(ToStd(ui->get_game())), std::chrono::steady_clock::now()});
+		{
+			// Name shown in "<game> is running": the library entry, else the game's folder.
+			const std::string eboot = ToStd(ui->get_game());
+			std::string       name  = path_utf8(utf8_path(eboot).parent_path().filename());
+			for (const auto& g: *games)
+			{
+				if (path_key(g.eboot) == path_key(eboot) && !g.name.empty())
+				{
+					name = g.name;
+					break;
+				}
+			}
+			ui->set_running_name(slint::SharedString(name));
+		}
+		const std::string log_file = plan.log_file.empty() ? path_utf8(utf8_path(plan.cwd) / "last-run.log") : plan.log_file;
+		ui->set_status(slint::SharedString("Running - output is also in " + log_file));
 	};
 	ui->on_play(play);
 	ui->on_play_game(
@@ -3350,7 +3290,7 @@ int main(int argc, char** argv)
 			    return;
 		    }
 		    const GameEntry& g  = (*games)[static_cast<size_t>(i)];
-		    const auto       it = s.addcont.find(ToUpper(g.title_id));
+		    const auto       it = s.addcont.find(to_upper(g.title_id));
 		    addons_page.Open(g, ToStd(ui->get_addons_dir()), it != s.addcont.end() ? it->second : std::vector<std::string>());
 	    });
 

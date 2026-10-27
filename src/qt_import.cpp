@@ -20,12 +20,6 @@ constexpr char kGlobal[] = "GlobalConfiguration";
 constexpr char kLauncher[] = "Launcher";
 constexpr char kGames[]  = "GameConfigurations";
 
-#ifdef _WIN32
-constexpr char kEmulatorExe[] = "kyty_emulator.exe";
-#else
-constexpr char kEmulatorExe[] = "kyty_emulator";
-#endif
-
 bool IsFile(const fs::path& p)
 {
 	std::error_code ec;
