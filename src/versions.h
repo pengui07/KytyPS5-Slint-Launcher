@@ -66,6 +66,10 @@ bool delete_build_folder(const InstalledBuild& b, const std::string& versions_di
 enum class ZipProbe { HasEmulator, NoEmulator, Unsupported };
 ZipProbe probe_release_zip(const ReleaseInfo& r, std::string* error);
 
+// Unpacks a release archive (.zip on Windows and macOS, .tar.gz on Linux) into an existing folder with the system's
+// own tool (tar.exe, unzip, tar). The launcher's self-update uses it too.
+bool unpack_release_archive(const std::string& archive, const std::string& dir, std::string* error);
+
 using ProgressFn = std::function<void(uint64_t done, uint64_t total)>;
 
 // Downloads the release zip and unpacks it into versions_dir/<folder>. The work happens in a

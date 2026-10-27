@@ -2,6 +2,7 @@
 
 #include "library.h"
 #include "settings.h"
+#include "zar.h"
 
 #include <algorithm>
 #include <array>
@@ -90,46 +91,62 @@ const JsonValue* Field(const JsonValue& obj, const char* key, JsonValue::Type ty
 	return it != obj.o.end() && it->second.type == type ? &it->second : nullptr;
 }
 
-std::string ReadBinary(const fs::path& path)
+// A whole file, from disk or from inside a .zar ("<archive>!/<member>"); empty when it can't be read.
+std::string ReadBinary(const std::string& path)
 {
-	std::ifstream in(path, std::ios::binary);
-	if (!in)
-	{
-		return {};
-	}
-	in.seekg(0, std::ios::end);
-	const auto size = static_cast<size_t>(in.tellg());
-	if (size > (size_t {1} << 30u))
-	{
-		return {};
-	}
-	in.seekg(0);
-	std::string data(size, '\0');
-	in.read(data.data(), static_cast<std::streamsize>(size));
-	return data;
+	std::string data;
+	return read_game_file(path, size_t {1} << 30u, data) ? data : std::string();
 }
 
-// The sce_sys/trophy2/trophyNN.ucp packages of the game, by package label.
-std::map<int, fs::path> PackagePaths(const std::string& game_dir)
+// A package label from its file name: "trophy00.ucp" -> 0; -1 when the name is not one.
+int PackageLabel(const std::string& file)
 {
-	std::error_code ec;
-	const fs::path  dir = utf8_path(game_dir) / "sce_sys" / "trophy2";
-	std::map<int, fs::path> packages;
-	if (game_dir.empty() || !fs::is_directory(dir, ec))
+	if (file.size() < 11 || file.rfind("trophy", 0) != 0 || file.substr(file.size() - 4) != ".ucp")
+	{
+		return -1;
+	}
+	const std::string digits = file.substr(6, file.size() - 10);
+	if (digits.size() <= 6 && std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; }))
+	{
+		return std::stoi(digits);
+	}
+	return -1;
+}
+
+// The sce_sys/trophy2/trophyNN.ucp packages of the game, by package label. For a .zar game they are paths
+// inside the archive.
+std::map<int, std::string> PackagePaths(const std::string& game_dir)
+{
+	std::error_code            ec;
+	std::map<int, std::string> packages;
+	if (game_dir.empty())
+	{
+		return packages;
+	}
+	if (is_zar_path(game_dir) && fs::is_regular_file(utf8_path(game_dir), ec))
+	{
+		if (const auto reader = ZarReader::Open(game_dir))
+		{
+			for (const auto& entry: reader->List("sce_sys/trophy2"))
+			{
+				if (const int label = PackageLabel(entry.name); entry.is_file && label >= 0)
+				{
+					packages.emplace(label, zar_member_path(game_dir, "sce_sys/trophy2/" + entry.name));
+				}
+			}
+		}
+		return packages;
+	}
+	const fs::path dir = utf8_path(game_dir) / "sce_sys" / "trophy2";
+	if (!fs::is_directory(dir, ec))
 	{
 		return packages;
 	}
 	for (const auto& entry: fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec))
 	{
-		const std::string file = path_utf8(entry.path().filename());
-		if (file.size() < 11 || file.rfind("trophy", 0) != 0 || file.substr(file.size() - 4) != ".ucp")
+		if (const int label = PackageLabel(path_utf8(entry.path().filename())); label >= 0)
 		{
-			continue;
-		}
-		const std::string digits = file.substr(6, file.size() - 10);
-		if (digits.size() <= 6 && std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; }))
-		{
-			packages.emplace(std::stoi(digits), entry.path());
+			packages.emplace(label, path_utf8(entry.path()));
 		}
 	}
 	return packages;
@@ -222,7 +239,7 @@ std::string TrophyKey(const std::string& game_dir, const std::string& title_id, 
 // Empty when the game has no trophy package; any change makes the stamp differ.
 std::string TrophyStamp(const std::string& game_dir, const std::string& title_id, const std::string& run_dir, int user_id)
 {
-	const std::map<int, fs::path> packages = PackagePaths(game_dir);
+	const std::map<int, std::string> packages = PackagePaths(game_dir);
 	if (packages.empty())
 	{
 		return {};
@@ -249,7 +266,9 @@ std::string TrophyStamp(const std::string& game_dir, const std::string& title_id
 	};
 	for (const auto& [label, path]: packages)
 	{
-		add(path);
+		// A package inside a .zar changes only with the archive itself.
+		std::string archive;
+		add(utf8_path(split_zar_member_path(path, &archive, nullptr) ? archive : path));
 		if (!title_id.empty())
 		{
 			add(utf8_path(run_dir) / "_Trophies" / utf8_path(title_id) /

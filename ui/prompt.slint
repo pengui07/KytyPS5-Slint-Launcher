@@ -1,0 +1,143 @@
+// One dialog for the launcher's questions and long tasks: a message with up to three buttons, or a progress bar
+// with Cancel. The C++ side fills the Prompt global and answers its callbacks (src/main.cpp, ShowPrompt).
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, AppButton } from "common.slint";
+
+export global Prompt {
+    in-out property <bool> open;
+    in property <string> title;
+    in property <string> text;
+    in property <string> note;           // smaller text under the message
+    in property <string> ok-text: "OK";
+    in property <string> cancel-text;    // "" hides the button
+    in property <string> extra-text;     // a third button ("Release notes"); "" hides it
+    in property <bool> ok-danger;        // the OK button does something that can't be undone
+    // A task in progress: the bar and Cancel replace the buttons. progress < 0: no bar.
+    in property <bool> busy;
+    in property <float> progress: -1;
+    in property <string> progress-text;
+    callback accepted();
+    callback cancelled();
+    callback extra();
+}
+
+export component PromptDialog inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    Rectangle {
+        width: min(520px, root.width - 48px);
+        height: min(box.preferred-height, root.height - 48px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 3;
+        background: Theme.card;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        // Escape cancels, Enter accepts (not while a task runs: only its Cancel button stops it).
+        FocusScope {
+            x: 0px;
+            y: 0px;
+            width: 0px;
+            height: 0px;
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if (Prompt.busy) {
+                    return reject;
+                }
+                if (event.text == Key.Escape) {
+                    Prompt.open = false;
+                    Prompt.cancelled();
+                    return accept;
+                }
+                if (event.text == Key.Return) {
+                    Prompt.open = false;
+                    Prompt.accepted();
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        box := VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            Text {
+                text: Prompt.title;
+                color: Theme.text;
+                font-size: 15px;
+                font-weight: 700;
+                overflow: elide;
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                min-height: 20px;
+                preferred-height: min(message.preferred-height + 4px, 360px);
+                ScrollView {
+                    VerticalLayout {
+                        message := Text {
+                            text: Prompt.text;
+                            color: Theme.text;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+            if Prompt.note != "": Text {
+                text: Prompt.note;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+            if Prompt.busy: VerticalLayout {
+                spacing: 6px;
+                if Prompt.progress >= 0: Rectangle {
+                    height: 6px;
+                    background: Theme.log-bg;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    Rectangle {
+                        x: 0px;
+                        width: parent.width * clamp(Prompt.progress, 0, 1);
+                        background: Theme.accent;
+                    }
+                }
+                Text {
+                    text: Prompt.progress-text;
+                    color: Theme.muted;
+                    font-size: 12px;
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                if Prompt.busy: AppButton {
+                    text: "Cancel";
+                    clicked => { Prompt.cancelled(); }
+                }
+                if !Prompt.busy && Prompt.extra-text != "": AppButton {
+                    text: Prompt.extra-text;
+                    clicked => {
+                        Prompt.open = false;
+                        Prompt.extra();
+                    }
+                }
+                if !Prompt.busy && Prompt.cancel-text != "": AppButton {
+                    text: Prompt.cancel-text;
+                    primary: Prompt.ok-danger;
+                    clicked => {
+                        Prompt.open = false;
+                        Prompt.cancelled();
+                    }
+                }
+                if !Prompt.busy: AppButton {
+                    text: Prompt.ok-text;
+                    primary: !Prompt.ok-danger;
+                    clicked => {
+                        Prompt.open = false;
+                        Prompt.accepted();
+                    }
+                }
+            }
+        }
+    }
+}

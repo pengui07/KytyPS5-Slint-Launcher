@@ -16,6 +16,14 @@ std::string run_capture(const std::vector<std::string>& args, bool* ok);
 // Linux); "" when cancelled or when no dialog program is installed.
 std::string pick_path_dialog(const std::string& current, bool folder);
 
+// A file name to write, picked in the desktop's save dialog and starting at `suggested` (a full path); "" when
+// cancelled or when no dialog program is installed. The Windows dialog lives in main.cpp (SavePath).
+std::string save_path_dialog(const std::string& suggested);
+
+// Shows `file` selected in the file manager (Explorer, Finder, or a FileManager1 desktop on Linux); opens its
+// folder when the file manager can't select it.
+void reveal_in_file_manager(const std::string& file);
+
 // The pixel size of the primary monitor (Win32 on Windows, CoreGraphics on macOS, `xrandr` on Linux).
 // False when it can't be told (for example on Wayland without XWayland); the outputs are then unchanged.
 bool detect_primary_monitor(int* width, int* height);

@@ -7,14 +7,20 @@ can switch over without losing anything.
 - [Features](#features)
 - [Getting started](#getting-started)
 - [Help and troubleshooting](#help-and-troubleshooting)
-- [Guide for build makers: cfg files](#guide-for-build-makers-cfg-files)
 - [Building the launcher](#building-the-launcher)
+- [Releases](#releases)
+
+Guides:
+- [Configs.md](Configs.md): config files. How build makers ship `cfgGlobal.json` / `cfg<TITLEID>.json`, every
+  setting key, and the per-game and import/export formats.
+- [Themes.md](Themes.md): making your own colour theme.
 
 ## Features
 
-This launcher covers what the upstream Qt launcher does (library with list and grid views, global and per-game
-settings, input mapping, cheats, trophy viewer, compatibility status, remove save data). Below is only what is
-different.
+This launcher covers what the upstream Qt launcher does: library with list and grid views, global and per-game
+settings, input mapping with a live controller diagram, cheats, trophy viewer, compatibility status, Additional
+Content, Compress to ZAR, game config import/export, remove save data and a built-in updater. Below is only what
+is different.
 
 **New here**
 - **One small exe, no Qt.** Static runtime on Windows, so no DLLs or VC++ redistributable to install.
@@ -22,10 +28,10 @@ different.
   from the toolbar, add other GitHub repositories as release sources, add local builds, and rename, pin, hide or
   delete them. Checks for newer `-latest` builds at start-up and hourly. An optional GitHub token is kept in
   Windows Credential Manager, never in the settings file.
-- **Per-game build pin.** Run a game with a specific build (**Settings > Games**).
+- **Per-game build pin.** **Settings > Games** lists every game with an Emulator drop-down: leave it on the
+  library default or pick any installed build. A Settings column shows which games have their own settings.
 - **Build cfg files.** A build can ship `cfgGlobal.json` and `cfg<TITLEID>.json` with the settings it needs; the
-  launcher applies them and warns when one overrides your setting. See the
-  [guide](#guide-for-build-makers-cfg-files).
+  launcher applies them and warns when one overrides your setting. See [Configs.md](Configs.md).
 - **Per-game settings show the real values**, including anything the build's cfg files force.
 - **More emulator options**: environment variables for the emulator (global or per game), extra arguments, and
   switches the Qt launcher has no checkbox for (splash screen, VR, PlayGo hack, GPU-assisted validation, graphics
@@ -35,31 +41,33 @@ different.
 - **Console window** with the emulator's live output and the full last log.
 - **`--dry-run`** prints exactly what would be launched (config layers, command line, environment), and
   **`--play`** launches without a window.
-- **First-start setup**: choose app data or portable mode, choose where saves go, and import the Qt launcher's
-  `Kyty.ini` and game list in one step (also later from **File > Import Kyty.ini...**).
+- **First-start setup**: pick the theme, app data or portable mode, your game folders, where saves go and the
+  add-ons folder, and import the Qt launcher's `Kyty.ini` and game list in one step (also later from
+  **File > Import Kyty.ini...**).
 - **Portable mode**: put a `portable.txt` next to the exe and everything stays in that folder.
-- **Classic theme** next to dark and light.
+- **Themes**: dark, light and classic built in. See [Themes.md](Themes.md) to make your own.
 
 **Works differently**
 - Settings are saved as JSON (`kyty.json` and `configs/games/<TITLEID>.json`) instead of `Kyty.ini`. Your
   `Kyty.ini` is read but never changed.
-- A `.zar` archive can be added as a game, but it shows by file name only: the launcher can't read inside it yet.
+- The updater updates this launcher from this repository's releases.
 
 **Not ported yet**
-- Additional Content (DLC) per game, Compress to ZAR, game config import/export, and the built-in self-updater.
-  These are in progress.
-- The Controls page's live controller preview (in progress), the game's title music, the borderless fullscreen
-  option and the "System" theme.
+- The game's title music, the borderless fullscreen option and the "System" theme.
 
 ## Getting started
 
-1. Download the launcher and start it. The first-start window asks two things:
+1. Download the launcher from [Releases](https://github.com/pengui07/KytyPS5-Slint-Launcher/releases) and
+   start it. The first-start window asks for:
+   - **Theme**, applied as you pick it.
    - **Launcher data**: *App data* (recommended) or *Next to the launcher* (portable).
-   - **Saves**: keep using the Qt launcher's folder, keep them with the launcher data, or pick another folder.
-     If a Qt launcher `Kyty.ini` was found you can import its settings and game list here.
+   - **Game folders**, the **run folder** where saves and trophies go (*Recommended* picks the Qt launcher's
+     folder when there is one), and the **add-ons folder**.
+   - If a Qt launcher `Kyty.ini` was found, whether to import its settings and game list.
 2. Open the **Version Manager** and download a build, or use **Add Custom** to point at a `kyty_emulator` you
    already have.
-3. In **Settings > General**, add your game folders. Your games appear in the library; double-click one to play.
+3. Your games appear in the library; double-click one to play. Add more game folders any time in
+   **Settings > General**.
 
 ### Where files live
 
@@ -95,13 +103,13 @@ command line and environment, plus any warnings. This is the best thing to paste
   `cfg<TITLEID>.json` that sets that option. Build cfg files outrank your global settings. The console and
   `--dry-run` print a warning such as *this build's config files set vblank_frequency over the saved value*.
   To override it for one game, change it in that game's **Game settings** (per-game settings win over build
-  files), or use a different build.
+  files), or use a different build. [Configs.md](Configs.md) explains the layers.
 - **"Pinned emulator ... is missing, using default."** The build a game was pinned to was deleted or moved.
   Re-pin the game in **Settings > Games**.
 - **A game is missing from the library.** Check that its folder is under one of your game folders and contains
-  `eboot.bin`. If you removed it from the list, restore it in **Settings > Games**.
+  `eboot.bin`, or is a `.zar` archive. If you removed it from the list, restore it in **Settings > Games**.
 - **A game can't have its own settings / cheats / trophies.** Those are keyed by the title ID in
-  `sce_sys/param.json`. Games without one (and `.zar` archives) can't have them. Cheats are only for PS5 titles
+  `sce_sys/param.json`. Games without one can't have them. Cheats are only for PS5 titles
   (`PPSA` + 5 digits).
 - **A cheat file is refused.** The online file must match the game's title ID, installed version and executable,
   and use only plain memory writes. Master codes and module-specific cheats aren't supported by the emulator yet.
@@ -113,150 +121,6 @@ command line and environment, plus any warnings. This is the best thing to paste
 
 When reporting a bug, include the `--dry-run` output, `logs/last-run.log`, the build name from the Version
 Manager, and the game's title ID.
-
-## Guide for build makers: cfg files
-
-If you publish a KytyPS5 build that needs particular settings (a fix that only works with `Immediate` present
-mode, a hack that needs PlayGo off, and so on), ship **cfg files** next to `kyty_emulator.exe` in your release zip.
-The launcher reads them every time it launches a game with that build, so users don't have to change anything.
-
-### File names and where they go
-
-```
-MyBuild/
-├── kyty_emulator.exe
-├── cfgGlobal.json        # applies to every game run with this build
-└── cfgPPSA01234.json     # applies only to the game with title ID PPSA01234
-```
-
-- `cfgGlobal.json` for settings the build always needs.
-- `cfg<TITLEID>.json` for one game. The title ID is the `titleId` in the game's `sce_sys/param.json`, for
-  example `PPSA01234`. Match its case exactly: Linux and macOS file names are case-sensitive.
-- The files must be in the same folder as the emulator exe. The Version Manager's About panel lists the ones it
-  found, which is a quick way to check your zip.
-
-### Format
-
-```jsonc
-{
-  "version": 1,
-  "emu": {
-    // Comments starting with // are allowed.
-    "present_mode": "Immediate",
-    "vblank_frequency": 60,
-    "playgo_hack_enabled": true,
-    "env": { "MY_BUILD_DEBUG": "1" }
-  }
-}
-```
-
-- Only keys inside `"emu"` are read. Anything else in the file is ignored.
-- `"version"` is optional and means 1. A file with a higher version is skipped entirely.
-- Put in only the keys your build needs. Every key you leave out keeps the user's own value.
-- A key with the wrong JSON type (`"60"` instead of `60`, `"true"` instead of `true`) is silently ignored.
-- Enum values are case-sensitive (`"Mailbox"`, not `"mailbox"`).
-- A UTF-8 BOM is fine. Trailing commas are not.
-
-### How the layers combine
-
-For each launch the launcher starts from the user's settings and applies, in order (later wins):
-
-1. Built-in defaults
-2. The user's global settings (`kyty.json`)
-3. **`cfgGlobal.json`** of the build that will run (the game's pinned build if it has one)
-4. **`cfg<TITLEID>.json`** of that build
-5. The user's per-game settings (`configs/games/<TITLEID>.json`)
-
-So your files override the user's global choices, but a user can still override them for one game. Nothing is
-written back: switch to another build and the user's own values return. When your file changes a value the user
-had set, the launcher warns about it in the console and in `--dry-run`, so users can tell why a setting "doesn't
-stick".
-
-To test your files, select your build, select a game and run `kyty_slint_launcher --dry-run`. Each layer is listed as
-`applied, N key(s) set: ...`, `not found`, `unreadable, ignored` or `newer version N, ignored`.
-
-### Keys
-
-Each key maps to an emulator command-line option.
-
-**Display and graphics**
-
-| Key | Type | Values / default |
-|---|---|---|
-| `screen_resolution` | string | `"R<width>X<height>"`, e.g. `"R1920X1080"` (capital R and X). Default `"R2560X1440"` |
-| `present_mode` | string | `"Fifo"`, `"Mailbox"` (default), `"Immediate"` |
-| `vblank_frequency` | number | 30 to 360, default 60 |
-| `gpu_index` | number | -1 = automatic (default), 0, 1, ... |
-| `shader_optimization_type` | string | `"None"` (default), `"Size"`, `"Performance"` |
-| `fullscreen_enabled` | bool | false |
-| `hdr_enabled` | bool | false |
-| `tessellation_enabled` | bool | false |
-| `occlusion_queries_enabled` | bool | false |
-| `shader_cache_enabled` | bool | true |
-| `readback_linear_images` | bool | false |
-| `readback_tiled_images` | bool | false |
-| `sync_raw_image_buffers` | bool | false |
-
-**General**
-
-| Key | Type | Values / default |
-|---|---|---|
-| `user_name` | string | `"Kyty"` |
-| `user_id` | number | 1000 |
-| `console_language` | number | 0 to 29, default 1 (English, United States) |
-| `audio_input_device` | string | microphone name, `""` = none |
-| `hide_cursor_enabled` | bool | false |
-| `perf_overlay_enabled` | bool | false |
-| `skip_notice_screen` | bool | false |
-| `network_connected` | bool | false |
-| `splash_enabled` | bool | true |
-| `trophy_enabled` | bool | true (trophy popups) |
-| `trophy_duration_seconds` | number | 5 to 10, default 6 |
-| `amd_cpu_enabled` | bool | false |
-| `red_zone_protection_enabled` | bool | false |
-| `vr_enabled` | bool | false |
-| `playgo_hack_enabled` | bool | false |
-| `extra_args` | string | extra command-line text appended as is, default `""` |
-| `env` | object | `{"NAME": "value"}` environment for the emulator only. Merged by name with the user's table; `""` removes the variable |
-
-**Controller**
-
-| Key | Type | Values / default |
-|---|---|---|
-| `controller_color` | string | lightbar `"#rrggbb"`, `""` = default |
-| `controller_vibration_intensity` | number | 0 to 100, default 100 |
-| `controller_speaker_volume` | number | 0 to 100, default 50 |
-| `controller_keyboard_player` | number | 0 = shared with player 1 (default), 1 to 4 |
-| `host_input_mapping` | array of strings | `--keymap` entries such as `"Cross=J"`, `"Pad:Cross=South"`, `"Keyboard=Disabled"`. Replaces the whole list, so only set it if your build really needs a layout |
-
-**Debug and logging**
-
-| Key | Type | Values / default |
-|---|---|---|
-| `shader_log_direction` | string | `"Silent"` (default), `"Console"`, `"File"` |
-| `shader_log_folder` | string | `""` = emulator default |
-| `printf_direction` | string | `"Silent"` (default), `"Console"`, `"File"` |
-| `printf_output_file` | string | `""` = emulator default |
-| `command_buffer_dump_enabled` | bool | false |
-| `command_buffer_dump_folder` | string | `""` = emulator default |
-| `vulkan_validation_enabled` | bool | false |
-| `shader_validation_enabled` | bool | false |
-| `gpu_assisted_validation_enabled` | bool | false |
-| `spirv_debug_printf_enabled` | bool | false |
-| `graphics_debug_dump_enabled` | bool | false |
-| `renderdoc_enabled` | bool | false |
-| `profiler_enabled` | bool | false |
-
-The key names follow the Qt launcher's `Kyty.ini` `[GlobalConfiguration]` section. The full list lives in
-`ReadEmu` in [`src/settings.cpp`](src/settings.cpp).
-
-### Tips
-
-- Keep cfg files small. Forcing `screen_resolution` or `fullscreen_enabled` overrides what users picked for their
-  own monitor, so only do it when the build truly needs it.
-- Prefer a per-game `cfg<TITLEID>.json` over `cfgGlobal.json` when a fix is for one game.
-- The per-game settings files the launcher writes (`configs/games/<TITLEID>.json`) use the same format, so you can
-  copy keys between them. They may also hold `"emulator"` (the pinned build), which build cfg files ignore.
 
 ## Building the launcher
 
@@ -273,3 +137,19 @@ cmake --build build
 
 On Windows, run these from an "x64 Native Tools Command Prompt for VS". The exe ends up in `build/`. On Windows it
 links the static VC++ runtime, so it needs no redistributable (turn off `KYTY_SLINT_STATIC_CRT` to change that).
+
+A local build is a development build: it never updates itself.
+
+## Releases
+
+Push a version tag to publish a release:
+
+```
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+`.github/workflows/release.yml` builds Windows and Linux, stamps the tag into the launcher
+(`-DKYTY_LAUNCHER_VERSION=v1.2.0`) and attaches `KytyPS5-Slint-Launcher-<tag>-Windows-x64.zip` and
+`-Linux-x86_64.tar.gz` to the release. Released launchers look for a newer release at startup (**Settings >
+General > Launcher**) and from **Help > Check for updates**, then download it, swap the executable and restart.

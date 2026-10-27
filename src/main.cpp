@@ -15,6 +15,9 @@
 #include "qt_import.h"
 #include "trophies.h"
 #include "version_manager.h"
+#include "addcont.h"
+#include "self_update.h"
+#include "zar.h"
 
 #include <atomic>
 #include <cctype>
@@ -41,6 +44,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <dwmapi.h>
 #include <shellapi.h>
 #include <shobjidl.h>
 #else
@@ -58,6 +62,29 @@ std::string ToStd(const slint::SharedString& s)
 {
 	return std::string(std::string_view(s));
 }
+
+#ifdef _WIN32
+// Without a native frame Windows 11 draws square corners and no border; DWM gives the window back its rounded
+// corners and a 1px border in the theme's card-border colour. Earlier Windows ignore both attributes. DWM only
+// rounds a frameless window that has some DWM frame, so a 1px one is extended into the client area (the page
+// paints over it). Returns false while the native window does not exist yet.
+bool RoundWindow(const AppWindow& ui)
+{
+	HWND hwnd = ui.window().win32_hwnd();
+	if (hwnd == nullptr)
+	{
+		return false;
+	}
+	const MARGINS frame = {1, 1, 1, 1};
+	DwmExtendFrameIntoClientArea(hwnd, &frame);
+	const DWORD corner = 2; // DWMWCP_ROUND
+	DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &corner, sizeof(corner));
+	const slint::Color c      = ui.global<Theme>().get_card_border();
+	const COLORREF     border = RGB(c.red(), c.green(), c.blue());
+	DwmSetWindowAttribute(hwnd, 34 /* DWMWA_BORDER_COLOR */, &border, sizeof(border));
+	return true;
+}
+#endif
 
 #ifdef _WIN32
 // Modern Explorer dialog; returns "" when cancelled.
@@ -110,12 +137,116 @@ std::string PickPath(const std::string& current, bool folder, const wchar_t* fil
 	}
 	return result;
 }
+
+// The Explorer save dialog, starting at `suggested` (a full path); asks before replacing a file. "" when cancelled.
+std::string SavePath(const std::string& suggested, const wchar_t* filter_name, const wchar_t* filter_spec, const wchar_t* extension)
+{
+	std::string      result;
+	HRESULT          co  = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	IFileSaveDialog* dlg = nullptr;
+	if (SUCCEEDED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+	{
+		FILEOPENDIALOGOPTIONS opts = 0;
+		dlg->GetOptions(&opts);
+		dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_OVERWRITEPROMPT);
+		COMDLG_FILTERSPEC spec[] = {{filter_name, filter_spec}, {L"All files", L"*.*"}};
+		dlg->SetFileTypes(2, spec);
+		dlg->SetDefaultExtension(extension);
+		const fs::path  path = utf8_path(suggested);
+		std::error_code ec;
+		dlg->SetFileName(path.filename().wstring().c_str());
+		if (fs::is_directory(path.parent_path(), ec))
+		{
+			IShellItem* item = nullptr;
+			if (SUCCEEDED(SHCreateItemFromParsingName(path.parent_path().wstring().c_str(), nullptr, IID_PPV_ARGS(&item))))
+			{
+				dlg->SetFolder(item);
+				item->Release();
+			}
+		}
+		if (SUCCEEDED(dlg->Show(GetActiveWindow())))
+		{
+			IShellItem* item = nullptr;
+			if (SUCCEEDED(dlg->GetResult(&item)))
+			{
+				PWSTR name = nullptr;
+				if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &name)))
+				{
+					result = path_utf8(fs::path(name));
+					CoTaskMemFree(name);
+				}
+				item->Release();
+			}
+		}
+		dlg->Release();
+	}
+	if (SUCCEEDED(co))
+	{
+		CoUninitialize();
+	}
+	return result;
+}
 #else
 std::string PickPath(const std::string& current, bool folder, const wchar_t*, const wchar_t*)
 {
 	return pick_path_dialog(current, folder);
 }
+
+std::string SavePath(const std::string& suggested, const wchar_t*, const wchar_t*, const wchar_t*)
+{
+	return save_path_dialog(suggested);
+}
 #endif
+
+// A worker's progress for the Prompt dialog's bar ("Packing 1.2 GB of 30 GB"), posted to the event loop at most
+// about 20 times a second.
+std::function<void(uint64_t, uint64_t)> PromptProgress(const slint::ComponentWeakHandle<AppWindow>& weak, const std::string& verb)
+{
+	auto last = std::make_shared<std::atomic<int64_t>>(0);
+	return [weak, verb, last](uint64_t done, uint64_t total)
+	{
+		const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		if (done < total && now - last->load() < 50)
+		{
+			return;
+		}
+		last->store(now);
+		slint::invoke_from_event_loop(
+		    [weak, verb, done, total]
+		    {
+			    if (auto h = weak.lock())
+			    {
+				    const auto& p = (*h)->global<Prompt>();
+				    p.set_progress(total > 0 ? static_cast<float>(static_cast<double>(done) / static_cast<double>(total)) : -1.0f);
+				    p.set_progress_text(slint::SharedString(verb + " " + format_size(done) + (total > 0 ? " of " + format_size(total) : std::string())));
+			    }
+		    });
+	};
+}
+
+// A title id as the game config files are keyed: four letters and five digits ("PPSA01234").
+bool IsSerial(const std::string& text)
+{
+	if (text.size() != 9)
+	{
+		return false;
+	}
+	for (size_t i = 0; i < 9; i++)
+	{
+		const unsigned char c = static_cast<unsigned char>(text[i]);
+		if (i < 4 ? std::isupper(c) == 0 : std::isdigit(c) == 0)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+std::string ToUpper(std::string text)
+{
+	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+	return text;
+}
 
 // "#rrggbb" or "rrggbb" (any case) as "#rrggbb"; "" when it is not a colour.
 std::string NormalizeHexColor(std::string text)
@@ -302,6 +433,7 @@ GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
 	const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
 	r.last_played  = slint::SharedString(format_last_played(g.last_played, static_cast<int64_t>(now.count())));
 	r.pinned       = pinned_keys.count(favourite_key(g)) != 0;
+	r.archive      = g.archive;
 	if (!g.icon.empty() && request_icon)
 	{
 		request_icon(g.icon);
@@ -448,8 +580,8 @@ struct FirstRunOutcome
 	std::string  note;
 };
 
-// The first launch: ask where the data root and the saves go, and whether to bring over the Qt launcher's settings,
-// then write the answers down so the setup never shows again. `paths` arrives as the per-user root and leaves as the
+// The first launch: ask for the theme, where the data root and the saves go, the game and add-ons folders, and
+// whether to bring over the Qt launcher's settings, then write the answers down so the setup never shows again. `paths` arrives as the per-user root and leaves as the
 // root the answers imply. Nothing is written before Continue or the window being closed.
 FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 {
@@ -484,17 +616,51 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 	setup->set_qt_ini_path(slint::SharedString(ini));
 	setup->set_qt_run_dir(slint::SharedString(qt_run_dir.empty() ? std::string() : path_utf8(qt_run_dir)));
 	setup->set_qt_run_dir_available(!qt_run_dir.empty());
-	// Those users' saves are already in the Qt launcher's folder, so that is the preselected answer for them.
-	setup->set_run_choice(qt_run_dir.empty() ? 0 : 1);
-	setup->set_picked_run_dir(slint::SharedString(std::string()));
+	// Those users' saves are already in the Qt launcher's folder, so the window recommends (and starts with) that one.
+	setup->set_run_dir_follows(true);
+	setup->set_run_dir(setup->get_recommended_run_dir());
 	setup->set_import_qt(!ini.empty());
 	setup->on_pick_run_dir(
 	    [&] {
-		    const std::string picked = PickPath(ToStd(setup->get_chosen_run_dir()), true, nullptr, nullptr);
+		    const std::string picked = PickPath(ToStd(setup->get_run_dir()), true, nullptr, nullptr);
 		    if (!picked.empty())
 		    {
-			    setup->set_picked_run_dir(slint::SharedString(picked));
-			    setup->set_run_choice(2);
+			    setup->set_run_dir(slint::SharedString(picked));
+			    setup->set_run_dir_follows(false);
+		    }
+	    });
+	// The game folders, as on Settings > General; the Qt launcher's own are added by the import.
+	auto game_dirs = std::make_shared<slint::VectorModel<slint::SharedString>>();
+	setup->set_game_dirs(game_dirs);
+	setup->on_add_game_dir(
+	    [&] {
+		    const std::string picked = PickPath(std::string(), true, nullptr, nullptr);
+		    if (picked.empty())
+		    {
+			    return;
+		    }
+		    for (size_t i = 0; i < game_dirs->row_count(); i++)
+		    {
+			    if (path_key(ToStd(*game_dirs->row_data(i))) == path_key(picked))
+			    {
+				    return;
+			    }
+		    }
+		    game_dirs->push_back(slint::SharedString(picked));
+	    });
+	setup->on_remove_game_dir(
+	    [&](int index) {
+		    if (index >= 0 && static_cast<size_t>(index) < game_dirs->row_count())
+		    {
+			    game_dirs->erase(static_cast<size_t>(index));
+		    }
+	    });
+	setup->on_pick_addons_dir(
+	    [&] {
+		    const std::string picked = PickPath(ToStd(setup->get_addons_dir()), true, nullptr, nullptr);
+		    if (!picked.empty())
+		    {
+			    setup->set_addons_dir(slint::SharedString(picked));
 		    }
 	    });
 	setup->on_continue_clicked([&] { setup->hide(); });
@@ -504,6 +670,8 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 	const bool        portable_chosen = setup->get_portable_selected() && portable_ok;
 	const std::string chosen_run      = ToStd(setup->get_chosen_run_dir());
 	const bool        do_import       = setup->get_import_qt() && !ini.empty();
+	const int         scheme          = setup->global<Theme>().get_scheme();
+	const std::string addons_dir      = ToStd(setup->get_addons_dir());
 
 	// Portable: the marker is what compute_paths looks for, so it is written before the paths are recomputed.
 	if (portable_chosen)
@@ -530,6 +698,20 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 		{
 			out.note = out.import.text() + " (defaults kept)";
 		}
+	}
+	s.theme = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
+	// The folders picked here go after the imported ones (a folder already on the list is not added twice).
+	for (size_t i = 0; i < game_dirs->row_count(); i++)
+	{
+		const std::string dir = ToStd(*game_dirs->row_data(i));
+		if ((";" + path_key(s.game_dirs) + ";").find(";" + path_key(dir) + ";") == std::string::npos)
+		{
+			s.game_dirs += (s.game_dirs.empty() ? "" : ";") + dir;
+		}
+	}
+	if (!addons_dir.empty())
+	{
+		s.addons_dir = addons_dir;
 	}
 	// An empty run dir means the default (root/run), as everywhere else; anything else is a folder the user chose.
 	s.run_dir = chosen_run.empty() || same_path(chosen_run, path_utf8(paths.run_dir)) ? std::string() : chosen_run;
@@ -884,6 +1066,7 @@ int main(int argc, char** argv)
 		ui->set_addons_dir(slint::SharedString(v.addons_dir));
 		// STEP7:3: the update check is a launcher setting, not an emulator one.
 		ui->set_check_updates(v.check_updates);
+		ui->set_check_launcher_updates(v.check_launcher_updates);
 		ui->global<Theme>().set_scheme(v.theme == "light" ? 1 : v.theme == "classic" ? 2 : 0);
 		push_columns(v.columns);
 		push_emu(v);
@@ -1022,7 +1205,8 @@ int main(int argc, char** argv)
 		s.game_dirs  = ToStd(ui->get_game_dirs());
 		s.addons_dir = ToStd(ui->get_addons_dir());
 		// STEP7:3
-		s.check_updates = ui->get_check_updates();
+		s.check_updates          = ui->get_check_updates();
+		s.check_launcher_updates = ui->get_check_launcher_updates();
 		const int scheme = ui->global<Theme>().get_scheme();
 		s.theme          = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
 		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
@@ -1481,12 +1665,11 @@ int main(int argc, char** argv)
 					    break;
 				    }
 			    }
-			    // STEP6:6e: a .zar archive: the launcher can only see the file name (see library.cpp).
-			    if (i >= 0 && (*games)[static_cast<size_t>(i)].archive)
+			    // A .zar the launcher could not read inside (no serial): say so instead of showing a bare file name.
+			    if (i >= 0 && (*games)[static_cast<size_t>(i)].archive && (*games)[static_cast<size_t>(i)].title_id.empty())
 			    {
 				    ui->set_status(slint::SharedString((*games)[static_cast<size_t>(i)].name
-				                                       + " is a .zar archive: the name and serial come from the file name; reading its "
-				                                         "metadata needs zarchive, which the launcher doesn't have"));
+				                                       + " is a .zar archive without a readable sce_sys/param.json: the name comes from the file name"));
 			    }
 		    }
 		    // STEP7:1: the build this game starts with, named after it in the bottom bar.
@@ -2158,6 +2341,15 @@ int main(int argc, char** argv)
 	ui->set_game_configs(game_config_model);
 	auto refresh_game_configs = [&, game_config_model]
 	{
+		// The drop-down's current entry: the pinned exe's place in the installed builds.
+		std::vector<std::string> build_keys;
+		if (const auto builds = ui->get_pin_builds())
+		{
+			for (size_t i = 0; i < builds->row_count(); i++)
+			{
+				build_keys.push_back(path_key(ToStd(builds->row_data(i)->path)));
+			}
+		}
 		std::vector<GameConfigRow> rows;
 		for (const auto& g: *games)
 		{
@@ -2170,10 +2362,20 @@ int main(int argc, char** argv)
 			std::error_code   ec;
 			r.pinned      = !pin.empty();
 			r.emu_missing = r.pinned && !fs::exists(utf8_path(pin), ec);
+			r.custom      = r.can_config && has_game_overrides(paths, g.title_id);
+			r.pin         = -1;
+			if (r.pinned && !r.emu_missing)
+			{
+				const auto at = std::find(build_keys.begin(), build_keys.end(), path_key(pin));
+				r.pin         = at == build_keys.end() ? -1 : static_cast<int>(at - build_keys.begin());
+			}
 			r.emu         = slint::SharedString(!r.can_config ? std::string("-")
 			                                    : !r.pinned   ? std::string("None")
 			                                                  : version_manager.BuildName(pin) + (r.emu_missing ? " (missing)" : ""));
-			if (!g.icon.empty())
+			if (const slint::Image* cached = g.icon.empty() ? nullptr : icon_cache->Get(g.icon))
+			{
+				r.icon = *cached;
+			} else if (!g.icon.empty() && !g.archive)
 			{
 				r.icon = slint::Image::load_from_path(slint::SharedString(g.icon));
 			}
@@ -2295,10 +2497,236 @@ int main(int argc, char** argv)
 		    }
 	    });
 
+	// ---- The Prompt dialog (ui/prompt.slint): questions, and the long tasks with their progress bar ----
+	struct PromptHandlers
+	{
+		std::function<void()> ok;
+		std::function<void()> cancel;
+		std::function<void()> extra;
+	};
+	struct PromptSpec
+	{
+		std::string title;
+		std::string text;
+		std::string note;
+		std::string ok_text = "OK";
+		std::string cancel_text;
+		std::string extra_text;
+		bool        danger = false;
+	};
+	auto prompt_handlers = std::make_shared<PromptHandlers>();
+	// Asks; false (nothing shown) while a task holds the dialog.
+	auto show_prompt = [&ui, prompt_handlers](const PromptSpec& spec, std::function<void()> ok = {}, std::function<void()> cancel = {},
+	                                          std::function<void()> extra = {})
+	{
+		const auto& p = ui->global<Prompt>();
+		if (p.get_open() && p.get_busy())
+		{
+			return false;
+		}
+		p.set_title(slint::SharedString(spec.title));
+		p.set_text(slint::SharedString(spec.text));
+		p.set_note(slint::SharedString(spec.note));
+		p.set_ok_text(slint::SharedString(spec.ok_text));
+		p.set_cancel_text(slint::SharedString(spec.cancel_text));
+		p.set_extra_text(slint::SharedString(spec.extra_text));
+		p.set_ok_danger(spec.danger);
+		p.set_busy(false);
+		p.set_progress(-1.0f);
+		p.set_progress_text("");
+		*prompt_handlers = {std::move(ok), std::move(cancel), std::move(extra)};
+		p.set_open(true);
+		return true;
+	};
+	// A task: the bar and its Cancel button (which calls `cancel` and leaves the dialog up). end_task closes it.
+	auto begin_task = [&ui, prompt_handlers](const std::string& title, const std::string& text, std::function<void()> cancel)
+	{
+		const auto& p = ui->global<Prompt>();
+		p.set_title(slint::SharedString(title));
+		p.set_text(slint::SharedString(text));
+		p.set_note("");
+		p.set_progress(0.0f);
+		p.set_progress_text("");
+		p.set_busy(true);
+		*prompt_handlers = {{}, std::move(cancel), {}};
+		p.set_open(true);
+	};
+	auto end_task = [&ui, prompt_handlers]
+	{
+		const auto& p = ui->global<Prompt>();
+		p.set_busy(false);
+		p.set_open(false);
+		*prompt_handlers = {};
+	};
+	// Each answer runs its handler once; the handler may show the next question.
+	auto take_handler = [prompt_handlers](std::function<void()> PromptHandlers::*which)
+	{
+		std::function<void()> h = std::move((*prompt_handlers).*which);
+		*prompt_handlers        = {};
+		if (h)
+		{
+			h();
+		}
+	};
+	ui->global<Prompt>().on_accepted([take_handler] { take_handler(&PromptHandlers::ok); });
+	ui->global<Prompt>().on_extra([take_handler] { take_handler(&PromptHandlers::extra); });
+	ui->global<Prompt>().on_cancelled(
+	    [&ui, prompt_handlers, take_handler]
+	    {
+		    if (ui->global<Prompt>().get_busy())
+		    {
+			    if (prompt_handlers->cancel)
+			    {
+				    ui->global<Prompt>().set_progress_text("Cancelling…");
+				    prompt_handlers->cancel();
+			    }
+			    return;
+		    }
+		    take_handler(&PromptHandlers::cancel);
+	    });
+
+	// ---- Settings > Games: Import configs… / Export config… ----
+	// The Qt launcher's format: { "PPSA01234": { "screen_resolution": "R2560X1440", "hdr_enabled": "true", ... } }.
+	// An import merges each game's values into its configs/games/<TITLEID>.json (as differences from the global
+	// settings, like the per-game page saves); an export writes every value the game starts with.
+	auto game_name_of = [&](const std::string& tid)
+	{
+		for (const auto& g: *games)
+		{
+			if (g.title_id == tid)
+			{
+				return g.name;
+			}
+		}
+		return std::string();
+	};
+	ui->global<GameActions>().on_import_configs(
+	    [&, show_prompt, refresh_game_configs, show_game_values, game_name_of]
+	    {
+		    const std::string file = PickPath(path_utf8(paths.exe_dir / "game_configs.json"), false, L"Game configs (*.json)", L"*.json");
+		    if (file.empty())
+		    {
+			    return;
+		    }
+		    JsonValue root;
+		    if (!parse_json(read_text_file(file), root) || root.type != JsonValue::Type::Object)
+		    {
+			    show_prompt({"Import game configs", file + " is not a game config file (a JSON object keyed by serial, like PPSA01234)."});
+			    return;
+		    }
+		    struct Item
+		    {
+			    std::string tid;
+			    Settings    baseline;
+			    Settings    edited;
+		    };
+		    auto        items   = std::make_shared<std::vector<Item>>();
+		    std::string summary;
+		    std::string problems;
+		    int         skipped = 0;
+		    for (const auto& [key, game]: root.o)
+		    {
+			    const std::string tid = ToUpper(key);
+			    if (!IsSerial(tid) || game.type != JsonValue::Type::Object)
+			    {
+				    skipped++;
+				    continue;
+			    }
+			    Settings user = s;
+			    user.emulator = emulator_for_game(s, paths, tid);
+			    Item item {tid, resolve_for_launch(user, paths, tid, nullptr, false), resolve_for_launch(user, paths, tid)};
+			    int  applied = 0;
+			    for (const auto& [name, value]: game.o)
+			    {
+				    std::string text;
+				    switch (value.type)
+				    {
+					    case JsonValue::Type::String: text = value.s; break;
+					    case JsonValue::Type::Bool: text = value.b ? "true" : "false"; break;
+					    case JsonValue::Type::Number: text = std::to_string(std::llround(value.n)); break;
+					    default: continue;
+				    }
+				    std::string why;
+				    const int   r = apply_qt_emu_value(item.edited, name, text, &why);
+				    if (r > 0)
+				    {
+					    applied++;
+				    } else if (r < 0)
+				    {
+					    problems += tid + " " + name + ": " + why + "\n";
+				    }
+			    }
+			    const std::string game_name = game_name_of(tid);
+			    summary += tid + (game_name.empty() ? std::string(" (not in the library)") : " " + game_name) + ": " + std::to_string(applied) +
+			               (applied == 1 ? " setting\n" : " settings\n");
+			    items->push_back(std::move(item));
+		    }
+		    if (items->empty())
+		    {
+			    show_prompt({"Import game configs", "No game configs in " + file + "."});
+			    return;
+		    }
+		    std::string note = "Values that match the global settings are not stored, and the games' other settings are kept.";
+		    if (skipped > 0)
+		    {
+			    note += " " + std::to_string(skipped) + (skipped == 1 ? " entry is" : " entries are") + " not keyed by a serial and skipped.";
+		    }
+		    if (!problems.empty())
+		    {
+			    summary += "\nNot imported:\n" + problems;
+		    }
+		    show_prompt({"Import game configs", summary, note, "Import", "Cancel"},
+		                [&, items, refresh_game_configs, show_game_values]
+		                {
+			                int failed = 0;
+			                for (const auto& item: *items)
+			                {
+				                failed += save_game_overrides(paths, item.tid, item.baseline, item.edited) ? 0 : 1;
+				                if (item.tid == game_mode_tid)
+				                {
+					                show_game_values(game_mode_tid);
+				                }
+			                }
+			                refresh_game_configs();
+			                const size_t done = items->size() - static_cast<size_t>(failed);
+			                ui->set_status(slint::SharedString("Imported the configs of " + std::to_string(done) + (done == 1 ? " game" : " games") +
+			                                                   (failed > 0 ? " (" + std::to_string(failed) + " could not be saved)" : std::string())));
+		                });
+	    });
+	ui->global<GameActions>().on_export_config(
+	    [&](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size() || (*games)[static_cast<size_t>(i)].title_id.empty())
+		    {
+			    return;
+		    }
+		    const std::string tid  = (*games)[static_cast<size_t>(i)].title_id;
+		    Settings          user = s;
+		    user.emulator          = emulator_for_game(s, paths, tid);
+		    JsonValue root;
+		    root.type       = JsonValue::Type::Object;
+		    JsonValue& game = root.o[tid];
+		    game.type       = JsonValue::Type::Object;
+		    for (const auto& [key, text]: emu_text_values(resolve_for_launch(user, paths, tid)))
+		    {
+			    JsonValue& v = game.o[key];
+			    v.type       = JsonValue::Type::String;
+			    v.s          = text;
+		    }
+		    const std::string file = SavePath(path_utf8(paths.exe_dir / (tid + ".json")), L"Game configs (*.json)", L"*.json", L"json");
+		    if (file.empty())
+		    {
+			    return;
+		    }
+		    ui->set_status(slint::SharedString(write_text_file(file, dump_json(root)) ? "Exported the config of " + tid + " to " + file
+		                                                                               : "Could not write " + file));
+	    });
+
 	// ---- STEP6:6f: Controls page (keyboard/mouse and gamepad bindings) ----
 	// The page edits a working copy of Settings::host_input_mapping; Save writes it into `s` and saves the file.
 	auto input_mapping = std::make_shared<InputMapping>();
 	auto capture_timer = std::make_shared<slint::Timer>();
+	auto live_timer    = std::make_shared<slint::Timer>(); // lights up what the gamepad presses while the page is open
 	{
 		std::vector<slint::SharedString> labels;
 		for (const auto& source: InputMapping::Sources())
@@ -2365,7 +2793,23 @@ int main(int argc, char** argv)
 		    c.set_skin_index(input_mapping->SkinIndex());
 		    c.set_show_cursor(input_mapping->ShowCursor());
 		    c.set_status(slint::SharedString(input_mapping->PadStatus()));
+		    c.set_live("");
 		    refresh_controls();
+		    live_timer->start(slint::TimerMode::Repeated, std::chrono::milliseconds(33),
+		                      [&]
+		                      {
+			                      auto&                    c         = ui->global<Controls>();
+			                      float                    sticks[4] = {};
+			                      const slint::SharedString live      = slint::SharedString(input_mapping->LiveControls(sticks));
+			                      if (c.get_live() != live)
+			                      {
+				                      c.set_live(live);
+			                      }
+			                      c.set_left_x(sticks[0]);
+			                      c.set_left_y(sticks[1]);
+			                      c.set_right_x(sticks[2]);
+			                      c.set_right_y(sticks[3]);
+		                      });
 	    });
 	// A click on a binding starts a capture: the timer polls the keyboard/mouse or the gamepad until it has one.
 	ui->global<Controls>().on_begin_capture(
@@ -2475,6 +2919,7 @@ int main(int argc, char** argv)
 		    }
 		    c.set_notice("");
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 		    ui->set_status(slint::SharedString("Controls saved"));
 	    });
@@ -2483,12 +2928,14 @@ int main(int argc, char** argv)
 	    [&]
 	    {
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 	    });
 	ui->global<Controls>().on_close(
 	    [&]
 	    {
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 	    });
 
@@ -2571,12 +3018,18 @@ int main(int argc, char** argv)
 	    });
 
 	ui->on_theme_changed(
-	    [console](int scheme)
+	    [console, weak_ui = slint::ComponentWeakHandle<AppWindow>(ui)](int scheme)
 	    {
 		    if (console->has_value())
 		    {
 			    (**console)->global<Theme>().set_scheme(scheme);
 		    }
+#ifdef _WIN32
+		    if (auto h = weak_ui.lock())
+		    {
+			    RoundWindow(**h);
+		    }
+#endif
 	    });
 
 	ui->on_open_url(
@@ -2738,6 +3191,329 @@ int main(int argc, char** argv)
 		    ui->set_status("Stopping…");
 	    });
 
+	// Library menu > Open game folder: a .zar archive is shown selected in its folder.
+	ui->on_open_game_folder(
+	    [&](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size())
+		    {
+			    return;
+		    }
+		    const GameEntry& g = (*games)[static_cast<size_t>(i)];
+		    if (g.archive)
+		    {
+			    reveal_in_file_manager(g.dir);
+		    } else
+		    {
+			    open_in_system(g.dir);
+		    }
+	    });
+
+	// Library menu > Additional Content…: the game's add-ons, kept in Settings::addcont by upper-case title id.
+	AddContentPage addons_page(
+	    ui,
+	    [&](const std::string& tid, const std::vector<std::string>& entries)
+	    {
+		    if (entries.empty())
+		    {
+			    s.addcont.erase(tid);
+		    } else
+		    {
+			    s.addcont[tid] = entries;
+		    }
+		    save();
+	    },
+	    [](const std::string& current) { return PickPath(current, true, nullptr, nullptr); });
+	ui->on_open_game_addons(
+	    [&](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size())
+		    {
+			    return;
+		    }
+		    const GameEntry& g  = (*games)[static_cast<size_t>(i)];
+		    const auto       it = s.addcont.find(ToUpper(g.title_id));
+		    addons_page.Open(g, ToStd(ui->get_addons_dir()), it != s.addcont.end() ? it->second : std::vector<std::string>());
+	    });
+
+	// Library menu > Compress to ZAR…: packs a game folder into "<folder>.zar" next to it, then offers to delete
+	// the folder. A game folder that is itself one of the game folders (Settings > Paths) is swapped for the archive.
+	auto compress_cancel = std::make_shared<std::atomic<bool>>(false);
+	ui->on_compress_game(
+	    [&, show_prompt, begin_task, end_task, compress_cancel](int i)
+	    {
+		    if (i < 0 || static_cast<size_t>(i) >= games->size())
+		    {
+			    return;
+		    }
+		    const GameEntry g = (*games)[static_cast<size_t>(i)];
+		    if (g.archive)
+		    {
+			    return;
+		    }
+		    if (child.Running())
+		    {
+			    show_prompt({"Compress to ZAR", "Stop the game before compressing it."});
+			    return;
+		    }
+		    fs::path folder = utf8_path(g.dir);
+		    if (!folder.has_filename())
+		    {
+			    folder = folder.parent_path();
+		    }
+		    const std::string archive = path_utf8(folder) + ".zar";
+		    std::error_code   ec;
+		    if (fs::exists(utf8_path(archive), ec))
+		    {
+			    show_prompt({"Compress to ZAR", archive + " already exists. Delete or move it first."});
+			    return;
+		    }
+		    auto start = [&, g, folder, archive, begin_task, end_task, show_prompt, compress_cancel]
+		    {
+			    compress_cancel->store(false);
+			    begin_task("Compressing " + g.name, "Packing " + path_utf8(folder) + " into " + archive, [compress_cancel] { compress_cancel->store(true); });
+			    auto progress = PromptProgress(weak, "Packed");
+			    std::thread(
+			        [&, g, folder, archive, progress, end_task, show_prompt, compress_cancel]
+			        {
+				        std::string error;
+				        const bool  ok = pack_zar(path_utf8(folder), archive, progress, compress_cancel.get(), &error);
+				        slint::invoke_from_event_loop(
+				            [&, g, folder, archive, ok, error, end_task, show_prompt, compress_cancel]
+				            {
+					            end_task();
+					            if (!ok)
+					            {
+						            if (compress_cancel->load())
+						            {
+							            ui->set_status(slint::SharedString("Compressing " + g.name + " cancelled"));
+						            } else
+						            {
+							            show_prompt({"Compress to ZAR", "Could not compress " + g.name + ": " + error});
+						            }
+						            return;
+					            }
+					            std::error_code   size_ec;
+					            const uint64_t    size = fs::file_size(utf8_path(archive), size_ec);
+					            const std::string key  = path_key(path_utf8(folder));
+					            // Keeps the archive in the library: a game folder listed on its own is joined (or replaced) by it.
+					            auto use_archive = [&, key, archive](bool replace)
+					            {
+						            std::string dirs = ToStd(ui->get_game_dirs());
+						            std::string out;
+						            bool        listed = false;
+						            for (size_t pos = 0; pos <= dirs.size();)
+						            {
+							            size_t end = dirs.find(';', pos);
+							            if (end == std::string::npos)
+							            {
+								            end = dirs.size();
+							            }
+							            std::string item = dirs.substr(pos, end - pos);
+							            pos              = end + 1;
+							            if (item.empty())
+							            {
+								            continue;
+							            }
+							            if (path_key(item) == key)
+							            {
+								            listed = true;
+								            if (replace)
+								            {
+									            item = archive;
+								            } else
+								            {
+									            out += (out.empty() ? "" : ";") + item;
+									            item = archive;
+								            }
+							            }
+							            out += (out.empty() ? "" : ";") + item;
+						            }
+						            if (listed)
+						            {
+							            ui->set_game_dirs(slint::SharedString(out));
+							            save();
+						            }
+						            refresh();
+					            };
+					            show_prompt({"Compress to ZAR",
+					                         "Created " + archive + " (" + format_size(size) + ", the folder holds " + format_size(g.size) +
+					                             ").\n\nDelete the original folder " + path_utf8(folder) + "?",
+					                         "The archive runs the same game. Deleting the folder can't be undone.", "Delete folder", "Keep folder",
+					                         "", true},
+					                        [&, g, folder, use_archive]
+					                        {
+						                        // Only a game folder: it must still hold the eboot.bin the library found.
+						                        std::error_code del;
+						                        if (!fs::is_regular_file(folder / "eboot.bin", del) || folder == folder.root_path())
+						                        {
+							                        ui->set_status(slint::SharedString("Not deleting " + path_utf8(folder) + ": it is not a game folder"));
+							                        use_archive(false);
+							                        return;
+						                        }
+						                        fs::remove_all(folder, del);
+						                        ui->set_status(slint::SharedString(del ? "Could not delete " + path_utf8(folder) + ": " + del.message()
+						                                                               : "Deleted " + path_utf8(folder) + "; " + g.name + " now runs from its archive"));
+						                        use_archive(!del);
+					                        },
+					                        [use_archive] { use_archive(false); });
+				            });
+			        })
+			        .detach();
+		    };
+		    show_prompt({"Compress to ZAR",
+		                 "Pack " + g.name + " (" + format_size(g.size) + ") into a ZArchive?\n\n" + archive,
+		                 "The emulator runs a .zar directly, usually from a much smaller file. The folder is kept until you choose.", "Compress",
+		                 "Cancel"},
+		                start);
+	    });
+
+	// ---- The launcher's own updates (Help > Check for updates, and at startup) ----
+	cleanup_launcher_update(path_utf8(paths.exe_dir));
+	ui->set_launcher_version(slint::SharedString(launcher_version()));
+	const std::string releases_page = std::string("https://github.com/") + kLauncherRepo + "/releases";
+	auto              update_check_running = std::make_shared<std::atomic<bool>>(false);
+	auto              update_cancel        = std::make_shared<std::atomic<bool>>(false);
+	auto install_update = [&, show_prompt, begin_task, end_task, update_cancel](const LauncherRelease& release)
+	{
+		if (child.Running())
+		{
+			show_prompt({"Launcher update", "Stop the game before updating the launcher."});
+			return;
+		}
+		const std::string exe = current_executable();
+		if (exe.empty())
+		{
+			show_prompt({"Launcher update", "Could not tell where the launcher is installed. Download " + release.tag + " from " + release.page_url});
+			return;
+		}
+		update_cancel->store(false);
+		begin_task("Updating the launcher", "Downloading " + release.asset_name, [update_cancel] { update_cancel->store(true); });
+		auto progress = PromptProgress(weak, "Downloaded");
+		std::thread(
+		    [&, release, exe, progress, end_task, show_prompt, update_cancel]
+		    {
+			    std::string new_exe;
+			    std::string error;
+			    const bool  ok = install_launcher_update(release, exe, progress, update_cancel.get(), &new_exe, &error);
+			    slint::invoke_from_event_loop(
+			        [&, release, ok, new_exe, error, end_task, show_prompt, update_cancel]
+			        {
+				        end_task();
+				        if (!ok)
+				        {
+					        if (update_cancel->load())
+					        {
+						        ui->set_status("Launcher update cancelled");
+					        } else
+					        {
+						        show_prompt({"Launcher update", "The update failed: " + error + "\n\nThe launcher was not changed."});
+					        }
+					        return;
+				        }
+				        save();
+				        if (!start_detached(new_exe))
+				        {
+					        show_prompt({"Launcher update", "Updated to " + release.tag + ". Start the launcher again to use it."});
+					        return;
+				        }
+				        slint::quit_event_loop();
+			        });
+		    })
+		    .detach();
+	};
+	auto on_release = std::make_shared<std::function<void(bool, LauncherRelease, std::string, bool)>>();
+	*on_release = [&, show_prompt, install_update, releases_page](bool ok, const LauncherRelease& release, const std::string& error, bool manual)
+	{
+		const std::string current = launcher_version();
+		if (!ok)
+		{
+			if (manual)
+			{
+				show_prompt({"Check for updates", "Could not reach the launcher's releases: " + error, "", "OK", "", "Open releases page"}, {}, {},
+				            [releases_page] { open_in_system(releases_page); });
+			}
+			return;
+		}
+		if (compare_launcher_versions(release.tag, current) <= 0)
+		{
+			if (manual)
+			{
+				show_prompt({"Check for updates", "The launcher is up to date (" + current + ")."});
+			}
+			return;
+		}
+		if (release.asset_url.empty())
+		{
+			if (manual)
+			{
+				show_prompt({"Check for updates", release.tag + " is out, but it has no build for this system.", "", "OK", "", "Release notes"}, {}, {},
+				            [url = release.page_url] { open_in_system(url); });
+			}
+			return;
+		}
+		std::string notes = release.notes;
+		if (notes.size() > 1500)
+		{
+			notes = notes.substr(0, 1500) + "…";
+		}
+		show_prompt({"Launcher update", "KytyPS5 Slint Launcher " + release.tag + " is available (this is " + current + ")." +
+		                                    (notes.empty() ? std::string() : "\n\n" + notes),
+		             format_size(release.asset_size) + " download. The launcher restarts when it is done; your settings are kept.",
+		             "Update and restart", "Later", "Release notes"},
+		            [install_update, release] { install_update(release); }, {}, [url = release.page_url] { open_in_system(url); });
+	};
+	auto check_launcher = [&, show_prompt, update_check_running, on_release, releases_page](bool manual)
+	{
+		if (!launcher_updates_supported())
+		{
+			if (manual)
+			{
+				show_prompt({"Check for updates",
+				             launcher_version().empty() ? "This is a development build of the launcher, so it doesn't update itself."
+				                                        : "There are no launcher builds for this system to update to.",
+				             "", "OK", "", "Open releases page"},
+				            {}, {}, [releases_page] { open_in_system(releases_page); });
+			}
+			return;
+		}
+		if (update_check_running->exchange(true))
+		{
+			return;
+		}
+		if (manual)
+		{
+			ui->set_status("Checking for launcher updates…");
+		}
+		std::thread(
+		    [weak, manual, update_check_running, on_release]
+		    {
+			    LauncherRelease release;
+			    std::string     error;
+			    const bool      ok = fetch_latest_launcher_release(release, &error);
+			    slint::invoke_from_event_loop(
+			        [weak, manual, update_check_running, on_release, ok, release, error]
+			        {
+				        update_check_running->store(false);
+				        if (auto h = weak.lock())
+				        {
+					        if (manual)
+					        {
+						        (*h)->set_status("Ready");
+					        }
+					        (*on_release)(ok, release, error, manual);
+				        }
+			        });
+		    })
+		    .detach();
+	};
+	ui->on_check_launcher_update([check_launcher] { check_launcher(true); });
+	if (s.check_launcher_updates && launcher_updates_supported())
+	{
+		// A moment after the window is up, so the first paint never waits on the network.
+		slint::Timer::single_shot(std::chrono::seconds(3), [check_launcher] { check_launcher(false); });
+	}
+
 	// Closing the window while a game runs asks first (the game ends with the launcher).
 	ui->window().on_close_requested(
 	    [&]
@@ -2773,6 +3549,19 @@ int main(int argc, char** argv)
 		ui->window().set_position(slint::LogicalPosition(slint::Point<float>{static_cast<float>(s.window_x), static_cast<float>(s.window_y)}));
 	}
 	refresh();
+#ifdef _WIN32
+	// The native window is created once the event loop runs: try until it exists (at most two seconds).
+	slint::Timer round_timer;
+	round_timer.start(slint::TimerMode::Repeated, std::chrono::milliseconds(50),
+	                  [weak, &round_timer, tries = 0]() mutable
+	                  {
+		                  auto h = weak.lock();
+		                  if (!h || RoundWindow(**h) || ++tries >= 40)
+		                  {
+			                  round_timer.stop();
+		                  }
+	                  });
+#endif
 	ui->run();
 	// STEP6:6e: keep the geometry for the next start. Read once, after run() returns: the native window is gone
 	// but the component handle still reports its last size and position (never saved on every resize).

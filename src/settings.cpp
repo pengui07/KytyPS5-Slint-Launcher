@@ -438,6 +438,31 @@ void ReadApp(const JsonValue& root, Settings& s)
 	r.flag("library_grid", s.library_grid);
 	r.list("favourite_games", s.favourite_games);
 	// STEP6:6c app keys: end
+	r.flag("check_launcher_updates", s.check_launcher_updates);
+	// Library > Additional Content…: {"PPSA01234": ["LABEL", "LABEL=DIR"]}
+	if (const auto* v = r.find("addcont", JsonValue::Type::Object))
+	{
+		s.addcont.clear();
+		for (const auto& [title_id, entries]: v->o)
+		{
+			if (entries.type != JsonValue::Type::Array)
+			{
+				continue;
+			}
+			std::vector<std::string> list;
+			for (const auto& e: entries.a)
+			{
+				if (e.type == JsonValue::Type::String && !e.s.empty())
+				{
+					list.push_back(e.s);
+				}
+			}
+			if (!title_id.empty() && !list.empty())
+			{
+				s.addcont[title_id] = std::move(list);
+			}
+		}
+	}
 }
 
 // The "emu" keys, the ones every config layer may carry (keys follow the official launcher's Kyty.ini
@@ -946,6 +971,21 @@ int apply_qt_emu_value(Settings& s, const std::string& key, const std::string& t
 	return 1;
 }
 
+std::vector<std::pair<std::string, std::string>> emu_text_values(const Settings& s)
+{
+	std::vector<std::pair<std::string, std::string>> out;
+	for (const auto& [key, json]: EmuKeys(s))
+	{
+		if (std::string(key) == "env" || std::string(key) == "host_input_mapping")
+		{
+			continue;
+		}
+		JsonValue v;
+		out.emplace_back(key, !json.empty() && json[0] == '"' && parse_json(json, v) && v.type == JsonValue::Type::String ? v.s : json);
+	}
+	return out;
+}
+
 Settings resolve_for_launch(const Settings& user, const Paths& paths, const std::string& title_id, std::vector<std::string>* report,
                             bool with_game_file, std::vector<std::string>* overrides)
 {
@@ -1171,6 +1211,17 @@ bool reset_game_overrides(const Paths& paths, const std::string& title_id)
 	return WriteGameRoot(file, std::move(root));
 }
 
+bool has_game_overrides(const Paths& paths, const std::string& title_id)
+{
+	JsonValue root;
+	if (title_id.empty() || !ReadJsonFile(paths.game_config_file(title_id), root))
+	{
+		return false;
+	}
+	auto it = root.o.find("emu");
+	return it != root.o.end() && !IsEmptyObject(&it->second);
+}
+
 std::string build_display_name(const Settings& s, const std::string& exe)
 {
 	auto same = [](const std::string& a, const std::string& b)
@@ -1244,8 +1295,20 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	out += "    \"library_sort\": " + Quote(s.library_sort) + ",\n";
 	out += "    \"library_sort_desc\": " + std::string(s.library_sort_desc ? "true" : "false") + ",\n";
 	out += "    \"library_grid\": " + std::string(s.library_grid ? "true" : "false") + ",\n";
-	out += "    \"favourite_games\": " + QuoteList(s.favourite_games) + "\n";
+	out += "    \"favourite_games\": " + QuoteList(s.favourite_games) + ",\n";
 	// STEP6:6c app keys: end
+	out += "    \"check_launcher_updates\": " + std::string(s.check_launcher_updates ? "true" : "false") + ",\n";
+	{
+		std::string addcont = "{";
+		for (const auto& [title_id, entries]: s.addcont)
+		{
+			if (!entries.empty())
+			{
+				addcont += (addcont.size() > 1 ? ", " : "") + Quote(title_id) + ": " + QuoteList(entries);
+			}
+		}
+		out += "    \"addcont\": " + addcont + "}\n";
+	}
 	out += "  },\n";
 	out += "  \"emu\": {";
 	const EmuEntries defaults = EmuKeys(default_settings());
