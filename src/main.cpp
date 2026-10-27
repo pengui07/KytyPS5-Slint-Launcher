@@ -2158,6 +2158,15 @@ int main(int argc, char** argv)
 	ui->set_game_configs(game_config_model);
 	auto refresh_game_configs = [&, game_config_model]
 	{
+		// The drop-down's current entry: the pinned exe's place in the installed builds.
+		std::vector<std::string> build_keys;
+		if (const auto builds = ui->get_pin_builds())
+		{
+			for (size_t i = 0; i < builds->row_count(); i++)
+			{
+				build_keys.push_back(path_key(ToStd(builds->row_data(i)->path)));
+			}
+		}
 		std::vector<GameConfigRow> rows;
 		for (const auto& g: *games)
 		{
@@ -2170,6 +2179,13 @@ int main(int argc, char** argv)
 			std::error_code   ec;
 			r.pinned      = !pin.empty();
 			r.emu_missing = r.pinned && !fs::exists(utf8_path(pin), ec);
+			r.custom      = r.can_config && has_game_overrides(paths, g.title_id);
+			r.pin         = -1;
+			if (r.pinned && !r.emu_missing)
+			{
+				const auto at = std::find(build_keys.begin(), build_keys.end(), path_key(pin));
+				r.pin         = at == build_keys.end() ? -1 : static_cast<int>(at - build_keys.begin());
+			}
 			r.emu         = slint::SharedString(!r.can_config ? std::string("-")
 			                                    : !r.pinned   ? std::string("None")
 			                                                  : version_manager.BuildName(pin) + (r.emu_missing ? " (missing)" : ""));

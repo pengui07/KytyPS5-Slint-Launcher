@@ -1171,6 +1171,17 @@ bool reset_game_overrides(const Paths& paths, const std::string& title_id)
 	return WriteGameRoot(file, std::move(root));
 }
 
+bool has_game_overrides(const Paths& paths, const std::string& title_id)
+{
+	JsonValue root;
+	if (title_id.empty() || !ReadJsonFile(paths.game_config_file(title_id), root))
+	{
+		return false;
+	}
+	auto it = root.o.find("emu");
+	return it != root.o.end() && !IsEmptyObject(&it->second);
+}
+
 std::string build_display_name(const Settings& s, const std::string& exe)
 {
 	auto same = [](const std::string& a, const std::string& b)
