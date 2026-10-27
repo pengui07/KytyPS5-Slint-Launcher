@@ -1,15 +1,25 @@
-// First launch: where the launcher keeps its data, where the saves go, and whether to bring over the Qt launcher's
-// settings. Shown before the main window exists (see run_first_run_setup in main.cpp); nothing is written until
-// Continue, and closing the window keeps the choices it shows.
-// Laid out like the newer pages: a page header with a hairline to the window edges, Settings-style sections, and
-// each option's folder spelled out under it (the full text is the option's tooltip).
+// First launch: the theme, where the launcher keeps its data, the game folders, the run (saves) and add-ons folders,
+// and whether to bring over the Qt launcher's settings. Shown before the main window exists (see run_first_run_setup
+// in main.cpp); nothing is written until Continue, and closing the window keeps the choices it shows.
+// Laid out like the newer pages: a page header with a hairline to the window edges, Settings-style sections and form
+// rows, and the Game folders block as on Settings > General, with a Recommended button that puts the run folder back.
 // The path defaults below are only sample data for the live preview: C++ sets every property before showing it.
 
-import { Theme, PaletteSync, AppButton, AppCheckBox } from "common.slint";
+import { Theme, PaletteSync, AppButton, AppCheckBox, Dropdown, ThemedEdit } from "common.slint";
+import { ScrollView } from "std-widgets.slint";
 
-// A Settings page section: a filled card with its title inside, top left (settings.slint keeps its own copy).
+// The Settings page's sizes (settings.slint keeps its own copies of these and the components below).
+global Form {
+    out property <length> label-w: 140px;
+    out property <length> row-h: 26px;
+    out property <length> gap: 10px;
+}
+
+// A Settings page section: a filled card with its title inside, top left.
 component Section inherits Rectangle {
     in property <string> title;
+    horizontal-stretch: 1;
+    preferred-width: 0px;
     background: Theme.card;
     border-width: 1px;
     border-radius: 0px;
@@ -17,11 +27,10 @@ component Section inherits Rectangle {
     VerticalLayout {
         padding: 14px;
         padding-top: 12px;
-        padding-bottom: 10px;
-        spacing: 2px;
+        spacing: 6px;
         alignment: start;
         Text {
-            height: 26px;
+            height: 22px;
             text: root.title;
             color: Theme.text;
             font-size: 13px;
@@ -32,70 +41,78 @@ component Section inherits Rectangle {
     }
 }
 
-// One choice: a radio dot, its label, and the folder it means in grey under it. The whole row is the target.
-component ChoiceRow inherits Rectangle {
-    in property <string> title;
-    in property <string> detail; // the folder, or why the option is off
-    in property <string> help; // the tooltip
+// A label column entry; hovering it shows the row's explanation.
+component RowLabel inherits Rectangle {
+    in property <string> text;
+    in property <string> hint;
+    width: Form.label-w;
+    height: 100%;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.hint != "": Tooltip {
+        text: @markdown("\{root.hint}");
+    }
+}
+
+component FormRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> hint;
+    spacing: 8px;
+    min-height: Form.row-h;
+    RowLabel {
+        text: root.label;
+        hint: root.hint;
+    }
+    @children
+}
+
+// Grey text under a row, lined up with the controls.
+component Note inherits HorizontalLayout {
+    in property <string> text;
+    padding-left: Form.label-w + 8px;
+    Text {
+        horizontal-stretch: 1;
+        text: root.text;
+        color: Theme.muted;
+        font-size: 12px;
+        overflow: elide;
+    }
+}
+
+// A row of the game folder list.
+component FolderRow inherits Rectangle {
+    in property <string> path;
     in property <bool> selected: false;
-    in property <bool> enabled: true;
-    callback picked();
-
-    height: 42px;
-    background: touch.has-hover && root.enabled ? Theme.row-hover : transparent;
-
-    HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
-        spacing: 10px;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 14px;
-                height: 14px;
-                border-radius: 7px;
-                // A thick accent ring reads as a filled radio dot.
-                border-width: root.selected ? 4px : 1px;
-                border-color: root.selected ? Theme.accent : touch.has-hover && root.enabled ? Theme.border-hover : Theme.faint;
-                background: Theme.log-bg;
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            spacing: 1px;
-            horizontal-stretch: 1;
-            Text {
-                text: root.title;
-                color: root.enabled ? Theme.text : Theme.faint;
-                font-size: 13px;
-                overflow: elide;
-            }
-            Text {
-                text: root.detail;
-                color: Theme.muted;
-                font-size: 12px;
-                overflow: elide;
-            }
-        }
-    }
+    callback clicked();
+    height: 26px;
+    border-radius: 0px;
+    background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
     touch := TouchArea {
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => {
-            if (root.enabled) {
-                root.picked();
-            }
-        }
+        clicked => { root.clicked(); }
     }
-    if root.help != "": Tooltip {
-        text: @markdown("\{root.help}");
+    Text {
+        x: 8px;
+        width: parent.width - 16px;
+        text: root.path;
+        color: Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
     }
 }
 
 export component FirstRunWindow inherits Window {
     title: "KytyPS5 Launcher - first start";
     icon: @image-url("icons/app-icon.png");
-    preferred-width: 620px;
-    min-width: 500px;
+    preferred-width: 900px;
+    min-width: 640px;
     background: Theme.bg;
     default-font-size: 13px;
 
@@ -115,23 +132,39 @@ export component FirstRunWindow inherits Window {
     in property <string> qt-ini-path;
     in property <string> qt-run-dir; // its emulator folder, where _SaveData and _Trophies already are
     in property <bool> qt-run-dir-available: false;
-    // 0 = with the launcher data, 1 = the Qt launcher's folder, 2 = a folder the user picked.
-    in-out property <int> run-choice: 0;
-    in-out property <string> picked-run-dir;
     in-out property <bool> import-qt: false;
 
+    // The run folder (saves, trophies, logs). Recommended: the Qt launcher's folder when there is one (its saves are
+    // there), else the one under the data root. While `run-dir-follows`, the field tracks the recommendation (it
+    // moves with the data folder choice); typing or Browse stops that, Recommended starts it again.
+    out property <string> recommended-run-dir: root.qt-run-dir-available ? root.qt-run-dir : root.default-run-dir;
+    in-out property <string> run-dir: root.recommended-run-dir;
+    in-out property <bool> run-dir-follows: true;
+    changed recommended-run-dir => {
+        if (root.run-dir-follows) {
+            root.run-dir = root.recommended-run-dir;
+        }
+    }
     // The saves folder the choices add up to; C++ reads it once the window is closed.
-    out property <string> chosen-run-dir: root.run-choice == 2 ? root.picked-run-dir : root.run-choice == 1 ? root.qt-run-dir : root.default-run-dir;
+    out property <string> chosen-run-dir: root.run-dir;
+
+    // Folders scanned for games (C++ owns the list: add-game-dir and remove-game-dir change it) and the add-ons folder.
+    in property <[string]> game-dirs: ["D:\\Games\\PS5"];
+    property <int> game-dir-selected: -1;
+    in-out property <string> addons-dir;
 
     callback continue-clicked();
     callback pick-run-dir();
+    callback add-game-dir();
+    callback remove-game-dir(int);
+    callback pick-addons-dir();
 
     PaletteSync { }
 
     VerticalLayout {
         padding: 20px;
         padding-top: 16px;
-        spacing: 12px;
+        spacing: Form.gap;
 
         // Page header, as on the full pages: the app icon and title, what this is, and a hairline to the edges.
         Rectangle {
@@ -158,7 +191,7 @@ export component FirstRunWindow inherits Window {
                         overflow: elide;
                     }
                     Text {
-                        text: "Choose where the launcher keeps its files. You can change this later in Settings.";
+                        text: "Pick a look and where things go. Everything here can be changed later in Settings.";
                         color: Theme.muted;
                         font-size: 12px;
                         overflow: elide;
@@ -174,72 +207,153 @@ export component FirstRunWindow inherits Window {
             }
         }
 
-        Section {
-            title: "Launcher data";
-            ChoiceRow {
-                title: "App data (recommended)";
-                detail: root.app-data-root;
-                help: "Settings, downloaded emulator versions, cache and logs are kept in your user folder: " + root.app-data-root;
-                selected: !root.portable-selected;
-                picked => { root.portable-selected = false; }
+        HorizontalLayout {
+            spacing: Form.gap;
+            Section {
+                title: "Launcher";
+                FormRow {
+                    label: "Theme";
+                    Dropdown {
+                        horizontal-stretch: 1;
+                        model: ["Dark", "Light", "Classic"];
+                        current-index <=> Theme.scheme;
+                    }
+                }
+                FormRow {
+                    label: "Data folder";
+                    hint: "Where settings, downloaded emulator versions, cache and logs are kept. Portable keeps everything beside the launcher, so the folder can be moved or copied as a whole.";
+                    Dropdown {
+                        horizontal-stretch: 1;
+                        model: ["App data (recommended)", "Next to the launcher (portable)"];
+                        item-enabled: [true, root.portable-enabled];
+                        current-index: root.portable-selected ? 1 : 0;
+                        selected(i) => { root.portable-selected = i == 1; }
+                    }
+                }
+                Note {
+                    text: root.portable-enabled || root.portable-selected
+                        ? (root.portable-selected ? root.portable-root : root.app-data-root)
+                        : root.app-data-root + "   (portable: " + root.portable-disabled-reason + ")";
+                }
             }
-            ChoiceRow {
-                title: "Next to the launcher (portable)";
-                detail: root.portable-enabled ? root.portable-root : root.portable-disabled-reason;
-                help: root.portable-enabled
-                    ? "Everything is kept beside the launcher, so the folder can be moved or copied as a whole: " + root.portable-root
-                    : root.portable-disabled-reason;
-                selected: root.portable-selected;
-                enabled: root.portable-enabled;
-                picked => { root.portable-selected = true; }
-            }
-        }
-
-        Section {
-            title: "Saves and trophies";
-            if root.qt-run-dir-available: ChoiceRow {
-                title: "Keep the Qt launcher's folder";
-                detail: root.qt-run-dir;
-                help: "Games keep using the _SaveData and _Trophies already in " + root.qt-run-dir;
-                selected: root.run-choice == 1;
-                picked => { root.run-choice = 1; }
-            }
-            ChoiceRow {
-                title: "With the launcher data";
-                detail: root.default-run-dir;
-                help: "Games keep _SaveData and _Trophies in " + root.default-run-dir;
-                selected: root.run-choice == 0;
-                picked => { root.run-choice = 0; }
-            }
-            ChoiceRow {
-                title: "Another folder...";
-                detail: root.picked-run-dir != "" ? root.picked-run-dir : "Pick any folder";
-                help: root.picked-run-dir != ""
-                    ? "Games keep _SaveData and _Trophies in " + root.picked-run-dir + ". Click to pick a different one."
-                    : "Pick any folder for _SaveData and _Trophies.";
-                selected: root.run-choice == 2;
-                picked => { root.pick-run-dir(); }
-            }
-        }
-
-        if root.qt-found: Section {
-            title: "Qt launcher";
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
+            if root.qt-found: Section {
+                title: "Qt launcher";
                 AppCheckBox {
                     text: "Import its settings and games";
                     checked: root.import-qt;
                     toggled(on) => { root.import-qt = on; }
                 }
                 Text {
-                    horizontal-stretch: 1;
+                    text: "Brings over its settings and game list from:";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+                Text {
                     text: root.qt-ini-path;
                     color: Theme.muted;
                     font-size: 12px;
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
                     overflow: elide;
+                }
+            }
+        }
+
+        // As on Settings > General: the list on the left, the run and add-ons folders on the right.
+        Section {
+            title: "Game folders";
+            HorizontalLayout {
+                spacing: Form.gap + 18px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    preferred-width: 0px;
+                    spacing: 6px;
+                    Rectangle {
+                        height: 120px;
+                        background: Theme.log-bg;
+                        border-width: 1px;
+                        border-radius: 0px;
+                        border-color: Theme.card-border;
+                        clip: true;
+                        if root.game-dirs.length == 0: Text {
+                            text: root.import-qt && root.qt-found ? "The Qt launcher's folders are added on import" : "No folders yet";
+                            color: Theme.placeholder;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        ScrollView {
+                            VerticalLayout {
+                                alignment: start;
+                                padding: 4px;
+                                for dir[i] in root.game-dirs: FolderRow {
+                                    path: dir;
+                                    selected: i == root.game-dir-selected;
+                                    clicked => { root.game-dir-selected = i; }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        AppButton {
+                            text: "Add folder…";
+                            clicked => { root.add-game-dir(); }
+                        }
+                        AppButton {
+                            text: "Remove";
+                            enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dirs.length;
+                            clicked => {
+                                root.remove-game-dir(root.game-dir-selected);
+                                root.game-dir-selected = -1;
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1.5;
+                    preferred-width: 0px;
+                    spacing: 6px;
+                    alignment: start;
+                    FormRow {
+                        label: "Run folder";
+                        hint: "Save data (_SaveData), trophies (_Trophies), flags.ctl and the logs go in the run folder.";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.run-dir;
+                            edited => { root.run-dir-follows = false; }
+                        }
+                        AppButton {
+                            text: "Browse…";
+                            clicked => { root.pick-run-dir(); }
+                        }
+                        AppButton {
+                            text: "Recommended";
+                            enabled: root.run-dir != root.recommended-run-dir;
+                            clicked => {
+                                root.run-dir = root.recommended-run-dir;
+                                root.run-dir-follows = true;
+                            }
+                        }
+                    }
+                    Note {
+                        text: root.run-dir == root.recommended-run-dir
+                            ? (root.qt-run-dir-available ? "The Qt launcher's folder, so your saves carry over" : "With the launcher data")
+                            : "Recommended: " + root.recommended-run-dir;
+                    }
+                    FormRow {
+                        label: "Add-ons (DLC) folder";
+                        hint: "One folder holding the extracted add-ons (DLC), shared by every game. Optional.";
+                        ThemedEdit {
+                            horizontal-stretch: 1;
+                            placeholder: "None";
+                            text <=> root.addons-dir;
+                        }
+                        AppButton {
+                            text: "Browse…";
+                            clicked => { root.pick-addons-dir(); }
+                        }
+                    }
                 }
             }
         }
