@@ -69,7 +69,7 @@ std::string format_size(uint64_t bytes);
 // Lower-cased, forward-slash form for comparing paths typed in different styles.
 std::string path_key(const std::string& path);
 
-// STEP6:6c: the library's sort keys, in header order.
+// The library's sort keys, in header order.
 enum class GameSortKey { Name, Status, Serial, Firmware, Size, Version, Playtime, Path, Comment };
 
 // "size" -> GameSortKey::Size; anything unknown -> Name (the default order).

@@ -20,12 +20,6 @@ constexpr char kGlobal[] = "GlobalConfiguration";
 constexpr char kLauncher[] = "Launcher";
 constexpr char kGames[]  = "GameConfigurations";
 
-#ifdef _WIN32
-constexpr char kEmulatorExe[] = "kyty_emulator.exe";
-#else
-constexpr char kEmulatorExe[] = "kyty_emulator";
-#endif
-
 bool IsFile(const fs::path& p)
 {
 	std::error_code ec;
@@ -259,7 +253,6 @@ ImportReport import_qt_ini(const std::string& ini_path, const Paths& paths, Sett
 	}
 
 	// [MainDialog]: the Qt launcher's own "check for updates on startup" (a launcher setting, not the emulator's).
-	// STEP7:3.
 	{
 		const std::string key = "MainDialog/check_updates_on_startup";
 		use(key);

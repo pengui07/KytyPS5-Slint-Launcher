@@ -29,20 +29,20 @@ export struct BuildChoice {
     path: string,
 }
 
-// STEP7:2: one row of the Games tab's "Removed games" list: a game taken off the library with
+// One row of the Games tab's "Removed games" list: a game taken off the library with
 // "Remove from list" (its files are still on disk, and it stays in the saved list until restored).
 export struct RemovedGameRow {
     label: string,  // the game's folder or file name, or its title id when the entry has no path
     detail: string, // the saved key: the title id, or the path it was removed by
 }
 
-// STEP6:6e: one row of the environment variable table (Settings > Advanced, global and per-game mode).
+// One row of the environment variable table (Settings > Advanced, global and per-game mode).
 export struct EnvVar {
     name: string,
     value: string,
 }
 
-// STEP6:6e: the environment table lives in a global so that C++ owns the rows (a model) without the launcher
+// The environment table lives in a global so that C++ owns the rows (a model) without the launcher
 // window having to forward every edit. Row indices are the model's.
 export global EnvEditor {
     in property <[EnvVar]> vars;
@@ -51,7 +51,7 @@ export global EnvEditor {
     callback added();
 }
 
-// STEP6:6e: the microphone and GPU pickers. C++ fills these when the page opens and on Refresh; empty lists
+// The microphone and GPU pickers. C++ fills these when the page opens and on Refresh; empty lists
 // mean the page keeps its plain text fields (macOS and Linux, or when nothing was detected).
 export global Devices {
     in property <[string]> audio-inputs;   // "Default (system)" first, then the detected input devices
@@ -61,7 +61,7 @@ export global Devices {
     callback rescan();                     // "Refresh" button: look for the devices again
 }
 
-// STEP6:6e: per-game actions of the Settings > Games tab that the launcher window handles: it draws the
+// Per-game actions of the Settings > Games tab that the launcher window handles: it draws the
 // confirmation dialogs (a row index is a library index, the Games tab lists the library in order).
 export global GameActions {
     callback delete-save-data(int);
@@ -403,10 +403,10 @@ export component SettingsPage inherits VerticalLayout {
     // Games tab.
     in property <[GameConfigRow]> game-configs;
     in-out property <int> games-selected: -1;
-    // STEP7:2: the games taken off the library ("Remove from list"), and the row selected here.
+    // The games taken off the library ("Remove from list"), and the row selected here.
     in property <[RemovedGameRow]> removed-games;
     in-out property <int> removed-selected: -1;
-    // STEP7:3: check for newer "-latest" builds at startup and every hour (Settings > General).
+    // Check for newer "-latest" builds at startup and every hour (Settings > General).
     in-out property <bool> check-updates: true;
     // Look for a newer launcher release at startup (Help > Check for updates asks any time).
     in-out property <bool> check-launcher-updates: true;
@@ -475,7 +475,7 @@ export component SettingsPage inherits VerticalLayout {
     callback clear-game-emu(int);            // pin "None"
     callback pick-game-emu(int);             // "Set emulator..." (the window shows the picker)
     callback set-game-emu(int, int);         // the Emulator drop-down: library index, build index (-1: library default)
-    callback restore-game(int);              // STEP7:2: Games tab: put a removed game back on the library
+    callback restore-game(int);              // Games tab: put a removed game back on the library
     callback reset-game();                   // per-game mode: drop the game's overrides
     callback reload-themes();                // Theme: read the themes folder again
     callback open-themes-folder();           // Theme: show the themes folder (made, with example.json, if missing)
@@ -486,7 +486,7 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    // STEP6:6e: fill the microphone and GPU pickers when the page opens (their Refresh buttons redo it).
+    // Fill the microphone and GPU pickers when the page opens (their Refresh buttons redo it).
     changed visible => {
         if (self.visible) {
             Devices.refresh();
@@ -664,7 +664,7 @@ export component SettingsPage inherits VerticalLayout {
                         }
                         Unit { text: "%"; }
                     }
-                    // STEP6:6e: the detected input devices as a menu next to the editable name (typing keeps
+                    // The detected input devices as a menu next to the editable name (typing keeps
                     // working: the emulator also accepts a name the system doesn't list).
                     FormRow {
                         label: "Microphone";
@@ -789,7 +789,7 @@ export component SettingsPage inherits VerticalLayout {
                                 clicked => { root.open-themes-folder(); }
                             }
                         }
-                        // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
+                        // The Version Manager's automatic check for newer "-latest" builds.
                         ToggleRow {
                             item: { env: "check_updates", label: "Check for emulator updates on startup",
                             hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
@@ -960,7 +960,7 @@ export component SettingsPage inherits VerticalLayout {
                 Section {
                     width: graphics-col.half;
                     title: "GPU";
-                    // STEP6:6e: the Vulkan devices as a picker ("Auto" = the emulator's default, -1); a typed
+                    // The Vulkan devices as a picker ("Auto" = the emulator's default, -1); a typed
                     // index stays possible while nothing was detected.
                     if Devices.gpu-choices.length > 1: FormRow {
                         label: "Device";
@@ -1060,7 +1060,7 @@ export component SettingsPage inherits VerticalLayout {
                             text <=> root.extra-args;
                         }
                     }
-                    // STEP6:6e: the env table of the emulator process (kyty.json "emu" / "env"), in global and
+                    // The env table of the emulator process (kyty.json "emu" / "env"), in global and
                     // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
                     Section {
                         title: "Environment variables";
@@ -1438,7 +1438,7 @@ export component SettingsPage inherits VerticalLayout {
                         && root.game-configs[root.games-selected].serial != "";
                     clicked => { GameActions.export-config(root.games-selected); }
                 }
-                // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
+                // Wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
                 // confirmation. Games without a title id have no save folder.
                 AppButton {
                     text: "Delete save data…";
@@ -1449,7 +1449,7 @@ export component SettingsPage inherits VerticalLayout {
             }
         }
 
-        // STEP7:2: what "Remove from list" took off the library. Nothing was deleted from disk; Restore puts the
+        // What "Remove from list" took off the library. Nothing was deleted from disk; Restore puts the
         // game back in the library (the rescan finds it again).
         Section {
             vertical-stretch: 0;

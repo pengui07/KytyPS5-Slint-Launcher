@@ -4,6 +4,7 @@
 #include "net.h"
 #include "platform.h"
 #include "secret_store.h"
+#include "text.h"
 #include "versions.h"
 
 #include <algorithm>
@@ -177,16 +178,10 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 		return path_key(folder.empty() ? b.name : folder) == path_key("KytyPS5-main-latest");
 	}
 
-	static std::string Lower(std::string v)
-	{
-		std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-		return v;
-	}
-
 	static int CompareText(const std::string& a, const std::string& b)
 	{
-		const std::string la = Lower(a);
-		const std::string lb = Lower(b);
+		const std::string la = to_lower(a);
+		const std::string lb = to_lower(b);
 		return la < lb ? -1 : la > lb ? 1 : 0;
 	}
 
@@ -742,14 +737,14 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 					continue;
 				}
 				const std::string name = path_utf8(it->path().filename());
-				const std::string low  = Lower(name);
+				const std::string low  = to_lower(name);
 				if (low.starts_with("cfg") && low.ends_with(".json") && low != "cfgglobal.json")
 				{
 					configs.push_back(name);
 				}
 			}
 		}
-		std::sort(configs.begin(), configs.end(), [](const std::string& a, const std::string& c) { return Lower(a) < Lower(c); });
+		std::sort(configs.begin(), configs.end(), [](const std::string& a, const std::string& c) { return to_lower(a) < to_lower(c); });
 		const size_t max_configs = 50;
 		const size_t total       = configs.size();
 		if (configs.size() > max_configs)
@@ -1101,7 +1096,7 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	// release list while it is fresh) and offers the ones that are behind. Quiet when nothing is.
 	void CheckForUpdates()
 	{
-		// STEP7:3: "Check for updates on startup" off (Settings > General): no automatic check at all. The
+		// "Check for updates on startup" off (Settings > General): no automatic check at all. The
 		// Version Manager's Update buttons still work, and so does turning it back on mid-session.
 		if (!s.check_updates)
 		{

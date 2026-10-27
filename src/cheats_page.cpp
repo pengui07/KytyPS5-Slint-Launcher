@@ -116,7 +116,6 @@ struct CheatsPage::Impl
 		if (c != nullptr)
 		{
 			c->set_has_file(exists);
-			c->set_file_path(slint::SharedString(path_utf8(path)));
 		}
 		SetLocalStatus(status);
 	}

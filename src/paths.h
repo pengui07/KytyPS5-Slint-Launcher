@@ -17,7 +17,7 @@ namespace kyty_launcher {
 //   <config_dir>\games\<TITLEID>.json   per-game overrides
 //   <root>\playtime.json                per-game play time totals (see PlayTimeDb)
 //   <root>\themes\*.json                launcher colour themes (see themes.h)
-//   <root>\versions\  <root>\cache\  <root>\logs\  <root>\run\
+//   <root>\versions\  <root>\cache\  <root>\logs\  <root>\run\  (folders)
 // where config_dir is <root>\configs, except on Linux (non-portable) where it is $XDG_CONFIG_HOME/kytyps5 itself.
 // The Qt launcher's own paths (%ProgramData%\Kyty\Kyty.ini, ~/.config/Kyty) are not these: see qt_import.cpp.
 struct Paths
@@ -44,6 +44,13 @@ struct Paths
 		return cache_dir / "trophies" / (title_id.empty() ? std::string("unknown") : title_id);
 	}
 };
+
+// The emulator's executable, as it sits next to the launcher or inside a downloaded build.
+#ifdef _WIN32
+inline constexpr const char* kEmulatorExe = "kyty_emulator.exe";
+#else
+inline constexpr const char* kEmulatorExe = "kyty_emulator";
+#endif
 
 // The folder holding the launcher executable.
 std::filesystem::path exe_dir(const char* argv0);

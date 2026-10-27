@@ -1,7 +1,7 @@
 import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
 import { Theme, TextCell, HeaderCell, IconButton, SortState, Dropdown, AppButton } from "common.slint";
 import { VM, EmuVersion, ReleaseItem, VersionManagerPage } from "version_manager.slint";
-// STEP6:6e: EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
+// EnvVar, EnvEditor, Devices and GameActions come from the settings page (the env table, the device
 // pickers and the Games tab's delete-save action).
 import { SettingsPage, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions } from "settings.slint";
 import { Trophies, TrophyGame, TrophyItem, TrophiesPage } from "trophies.slint";
@@ -13,9 +13,9 @@ import { PromptDialog, Prompt } from "prompt.slint";
 import { FirstRunWindow } from "first_run.slint";
 
 // The generated C++ header needs these.
-// STEP6:6e: EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
+// EnvVar, EnvEditor, Devices and GameActions were added (the environment table, the device pickers
 // and the Games tab's delete-save action).
-// STEP6:6f: Controls, ControlRow are the Controls page's global and row.
+// Controls, ControlRow are the Controls page's global and row.
 export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow, Cheats, CheatRow, RemoteCheatRow, Addons, AddonRow, Prompt }
 // Theme.scheme is the launcher's theme setting, an index into Theme.names (main.cpp).
 import { PaletteSync } from "common.slint";
@@ -40,7 +40,7 @@ export struct GameRow {
     icon: image,
 }
 
-// STEP6:6c: one grid row: indices into `games`, so the list and the grid always show the same order.
+// One grid row: indices into `games`, so the list and the grid always show the same order.
 export struct GridRow {
     cells: [int],
 }
@@ -66,7 +66,7 @@ component TableHeader inherits HorizontalLayout {
     spacing: 0px;
     padding-left: Cols.inset;
     padding-right: Cols.inset;
-    // STEP6:6c: the sorted column, and what a click on a header does (the C++ side re-sorts the library).
+    // The sorted column, and what a click on a header does (the C++ side re-sorts the library).
     in property <string> sort-key: "name";
     in property <bool> sort-desc: false;
     callback header-clicked(string);
@@ -130,7 +130,7 @@ component GameRowView inherits Rectangle {
                 overflow: elide;
                 vertical-alignment: center;
             }
-            // STEP6:6c: "Pin to top" mark (not the per-game emulator pin).
+            // "Pin to top" mark (not the per-game emulator pin).
             if root.game.pinned: VerticalLayout {
                 alignment: center;
                 Image {
@@ -197,7 +197,7 @@ component GameRowView inherits Rectangle {
     }
 }
 
-// STEP6:6c: one game in the grid view: art, name, serial and version, with the pin badge on top.
+// One game in the grid view: art, name, serial and version, with the pin badge on top.
 component GameCard inherits Rectangle {
     in property <GameRow> game;
     in property <bool> selected;
@@ -561,26 +561,29 @@ export component AppWindow inherits Window {
         }
     }
     in-out property <bool> show-trophies: false;
-    // STEP6:6f: the Controls page (keyboard/mouse and gamepad bindings).
+    // The Controls page (keyboard/mouse and gamepad bindings).
     in-out property <bool> show-controls: false;
+    changed show-controls => {
+        // Leaving the page by any way (Back, a menu) stops its live input timer and a capture still listening.
+        if (!self.show-controls) {
+            Controls.close();
+        }
+    }
     // The Cheats page of one game (library menu > Cheats…).
     in-out property <bool> show-cheats: false;
     callback open-game-cheats(int); // library index
-    // Opening any other page leaves the Cheats page.
-    property <bool> other-page-open: show-settings || show-versions || show-trophies || show-controls;
-    changed other-page-open => {
-        if (self.other-page-open) {
-            root.show-cheats = false;
-        }
-    }
     // The Additional Content page of one game (library menu > Additional Content…).
     in-out property <bool> show-addons: false;
     callback open-game-addons(int); // library index
-    property <bool> addons-covered: show-settings || show-versions || show-trophies || show-controls || show-cheats;
-    changed addons-covered => {
-        if (self.addons-covered) {
-            root.show-addons = false;
-        }
+    // Back to the library, the window's base layer. The pages are stacked above it, so every menu entry that
+    // opens a page closes the others first: otherwise one higher in the stack (Controls, Cheats) stays on top.
+    function close-pages() {
+        root.show-settings = false;
+        root.show-versions = false;
+        root.show-trophies = false;
+        root.show-controls = false;
+        root.show-cheats = false;
+        root.show-addons = false;
     }
     // Library menu > Compress to ZAR…: packs a game folder into <folder>.zar (the C++ side asks and shows progress).
     callback compress-game(int);
@@ -595,14 +598,14 @@ export component AppWindow inherits Window {
     in property <[GameConfigRow]> game-configs;
     in property <[BuildChoice]> pin-builds; // every installed build, unfiltered
     in property <[string]> pin-choices;     // "Library default", then pin-builds' names (the Games tab's drop-downs)
-    // STEP7:2: the games taken off the library, listed in Settings > Games with a Restore button.
+    // The games taken off the library, listed in Settings > Games with a Restore button.
     in property <[RemovedGameRow]> removed-games;
     in-out property <int> removed-selected: -1;
-    // STEP7:1: the build the selected game is pinned to, shown in brackets after its name in the bottom bar
+    // The build the selected game is pinned to, shown in brackets after its name in the bottom bar
     // (empty when the game has no pin); `selected-emu-missing` = the pinned exe is gone, so it shows in red.
     in property <string> selected-emu;
     in property <bool> selected-emu-missing;
-    // STEP7:3: the Version Manager's automatic check for newer builds (Settings > General).
+    // The Version Manager's automatic check for newer builds (Settings > General).
     in-out property <bool> check-updates: true;
     // Help > Check for updates: the launcher's own releases (src/self_update.cpp).
     in-out property <bool> check-launcher-updates: true;
@@ -618,17 +621,21 @@ export component AppWindow inherits Window {
     callback reload-themes();
     callback open-themes-folder();
     callback set-game-emu(int, int);        // library index, index in pin-builds (-1: None)
-    callback restore-game(int);             // STEP7:2: Settings > Games: put a removed game back on the library
+    callback restore-game(int);             // Settings > Games: put a removed game back on the library
     changed show-settings => {
         // Leaving the page by any way (menu, toolbar) also leaves per-game mode.
         if (!self.show-settings && self.game-mode) {
             root.leave-game-settings();
         }
+        // Settings > Versions shows how many release lists are cached.
+        if (self.show-settings) {
+            VM.settings-opened();
+        }
     }
     in-out property <int> settings-tab: 0;
     in-out property <int> selected: -1;
     in property <[GameRow]> games;
-    // STEP6:6c: library view state. The settings' app keys keep it across restarts.
+    // Library view state. The settings' app keys keep it across restarts.
     in-out property <bool> library-grid: false;
     in property <[GridRow]> grid-rows;     // grid view: rows of indices into `games`
     in property <[int]> list-rows;         // list view: indices into `games` (the ones the search lets through)
@@ -700,7 +707,7 @@ export component AppWindow inherits Window {
     in property <bool> is-windows: false; // Windows-only options are hidden elsewhere
     in-out property <bool> close-prompt-open; // closing the window while a game runs
     in-out property <bool> delete-cache-prompt-open; // Settings > Versions > Delete cache
-    // STEP6:6e: "Delete save data…" of the selected game (bottom bar and Settings > Games).
+    // "Delete save data…" of the selected game (bottom bar and Settings > Games).
     in-out property <bool> delete-save-prompt-open;
     in-out property <int> delete-save-row: -1; // library index
     in-out property <bool> import-summary-open; // the Kyty.ini import finished: shows import-summary-text once
@@ -708,8 +715,6 @@ export component AppWindow inherits Window {
     callback confirm-close();
     in property <string> status;
 
-    callback browse-emulator();
-    callback browse-game();
     callback browse-run-dir();
     callback browse-game-dir();
     callback browse-addons-dir();
@@ -722,7 +727,7 @@ export component AppWindow inherits Window {
     callback remove-game();
     callback open-game-trophies(int); // library index: the Trophies page on that game
     callback open-save-folder(int); // <run folder>\_SaveData\<serial>
-    callback delete-save-data(int); // STEP6:6e: wipes <run folder>\_SaveData\<serial> (the dialog confirms)
+    callback delete-save-data(int); // wipes <run folder>\_SaveData\<serial> (the dialog confirms)
     callback play();
     callback stop();
     callback save();
@@ -733,9 +738,8 @@ export component AppWindow inherits Window {
     // Opens the settings page on a tab (from the Settings menu).
     public function open-settings(tab: int) {
         root.settings-tab = tab;
-        root.show-versions = false;
-        root.show-trophies = false;
-                        root.show-settings = true;
+        root.close-pages();
+        root.show-settings = true;
     }
     in property <[string]> emu-builds;
     in-out property <int> emu-build-index: -1;
@@ -781,17 +785,13 @@ export component AppWindow inherits Window {
                 MenuItem {
                     title: "Library";
                     icon: @image-url("icons/library.svg");
-                    activated => {
-                        root.show-settings = false;
-                        root.show-versions = false;
-                    }
+                    activated => { root.close-pages(); }
                 }
                 MenuItem {
                     title: "Settings";
                     icon: @image-url("icons/global-settings.svg");
                     activated => {
-                        root.show-versions = false;
-                        root.show-trophies = false;
+                        root.close-pages();
                         root.show-settings = true;
                     }
                 }
@@ -799,8 +799,7 @@ export component AppWindow inherits Window {
                     title: "Version Manager";
                     icon: @image-url("icons/versions.svg");
                     activated => {
-                        root.show-settings = false;
-                        root.show-trophies = false;
+                        root.close-pages();
                         root.show-versions = true;
                         VM.opened();
                     }
@@ -876,8 +875,7 @@ export component AppWindow inherits Window {
                 title: "Trophies";
                 icon: @image-url("icons/trophy.svg");
                 activated => {
-                    root.show-settings = false;
-                    root.show-versions = false;
+                    root.close-pages();
                     root.show-trophies = true;
                     root.open-game-trophies(root.selected);
                 }
@@ -887,11 +885,7 @@ export component AppWindow inherits Window {
                 icon: @image-url("icons/bug.svg");
                 enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
                 activated => {
-                    root.show-settings = false;
-                    root.show-versions = false;
-                    root.show-trophies = false;
-                    root.show-controls = false;
-                    root.show-addons = false;
+                    root.close-pages();
                     root.open-game-cheats(root.selected);
                     root.show-cheats = true;
                 }
@@ -901,11 +895,7 @@ export component AppWindow inherits Window {
                 icon: @image-url("icons/folder.svg");
                 enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
                 activated => {
-                    root.show-settings = false;
-                    root.show-versions = false;
-                    root.show-trophies = false;
-                    root.show-controls = false;
-                    root.show-cheats = false;
+                    root.close-pages();
                     root.open-game-addons(root.selected);
                     root.show-addons = true;
                 }
@@ -942,13 +932,12 @@ export component AppWindow inherits Window {
                 icon: @image-url("icons/global-settings.svg");
                 enabled: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].serial != "";
                 activated => {
-                    root.show-versions = false;
-                    root.show-trophies = false;
+                    root.close-pages();
                     root.show-settings = true;
                     root.open-game-settings(root.selected, true);
                 }
             }
-            // STEP6:6c: favourites ("Pin to top"), not the per-game emulator pin of the Settings page.
+            // Favourites ("Pin to top"), not the per-game emulator pin of the Settings page.
             MenuItem {
                 title: root.selected >= 0 && root.selected < root.games.length && root.games[root.selected].pinned ? "Unpin" : "Pin to top";
                 icon: @image-url("icons/pin.svg");
@@ -1045,7 +1034,7 @@ export component AppWindow inherits Window {
                     text: "Settings";
                     icon: @image-url("icons/global-settings.svg");
                     clicked => {
-                        root.show-trophies = false;
+                        root.close-pages();
                         root.show-settings = true;
                     }
                 }
@@ -1062,7 +1051,7 @@ export component AppWindow inherits Window {
                     clicked => { root.remove-game(); }
                 }
             }
-            // STEP6:6f: opens the Controls page (keyboard/mouse and gamepad bindings).
+            // Opens the Controls page (keyboard/mouse and gamepad bindings).
             VerticalLayout {
                 alignment: center;
                 IconButton {
@@ -1072,9 +1061,7 @@ export component AppWindow inherits Window {
                     icon: @image-url("icons/input-mapping.svg");
                     tooltip: "Controls";
                     clicked => {
-                        root.show-settings = false;
-                        root.show-versions = false;
-                        root.show-trophies = false;
+                        root.close-pages();
                         Controls.opened();
                         root.show-controls = true;
                     }
@@ -1120,7 +1107,7 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle { horizontal-stretch: 1; }
-            // STEP6:6c: list/grid toggle (the icon shows the view a click switches to).
+            // List/grid toggle (the icon shows the view a click switches to).
             VerticalLayout {
                 alignment: center;
                 IconButton {
@@ -1152,7 +1139,7 @@ export component AppWindow inherits Window {
                     width: 160px;
                     text: "Version Manager";
                     clicked => {
-                        root.show-trophies = false;
+                        root.close-pages();
                         root.show-versions = true;
                         VM.opened();
                     }
@@ -1186,7 +1173,7 @@ export component AppWindow inherits Window {
             border-width: 1px;
             border-color: Theme.card-border;
             clip: true;
-            // STEP6:6c: the grid's cards per row follow the box width. The timer debounces a resize, so a
+            // The grid's cards per row follow the box width. The timer debounces a resize, so a
             // drag does not rebuild the grid rows on every pixel.
             grid-timer := Timer {
                 interval: 120ms;
@@ -1267,7 +1254,7 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                // STEP6:6c: grid view. Rows of cards in a ScrollView whose content starts
+                // Grid view. Rows of cards in a ScrollView whose content starts
                 // at the top-left, so a short library sits at the top, not centred.
                 if (root.library-grid): grid-list := ScrollView {
                     content-width: self.visible-width;
@@ -1319,7 +1306,7 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
-                // STEP7:1: the selected game's name, then the build it is pinned to in brackets.
+                // The selected game's name, then the build it is pinned to in brackets.
                 HorizontalLayout {
                     alignment: start;
                     spacing: 6px;
@@ -1431,7 +1418,7 @@ export component AppWindow inherits Window {
         game-mode-name: root.game-mode-name;
         game-mode-serial: root.game-mode-serial;
         game-configs: root.game-configs;
-        // STEP7:2 and STEP7:3: the Removed games list and the update check setting.
+        // The Removed games list and the update check setting.
         removed-games: root.removed-games;
         removed-selected <=> root.removed-selected;
         check-updates <=> root.check-updates;
@@ -1537,15 +1524,14 @@ export component AppWindow inherits Window {
         }
     }
 
-    // STEP6:6f: the Controls page; the toolbar's input-mapping button opens it.
+    // The Controls page; the toolbar's input-mapping button opens it.
     if root.show-controls: ControlsPage {
         x: 0px;
         y: 0px;
         width: root.width;
         height: root.height;
         close => {
-            root.show-controls = false;
-            Controls.close(); // Back leaves without saving, and stops a capture that is still listening
+            root.show-controls = false; // Back leaves without saving
         }
     }
 
@@ -1768,7 +1754,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    // STEP6:6e: "Delete save data…" asks first; it wipes <run folder>/_SaveData/<serial> for good.
+    // "Delete save data…" asks first; it wipes <run folder>/_SaveData/<serial> for good.
     if root.delete-save-prompt-open: Rectangle {
         x: 0px;
         y: 0px;
@@ -2009,9 +1995,9 @@ export component ConsoleWindow inherits Window {
     in property <[string]> log-lines;
     callback clear();
     callback open-last-log();
-    // STEP6:6a: follow new output only while the view is at the bottom.
+    // Follow new output only while the view is at the bottom.
     property <bool> stick: true;
-    // STEP6:6a: mirrors log-lines.length so a model change can re-pin after the content grew.
+    // Mirrors log-lines.length so a model change can re-pin after the content grew.
     property <int> line-count: root.log-lines.length;
     PaletteSync {}
 
@@ -2073,7 +2059,7 @@ export component ConsoleWindow inherits Window {
                     read-only: true;
                     wrap: no-wrap;
                 }
-                // STEP6:6a: an upward move pauses following; at (or near) the bottom resumes it.
+                // An upward move pauses following; at (or near) the bottom resumes it.
                 changed content-y => {
                     root.stick = log.content-y <= min(0px, log.visible-height - root.log-lines.length * 16px) + 1px;
                 }

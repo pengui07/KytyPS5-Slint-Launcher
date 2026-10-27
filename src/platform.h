@@ -28,7 +28,7 @@ void reveal_in_file_manager(const std::string& file);
 // False when it can't be told (for example on Wayland without XWayland); the outputs are then unchanged.
 bool detect_primary_monitor(int* width, int* height);
 
-// STEP6:6e: the device pickers of the settings page.
+// The device pickers of the settings page.
 // Names of the system's audio input devices, in the system's order (Windows: waveInGetDevCaps on winmm.dll,
 // loaded on demand). Empty on macOS and Linux, and when nothing is found: the page then keeps its text field.
 std::vector<std::string> list_audio_input_devices();

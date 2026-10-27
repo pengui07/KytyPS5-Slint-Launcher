@@ -2,7 +2,9 @@
 
 #include "library.h"
 #include "net.h"
+#include "paths.h"
 #include "settings.h"
+#include "text.h"
 
 #include <algorithm>
 #include <cctype>
@@ -34,26 +36,18 @@ constexpr const char* kOldSuffix     = ".old";
 // What a release of this platform looks like: the emulator inside it and the archive it ships as
 // (KytyPS5-<date>-<commit>-Windows-x64.zip, -macOS-x86_64.zip, -Linux-x86_64.tar.gz).
 #ifdef _WIN32
-constexpr const char* kExeName    = "kyty_emulator.exe";
 constexpr const char* kArchiveExt = ".zip";
 constexpr const char* kThisOs[]   = {"windows", "win64", "win-x64"};
 constexpr const char* kOtherOs[]  = {"linux", "mac"};
 #elif defined(__APPLE__)
-constexpr const char* kExeName    = "kyty_emulator";
 constexpr const char* kArchiveExt = ".zip";
 constexpr const char* kThisOs[]   = {"macos", "osx", "mac"};
 constexpr const char* kOtherOs[]  = {"windows", "win64", "win-x64", "linux"};
 #else
-constexpr const char* kExeName    = "kyty_emulator";
 constexpr const char* kArchiveExt = ".tar.gz";
 constexpr const char* kThisOs[]   = {"linux"};
 constexpr const char* kOtherOs[]  = {"windows", "win64", "win-x64", "mac"};
 #endif
-
-bool EndsWith(const std::string& s, const std::string& suffix)
-{
-	return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
 
 bool ContainsAny(const std::string& s, const char* const* words, size_t count)
 {
@@ -123,7 +117,7 @@ std::string FindExe(const fs::path& dir)
 			it.disable_recursion_pending();
 			continue;
 		}
-		if (it.depth() < best_depth && it->is_regular_file(ec) && it->path().filename() == kExeName)
+		if (it.depth() < best_depth && it->is_regular_file(ec) && it->path().filename() == kEmulatorExe)
 		{
 			best       = path_utf8(it->path());
 			best_depth = it.depth();
@@ -336,7 +330,7 @@ static std::vector<ReleaseInfo> FetchFromGitHub(const std::string& repo, HttpVal
 				{
 					ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 				}
-				if (!EndsWith(lower, kArchiveExt))
+				if (!lower.ends_with(kArchiveExt))
 				{
 					continue;
 				}
@@ -563,7 +557,7 @@ static void ForEachCacheFile(const std::string& cache_dir, F fn)
 	for (const auto& entry: fs::directory_iterator(utf8_path(cache_dir), fs::directory_options::skip_permission_denied, ec))
 	{
 		const std::string name = path_utf8(entry.path().filename());
-		if (entry.is_regular_file(ec) && name.rfind("releases-", 0) == 0 && (EndsWith(name, ".tsv") || EndsWith(name, ".tsv.tmp")))
+		if (entry.is_regular_file(ec) && name.rfind("releases-", 0) == 0 && (name.ends_with(".tsv") || name.ends_with(".tsv.tmp")))
 		{
 			fn(entry);
 		}
@@ -611,7 +605,7 @@ std::vector<InstalledBuild> scan_installed(const std::string& versions_dir, cons
 				continue;
 			}
 			const std::string folder = path_utf8(entry.path().filename());
-			if (EndsWith(folder, kStagingSuffix) || EndsWith(folder, kOldSuffix))
+			if (folder.ends_with(kStagingSuffix) || folder.ends_with(kOldSuffix))
 			{
 				continue;
 			}
@@ -776,7 +770,7 @@ std::string install_release(const ReleaseInfo& r, const std::string& versions_di
 	}
 	if (FindExe(part).empty())
 	{
-		return fail(std::string("No ") + kExeName + " in the release archive");
+		return fail(std::string("No ") + kEmulatorExe + " in the release archive");
 	}
 
 	// Swap in: the previous build (if any) is set aside first and put back if the rename fails
@@ -864,7 +858,7 @@ bool ListCentralDirectory(const std::string& cd, std::vector<std::string>& names
 // kyty_emulator.exe at most three folders down, like FindExe() looks after unpacking.
 bool ListsEmulator(const std::vector<std::string>& names)
 {
-	const std::string exe = kExeName;
+	const std::string exe = kEmulatorExe;
 	for (std::string name: names)
 	{
 		std::replace(name.begin(), name.end(), '\\', '/');

@@ -1,6 +1,7 @@
 #include "themes.h"
 
 #include "settings.h"
+#include "text.h"
 
 #include <algorithm>
 #include <cctype>
@@ -185,12 +186,6 @@ std::string FormatColor(uint32_t c)
 	return buf;
 }
 
-std::string Lower(std::string s)
-{
-	std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return s;
-}
-
 bool ReadText(const fs::path& file, std::string& text)
 {
 	std::ifstream f(file, std::ios::binary);
@@ -232,17 +227,17 @@ std::vector<LauncherTheme> load_themes(const fs::path& dir, std::vector<std::str
 	std::error_code       ec;
 	for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
 	{
-		if (it->is_regular_file(ec) && Lower(path_utf8(it->path().extension())) == ".json")
+		if (it->is_regular_file(ec) && to_lower(path_utf8(it->path().extension())) == ".json")
 		{
 			files.push_back(it->path());
 		}
 	}
-	std::sort(files.begin(), files.end(), [](const fs::path& a, const fs::path& b) { return Lower(path_utf8(a.filename())) < Lower(path_utf8(b.filename())); });
+	std::sort(files.begin(), files.end(), [](const fs::path& a, const fs::path& b) { return to_lower(path_utf8(a.filename())) < to_lower(path_utf8(b.filename())); });
 
 	for (const fs::path& file: files)
 	{
 		const std::string id = path_utf8(file.stem());
-		if (std::any_of(themes.begin(), themes.end(), [&](const LauncherTheme& t) { return Lower(t.id) == Lower(id); }))
+		if (std::any_of(themes.begin(), themes.end(), [&](const LauncherTheme& t) { return to_lower(t.id) == to_lower(id); }))
 		{
 			problem(file, "a theme called \"" + id + "\" already exists, so this file is skipped");
 			continue;
@@ -259,7 +254,7 @@ std::vector<LauncherTheme> load_themes(const fs::path& dir, std::vector<std::str
 		std::string base_id = kDefaultTheme;
 		if (base_it != root.o.end())
 		{
-			base_id = base_it->second.type == JsonValue::Type::String ? Lower(base_it->second.s) : std::string();
+			base_id = base_it->second.type == JsonValue::Type::String ? to_lower(base_it->second.s) : std::string();
 		}
 		const auto base = std::find_if(themes.begin(), themes.begin() + static_cast<std::ptrdiff_t>(built_in),
 		                               [&](const LauncherTheme& t) { return t.id == base_id; });
@@ -316,7 +311,7 @@ int find_theme(const std::vector<LauncherTheme>& themes, const std::string& id)
 {
 	for (size_t i = 0; i < themes.size(); i++)
 	{
-		if (Lower(themes[i].id) == Lower(id))
+		if (to_lower(themes[i].id) == to_lower(id))
 		{
 			return static_cast<int>(i);
 		}
@@ -341,7 +336,7 @@ bool prepare_themes_folder(const fs::path& dir, const LauncherTheme& base)
 	}
 	for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
 	{
-		if (Lower(path_utf8(it->path().extension())) == ".json")
+		if (to_lower(path_utf8(it->path().extension())) == ".json")
 		{
 			return true;
 		}
