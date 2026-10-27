@@ -5,7 +5,8 @@
 // pad below, and Restore Defaults / Save / Cancel along the bottom.
 
 import { ScrollView } from "std-widgets.slint";
-import { Theme, Card, Dropdown, AppButton, AppCheckBox, AppSlider, PageHeader } from "common.slint";
+import { Theme, Card, Dropdown, AppButton, AppCheckBox, AppSlider } from "common.slint";
+import { TabButton } from "version_manager.slint";
 
 // One row: a PS5 control and the binding it shows.
 export struct ControlRow {
@@ -58,41 +59,6 @@ global Grid {
     out property <length> gap: 14px;
     out property <length> diagram-w: 420px; // the diagram's full size; it shrinks to the room left
     out property <length> diagram-h: 300px;
-}
-
-// One tab of the strip; the active one has an accent underline.
-component TabHeader inherits Rectangle {
-    in property <string> text;
-    in property <bool> active;
-    callback clicked();
-    width: 170px;
-    height: 32px;
-    border-radius: 0px;
-    background: root.active ? Theme.tint(0.08) : touch.has-hover ? Theme.tint(0.04) : transparent;
-    Text {
-        x: 12px;
-        width: parent.width - 24px;
-        height: parent.height;
-        text: root.text;
-        color: root.active ? Theme.text : Theme.muted;
-        font-size: 13px;
-        font-weight: root.active ? 700 : 400;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-    Rectangle {
-        visible: root.active;
-        y: parent.height - 2px;
-        height: 2px;
-        width: parent.width - 24px;
-        x: 12px;
-        background: Theme.accent;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
 }
 
 // Label on the left, the binding button on the right. Click binds, right-click clears (upstream's behaviour).
@@ -414,17 +380,47 @@ export component ControlsPage inherits Rectangle {
         padding-right: 24px;
         spacing: 10px;
 
-        // Title and the way back to the library.
-        PageHeader {
-            title: "Controls";
-            back => { root.close(); }
-        }
-
-        HorizontalLayout {
-            spacing: 4px;
-            alignment: start;
-            TabHeader { text: "Gamepad"; active: Controls.tab == 0; clicked => { if (!Controls.listening) { Controls.tab = 0; } } }
-            TabHeader { text: "Keyboard & Mouse"; active: Controls.tab == 1; clicked => { if (!Controls.listening) { Controls.tab = 1; } } }
+        // The way back and the tabs on one strip, as on the Settings page: the band and its hairline run
+        // to the window edges, and the active tab opens into the page.
+        Rectangle {
+            height: 28px;
+            Rectangle {
+                x: -24px;
+                y: -18px;
+                width: parent.width + 48px;
+                height: parent.height + 18px;
+                background: Theme.bg;
+            }
+            Rectangle {
+                x: -24px;
+                y: parent.height - 1px;
+                width: parent.width + 48px;
+                height: 1px;
+                background: Theme.card-border;
+            }
+            HorizontalLayout {
+                spacing: 2px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    AppButton {
+                        width: 110px;
+                        height: 28px;
+                        text: "← Library";
+                        clicked => { root.close(); }
+                    }
+                }
+                for tab[i] in ["Gamepad", "Keyboard & Mouse"]: TabButton {
+                    width: 140px;
+                    text: tab;
+                    active: i == Controls.tab;
+                    clicked => {
+                        if (!Controls.listening) {
+                            Controls.tab = i;
+                        }
+                    }
+                }
+            }
         }
 
         // What the tab is for, and its own extra line: the controller's state, or the mouse sensitivity.
