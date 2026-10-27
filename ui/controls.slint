@@ -6,6 +6,7 @@
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Card, Dropdown, AppButton, AppCheckBox, AppSlider } from "common.slint";
+import { TabButton } from "version_manager.slint";
 
 // One row: a PS5 control and the binding it shows.
 export struct ControlRow {
@@ -35,6 +36,16 @@ export global Controls {
     in-out property <bool> show-cursor: true;
     // The control under the mouse, in the list or on the diagram (UI only): both light it up.
     in-out property <string> hover-id;
+    // What the gamepad is pressing right now, as "|Cross|L2|": those rows and parts light up while held.
+    in property <string> live;
+    in property <float> left-x; // the sticks' positions, -1..1 (y down): the diagram's caps follow them
+    in property <float> left-y;
+    in property <float> right-x;
+    in property <float> right-y;
+
+    public pure function is-live(id: string) -> bool {
+        return id != "" && self.live.replace-all("|" + id + "|", "") != self.live;
+    }
 
     callback opened();
     callback begin-capture(string, bool); // control id, gamepad tab
@@ -56,43 +67,8 @@ global Grid {
     out property <length> row-gap: 6px;
     out property <length> card-w: 340px; // label + gap + button + the Card's padding and border
     out property <length> gap: 14px;
-    out property <length> diagram-w: 420px; // the diagram's full size; it shrinks to the room left
-    out property <length> diagram-h: 300px;
-}
-
-// One tab of the strip; the active one has an accent underline.
-component TabHeader inherits Rectangle {
-    in property <string> text;
-    in property <bool> active;
-    callback clicked();
-    width: 170px;
-    height: 32px;
-    border-radius: 0px;
-    background: root.active ? Theme.tint(0.08) : touch.has-hover ? Theme.tint(0.04) : transparent;
-    Text {
-        x: 12px;
-        width: parent.width - 24px;
-        height: parent.height;
-        text: root.text;
-        color: root.active ? Theme.text : Theme.muted;
-        font-size: 13px;
-        font-weight: root.active ? 700 : 400;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-    Rectangle {
-        visible: root.active;
-        y: parent.height - 2px;
-        height: 2px;
-        width: parent.width - 24px;
-        x: 12px;
-        background: Theme.accent;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
+    out property <length> diagram-w: 480px; // the diagram's full size; it shrinks to the room left
+    out property <length> diagram-h: 330px;
 }
 
 // Label on the left, the binding button on the right. Click binds, right-click clears (upstream's behaviour).
@@ -103,6 +79,7 @@ component BindingRow inherits Rectangle {
     in property <bool> shown: true;
     property <bool> capturing: Controls.listening && Controls.capture-id == root.entry.id;
     property <bool> lit: root.capturing || Controls.hover-id == root.entry.id;
+    property <bool> live: root.pad && Controls.is-live(root.entry.id);
     property <bool> hovered: bind.has-hover;
     visible: root.shown;
     height: root.shown ? Grid.row-h + Grid.row-gap : 0px;
@@ -133,14 +110,15 @@ component BindingRow inherits Rectangle {
         height: Grid.row-h;
         border-radius: 0px;
         border-width: 1px;
-        border-color: root.lit ? Theme.accent : Theme.card-border;
-        background: bind.has-hover ? Theme.control-hover : Theme.log-bg;
+        border-color: root.lit || root.live ? Theme.accent : Theme.card-border;
+        background: root.live ? Theme.accent : bind.has-hover ? Theme.control-hover : Theme.log-bg;
         Text {
             x: 6px;
             width: parent.width - 12px;
             text: root.capturing ? "Press…" : root.entry.binding;
-            color: root.capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
+            color: root.live ? Theme.on-accent : root.capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
             font-size: 12px;
+            font-weight: root.live ? 700 : 400;
             horizontal-alignment: center;
             vertical-alignment: center;
             overflow: elide;
@@ -181,40 +159,41 @@ component Gap inherits Rectangle {
     width: Grid.card-w;
 }
 
-// ---- The controller diagram: a DualSense drawn on a 420 x 300 canvas, scaled by k. ----
+// ---- The controller diagram: upstream's DualSenseWidget (src/launcher/dualsenseWidget.cpp), its paths and
+// layout copied onto a 480 x 330 canvas (upstream's, moved down 20 so the shoulders start at 0), scaled by k. ----
 
-// One button of the diagram, placed by its centre and size in canvas units.
+// One control of the diagram: its box on the canvas and its outline (an SVG path on the box), as upstream's
+// CONTROLS table has them. Hovered, selected (captured) or held on the gamepad, it lights up.
 component Part inherits Rectangle {
-    in property <string> id; // the control it maps to ("" = decoration only)
+    in property <string> id;
     in property <float> k: 1;
-    in property <float> cx;
-    in property <float> cy;
+    in property <float> x0; // the box, in canvas units
+    in property <float> y0;
     in property <float> w;
     in property <float> h;
-    in property <float> corner: -1; // -1 = fully round
-    in property <bool> lit;
-    in property <string> label;
-    in property <string> glyph; // SVG path on a 10 x 10 box, drawn in the middle
-    in property <bool> ring; // a stick: an inner ring for the cap
-    in property <string> shape; // SVG path on the part's own w x h box, drawn instead of the rounded frame
-    in property <float> label-x: -1; // where the label is centred, in the part's units (-1 = the middle)
+    in property <string> shape; // the outline, on the box
+    in property <string> glyph; // a symbol stroked over it (face buttons, D-pad arrows, Options)
+    in property <string> label; // shoulders
+    in property <float> label-x: -1; // where the label is centred, on the box (-1 = the middle)
     in property <float> label-y: -1;
-    property <color> ink: root.lit ? Theme.accent : touch.has-hover && root.id != "" ? Theme.text : Theme.muted;
-    property <color> wash: root.lit ? Theme.accent.with-alpha(0.25) : transparent;
+    in property <bool> ghost; // drawn only while lit (the stick directions and the touch pad halves)
+    in property <float> cap; // a stick: the diameter of the cap, which moves with the stick
+    in property <float> cap-x; // the stick's position, -1..1
+    in property <float> cap-y;
+    in property <bool> clickable: true; // clicking starts the capture (keyboard-only controls: that tab only)
+    in property <string> tip;
+    property <bool> live: Controls.tab == 0 && Controls.is-live(root.id);
+    property <bool> active: root.live || touch.has-hover || Controls.hover-id == root.id
+        || (Controls.listening && Controls.capture-id == root.id);
+    property <brush> fill: root.live ? Theme.accent : root.active ? Theme.accent-soft : Theme.card;
+    property <brush> ink: root.active ? Theme.accent-hover : Theme.muted;
     property <bool> hovered: touch.has-hover;
-    x: (root.cx - root.w / 2) * root.k * 1px;
-    y: (root.cy - root.h / 2) * root.k * 1px;
+    x: root.x0 * root.k * 1px;
+    y: root.y0 * root.k * 1px;
     width: root.w * root.k * 1px;
     height: root.h * root.k * 1px;
-    border-width: root.shape == "" ? 1.5px : 0px;
-    border-radius: root.corner < 0 ? min(self.width, self.height) / 2 : root.corner * root.k * 1px;
-    border-color: root.ink;
-    background: root.shape == "" ? root.wash : transparent;
 
     changed hovered => {
-        if (root.id == "") {
-            return;
-        }
         if (root.hovered) {
             Controls.hover-id = root.id;
         } else if (Controls.hover-id == root.id) {
@@ -222,50 +201,58 @@ component Part inherits Rectangle {
         }
     }
 
-    if root.shape != "": Path {
+    Path {
         x: 0px;
         y: 0px;
         width: parent.width;
         height: parent.height;
         viewbox-width: root.w;
         viewbox-height: root.h;
+        visible: !root.ghost || root.active;
         commands: root.shape;
         stroke: root.ink;
-        stroke-width: 1.5px;
-        fill: root.lit ? root.wash : Theme.card;
+        stroke-width: 1.3px;
+        fill: root.cap > 0 ? Theme.card : root.fill;
     }
-    if root.ring: Rectangle {
-        width: parent.width * 0.68;
-        height: parent.height * 0.68;
+    if root.cap > 0: Rectangle {
+        // Upstream moves the cap up to 5 units towards the stick's direction.
+        property <float> len: max(1, sqrt(root.cap-x * root.cap-x + root.cap-y * root.cap-y));
+        width: root.cap * root.k * 1px;
+        height: self.width;
+        x: (parent.width - self.width) / 2 + root.cap-x / self.len * 5 * root.k * 1px;
+        y: (parent.height - self.height) / 2 + root.cap-y / self.len * 5 * root.k * 1px;
         border-radius: self.width / 2;
-        border-width: 1.5px;
+        border-width: 1.3px;
         border-color: root.ink;
+        background: root.fill;
     }
     if root.glyph != "": Path {
-        width: parent.width * 0.55;
-        height: parent.height * 0.55;
-        viewbox-width: 10;
-        viewbox-height: 10;
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.w;
+        viewbox-height: root.h;
         commands: root.glyph;
-        stroke: root.ink;
-        stroke-width: 1.5px;
+        stroke: root.live ? Theme.on-accent : root.active ? Theme.accent-hover : Theme.text;
+        stroke-width: 1.3px;
         fill: transparent;
     }
     if root.label != "": Text {
         x: root.label-x < 0 ? (parent.width - self.width) / 2 : root.label-x * root.k * 1px - self.width / 2;
         y: root.label-y < 0 ? (parent.height - self.height) / 2 : root.label-y * root.k * 1px - self.height / 2;
         text: root.label;
-        color: root.ink;
-        font-size: max(8px, 10px * root.k);
+        color: root.live ? Theme.on-accent : root.active ? Theme.accent-hover : Theme.text;
+        font-size: max(7px, 9px * root.k);
         font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    }
+    if root.tip != "": Tooltip {
+        text: @markdown("\{root.tip}");
     }
     touch := TouchArea {
-        enabled: root.id != "";
-        mouse-cursor: root.id != "" ? pointer : default;
+        mouse-cursor: root.clickable ? pointer : default;
         clicked => {
-            if (!Controls.listening) {
+            if (root.clickable && !Controls.listening) {
                 Controls.begin-capture(root.id, Controls.tab == 0);
             }
         }
@@ -274,76 +261,124 @@ component Part inherits Rectangle {
 
 component ControllerDiagram inherits Rectangle {
     in property <float> k: 1;
-    // The highlighted control: the one being captured, else the hovered one.
-    property <string> on: Controls.listening ? Controls.capture-id : Controls.hover-id;
-    property <bool> left-stick: on == "L3" || on == "LeftStickUp" || on == "LeftStickDown" || on == "LeftStickLeft" || on == "LeftStickRight";
-    property <bool> right-stick: on == "R3" || on == "RightStickUp" || on == "RightStickDown" || on == "RightStickLeft" || on == "RightStickRight";
-    width: 420px * root.k;
-    height: 300px * root.k;
+    width: 480px * root.k;
+    height: 330px * root.k;
 
-    // The body outline, shoulders to grips.
+    // The shell, the panel seams into the grips, the touch pad surface, Create (unmapped upstream) and the PS button.
     Path {
         x: 0px;
         y: 0px;
         width: parent.width;
         height: parent.height;
-        viewbox-width: 420;
-        viewbox-height: 300;
-        commands: "M 130 46 L 290 46 C 332 46 360 50 372 66 C 398 118 418 200 416 246 C 414 284 384 294 364 274 C 346 254 330 214 312 198 C 282 186 138 186 108 198 C 90 214 74 254 56 274 C 36 294 6 284 4 246 C 2 200 22 118 48 66 C 60 50 88 46 130 46 Z";
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 81 68 C 151 41 329 41 399 68 C 420 114 445 186 445 235 C 447 273 437 311 419 316 C 403 322 395 317 389 303 C 381 288 373 256 354 233 C 347 225 341 225 325 225 L 155 225 C 139 225 133 225 126 233 C 107 256 99 288 91 303 C 85 317 77 322 61 316 C 43 311 33 273 35 235 C 35 186 60 114 81 68 Z";
+        stroke: Theme.muted;
+        stroke-width: 1.5px;
+        fill: Theme.card;
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 153 55 C 153 89 176 125 158 147 C 123 186 108 246 76 317 M 327 55 C 327 89 304 125 322 147 C 357 186 372 246 404 317";
+        stroke: Theme.muted;
+        stroke-width: 1.5px;
+        fill: transparent;
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 158 62 C 156 53 168 52 178 51 C 219 48 261 48 302 51 C 312 52 324 53 322 62 C 318 84 315 107 309 125 C 306 137 299 142 286 142 L 194 142 C 181 142 174 137 171 125 C 165 107 162 84 158 62 Z";
+        stroke: Theme.muted;
+        stroke-width: 1.5px;
+        fill: Theme.card;
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 139.95 85.56 A 4.5 4.5 0 0 1 148.76 83.68 L 151.05 94.44 A 4.5 4.5 0 0 1 142.24 96.32 Z";
+        stroke: Theme.muted;
+        stroke-width: 1.5px;
+        fill: Theme.card;
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 140.45 77.78 L 137.66 74.29 M 142.8 77.28 L 141.97 73.37 M 145.14 76.79 L 146.27 72.46 M 334.27 76.66 L 340.14 77.91 M 334.79 74.21 L 340.66 75.46 M 335.31 71.77 L 341.18 73.02";
+        stroke: Theme.muted;
+        stroke-width: 1.3px;
+        fill: transparent;
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 480;
+        viewbox-height: 330;
+        commands: "M 232 186 A 8 8 0 1 0 248 186 A 8 8 0 1 0 232 186 Z";
         stroke: Theme.muted;
         stroke-width: 1.5px;
         fill: Theme.card;
     }
 
-    // Shoulders and triggers: the bumper follows the body's shoulder, the trigger rises behind it.
-    Part { k: root.k; id: "L2"; label: "L2"; cx: 86; cy: 20; w: 68; h: 40; shape: "M 6 36 C 18 28 38 24 64 24 L 62 12 C 60 5 48 1 36 1 C 20 1 8 8 4 22 Z"; label-x: 35; label-y: 13; lit: root.on == self.id; }
-    Part { k: root.k; id: "L1"; label: "L1"; cx: 85; cy: 44; w: 90; h: 40; shape: "M 4 36 C 16 19 44 15 82 15 A 5.5 5.5 0 0 0 82 4 C 44 4 18 8 10 22 Q 2 30 4 36 Z"; label-x: 66; label-y: 9.5; lit: root.on == self.id; }
-    Part { k: root.k; id: "R2"; label: "R2"; cx: 334; cy: 20; w: 68; h: 40; shape: "M 62 36 C 50 28 30 24 4 24 L 6 12 C 8 5 20 1 32 1 C 48 1 60 8 64 22 Z"; label-x: 33; label-y: 13; lit: root.on == self.id; }
-    Part { k: root.k; id: "R1"; label: "R1"; cx: 335; cy: 44; w: 90; h: 40; shape: "M 86 36 C 74 19 46 15 8 15 A 5.5 5.5 0 0 1 8 4 C 46 4 72 8 80 22 Q 88 30 86 36 Z"; label-x: 24; label-y: 9.5; lit: root.on == self.id; }
-
-    // Touch pad (the right half lights up for its keyboard-only "right" click), Create and Options.
-    Part { k: root.k; id: "TouchPad"; cx: 210; cy: 86; w: 140; h: 70; corner: 8; lit: root.on == self.id; }
-    Rectangle {
-        visible: root.on == "TouchPadRight";
-        x: 210px * root.k;
-        y: 51px * root.k;
-        width: 70px * root.k;
-        height: 70px * root.k;
-        background: Theme.accent.with-alpha(0.25);
-        border-width: 1.5px;
-        border-color: Theme.accent;
-        border-radius: 8px * root.k;
-    }
-    Part { k: root.k; id: "GyroToggle"; cx: 124; cy: 66; w: 8; h: 18; lit: root.on == self.id; }
-    Part { k: root.k; id: "Options"; cx: 296; cy: 66; w: 8; h: 18; lit: root.on == self.id; }
-
-    // D-pad.
-    Part { k: root.k; id: "Up"; cx: 92; cy: 92; w: 18; h: 22; corner: 3; glyph: "M 2 7 L 5 3 L 8 7"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Down"; cx: 92; cy: 136; w: 18; h: 22; corner: 3; glyph: "M 2 3 L 5 7 L 8 3"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Left"; cx: 70; cy: 114; w: 22; h: 18; corner: 3; glyph: "M 7 2 L 3 5 L 7 8"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Right"; cx: 114; cy: 114; w: 22; h: 18; corner: 3; glyph: "M 3 2 L 7 5 L 3 8"; lit: root.on == self.id; }
-
-    // Face buttons.
-    Part { k: root.k; id: "Triangle"; cx: 328; cy: 90; w: 24; h: 24; glyph: "M 5 1.5 L 9 8.5 L 1 8.5 Z"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Circle"; cx: 352; cy: 114; w: 24; h: 24; glyph: "M 5 1.5 A 3.5 3.5 0 1 1 4.99 1.5 Z"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Cross"; cx: 328; cy: 138; w: 24; h: 24; glyph: "M 2 2 L 8 8 M 8 2 L 2 8"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Square"; cx: 304; cy: 114; w: 24; h: 24; glyph: "M 2 2 L 8 2 L 8 8 L 2 8 Z"; lit: root.on == self.id; }
-
-    // Sticks (L3 / R3, and the stick directions of the keyboard tab) and the PS button.
-    Part { k: root.k; id: "L3"; cx: 156; cy: 160; w: 52; h: 52; ring: true; lit: root.left-stick; }
-    Part { k: root.k; id: "R3"; cx: 264; cy: 160; w: 52; h: 52; ring: true; lit: root.right-stick; }
-    Part { k: root.k; cx: 210; cy: 164; w: 14; h: 14; }
+    // The controls, in upstream's order (later ones paint over earlier ones).
+    Part { k: root.k; id: "L2"; tip: "L2"; x0: 79.44; y0: 9.36; w: 72.4; h: 44.68; shape: "M 1.44 43.68 C 24.32 30.04 53.36 27.4 71.4 30.04 L 71.4 16.84 C 71.4 6.28 64.8 1 50.72 1 L 26.96 1 C 18.16 1.88 7.6 8.92 4.96 15.08 C 2.76 21.24 1 35.32 1.44 43.68 Z"; label: "L2"; label-x: 36.64; label-y: 17.72; }
+    Part { k: root.k; id: "R2"; tip: "R2"; x0: 328.16; y0: 9.36; w: 72.4; h: 44.68; shape: "M 70.96 43.68 C 48.08 30.04 19.04 27.4 1 30.04 L 1 16.84 C 1 6.28 7.6 1 21.68 1 L 45.44 1 C 54.24 1.88 64.8 8.92 67.44 15.08 C 69.64 21.24 71.4 35.32 70.96 43.68 Z"; label: "R2"; label-x: 35.76; label-y: 17.72; }
+    Part { k: root.k; id: "L1"; tip: "L1"; x0: 79; y0: 39.72; w: 72.4; h: 29.28; shape: "M 1 28.28 L 71.4 14.64 L 71.4 7.6 C 71.4 4.08 67.88 1.88 62.6 1.66 C 44.12 1 21.24 5.84 2.76 16.4 C 1.44 17.28 1 19.04 1 20.8 Z"; label: "L1"; label-x: 37.96; label-y: 12.88; }
+    Part { k: root.k; id: "R1"; tip: "R1"; x0: 328.6; y0: 39.72; w: 72.4; h: 29.28; shape: "M 71.4 28.28 L 1 14.64 L 1 7.6 C 1 4.08 4.52 1.88 9.8 1.66 C 28.28 1 51.16 5.84 69.64 16.4 C 70.96 17.28 71.4 19.04 71.4 20.8 Z"; label: "R1"; label-x: 34.44; label-y: 12.88; }
+    Part { k: root.k; id: "TouchPad"; tip: "Touch pad click"; x0: 156; y0: 45; w: 84; h: 100; shape: "M 2 17 C 0 8 12 7 22 6 C 42.5 4.5 63.25 3.75 84 3.75 L 84 97 L 38 97 C 25 97 18 92 15 80 C 9 62 6 39 2 17 Z"; ghost: true; }
+    Part { k: root.k; id: "TouchPadRight"; tip: "Touch pad right"; x0: 240; y0: 45; w: 84; h: 100; shape: "M 0 3.75 C 20.75 3.75 41.5 4.5 62 6 C 72 7 84 8 82 17 C 78 39 75 62 69 80 C 66 92 59 97 46 97 L 0 97 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "Options"; tip: "Options"; x0: 327.02; y0: 78.28; w: 14.96; h: 23.43; shape: "M 4.22 5.4 A 4.5 4.5 0 0 1 13.03 7.27 L 10.74 18.03 A 4.5 4.5 0 0 1 1.94 16.16 Z"; glyph: "M 8.31 7.8 L 6.65 15.63"; }
+    Part { k: root.k; id: "Up"; tip: "D-pad up"; x0: 104; y0: 91.5; w: 24; h: 26; shape: "M 4 1 Q 1 1 1 5 L 2 16 Q 2 19 5 21 L 12 25 L 19 21 Q 22 19 22 16 L 23 5 Q 23 1 20 1 Z"; glyph: "M 8 15 L 12 11 L 16 15"; }
+    Part { k: root.k; id: "Right"; tip: "D-pad right"; x0: 123.5; y0: 113; w: 26; h: 24; shape: "M 25 4 Q 25 1 21 1 L 10 2 Q 7 2 5 5 L 1 12 L 5 19 Q 7 22 10 22 L 21 23 Q 25 23 25 20 Z"; glyph: "M 11 8 L 15 12 L 11 16"; }
+    Part { k: root.k; id: "Down"; tip: "D-pad down"; x0: 104; y0: 132.5; w: 24; h: 26; shape: "M 20 25 Q 23 25 23 21 L 22 10 Q 22 7 19 5 L 12 1 L 5 5 Q 2 7 2 10 L 1 21 Q 1 25 4 25 Z"; glyph: "M 16 11 L 12 15 L 8 11"; }
+    Part { k: root.k; id: "Left"; tip: "D-pad left"; x0: 82.5; y0: 113; w: 26; h: 24; shape: "M 1 20 Q 1 23 5 23 L 16 22 Q 19 22 21 19 L 25 12 L 21 5 Q 19 2 16 2 L 5 1 Q 1 1 1 4 Z"; glyph: "M 15 16 L 11 12 L 15 8"; }
+    Part { k: root.k; id: "Triangle"; tip: "Triangle"; x0: 353; y0: 87; w: 26; h: 26; shape: "M 0 13 A 13 13 0 1 0 26 13 A 13 13 0 1 0 0 13 Z"; glyph: "M 13 6 L 20 18 L 6 18 Z"; }
+    Part { k: root.k; id: "Circle"; tip: "Circle"; x0: 382; y0: 116; w: 26; h: 26; shape: "M 0 13 A 13 13 0 1 0 26 13 A 13 13 0 1 0 0 13 Z"; glyph: "M 6 13 A 7 7 0 1 0 20 13 A 7 7 0 1 0 6 13 Z"; }
+    Part { k: root.k; id: "Cross"; tip: "Cross"; x0: 353; y0: 145; w: 26; h: 26; shape: "M 0 13 A 13 13 0 1 0 26 13 A 13 13 0 1 0 0 13 Z"; glyph: "M 8 8 L 18 18 M 8 18 L 18 8"; }
+    Part { k: root.k; id: "Square"; tip: "Square"; x0: 324; y0: 116; w: 26; h: 26; shape: "M 0 13 A 13 13 0 1 0 26 13 A 13 13 0 1 0 0 13 Z"; glyph: "M 7 7 L 19 7 L 19 19 L 7 19 Z"; }
+    Part { k: root.k; id: "L3"; tip: "L3 (left stick click)"; x0: 143; y0: 151; w: 66; h: 66; shape: "M 0 33 A 33 33 0 1 0 66 33 A 33 33 0 1 0 0 33 Z"; cap: 42; cap-x: Controls.left-x; cap-y: Controls.left-y; }
+    Part { k: root.k; id: "R3"; tip: "R3 (right stick click)"; x0: 271; y0: 151; w: 66; h: 66; shape: "M 0 33 A 33 33 0 1 0 66 33 A 33 33 0 1 0 0 33 Z"; cap: 42; cap-x: Controls.right-x; cap-y: Controls.right-y; }
+    Part { k: root.k; id: "LeftStickUp"; tip: "Left stick up"; x0: 153.35; y0: 150; w: 45.3; h: 15.38; shape: "M 44.3 9.09 A 33 33 0 0 0 1 9.09 L 5.59 14.38 A 26 26 0 0 1 39.71 14.38 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "LeftStickRight"; tip: "Left stick right"; x0: 194.62; y0: 161.35; w: 15.38; h: 45.3; shape: "M 6.28 44.3 A 33 33 0 0 0 6.28 1 L 1 5.59 A 26 26 0 0 1 1 39.71 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "LeftStickDown"; tip: "Left stick down"; x0: 153.35; y0: 202.62; w: 45.3; h: 15.38; shape: "M 1 6.28 A 33 33 0 0 0 44.3 6.28 L 39.71 1 A 26 26 0 0 1 5.59 1 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "LeftStickLeft"; tip: "Left stick left"; x0: 142; y0: 161.35; w: 15.38; h: 45.3; shape: "M 9.09 1 A 33 33 0 0 0 9.09 44.3 L 14.38 39.71 A 26 26 0 0 1 14.38 5.59 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "RightStickUp"; tip: "Right stick up"; x0: 281.35; y0: 150; w: 45.3; h: 15.38; shape: "M 44.3 9.09 A 33 33 0 0 0 1 9.09 L 5.59 14.38 A 26 26 0 0 1 39.71 14.38 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "RightStickRight"; tip: "Right stick right"; x0: 322.62; y0: 161.35; w: 15.38; h: 45.3; shape: "M 6.28 44.3 A 33 33 0 0 0 6.28 1 L 1 5.59 A 26 26 0 0 1 1 39.71 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "RightStickDown"; tip: "Right stick down"; x0: 281.35; y0: 202.62; w: 45.3; h: 15.38; shape: "M 1 6.28 A 33 33 0 0 0 44.3 6.28 L 39.71 1 A 26 26 0 0 1 5.59 1 Z"; ghost: true; clickable: Controls.tab == 1; }
+    Part { k: root.k; id: "RightStickLeft"; tip: "Right stick left"; x0: 270; y0: 161.35; w: 15.38; h: 45.3; shape: "M 9.09 1 A 33 33 0 0 0 9.09 44.3 L 14.38 39.71 A 26 26 0 0 1 14.38 5.59 Z"; ghost: true; clickable: Controls.tab == 1; }
 }
 
-// The groups of one tab, row by row, with the diagram on the right.
+// The groups of one tab, row by row, with the diagram on the right. When the window is too narrow for it there,
+// the diagram takes the grid's empty slot instead (next to System / the shortcuts).
 component TabGrid inherits HorizontalLayout {
     in property <[ControlRow]> rows;
     in property <bool> pad;
     in property <length> room; // the width the grid may use
     property <int> columns: root.pad ? 2 : 3;
     property <length> cards-w: Grid.card-w * root.columns + Grid.gap * (root.columns - 1);
-    // The diagram takes what is left, up to its full size, and hides when that is too small to read.
+    // Beside the grid, the diagram takes what is left up to its full size; below 0.55 it moves into the slot.
     property <float> k: min(1, (root.room - root.cards-w - Grid.gap * 2) / Grid.diagram-w);
+    property <bool> beside: root.k >= 0.55;
+    property <float> slot-k: Grid.card-w / Grid.diagram-w;
+    property <string> gyro-note: "The gyro emulation toggle activates tilt mode on gamepads without a gyroscope: the right stick then controls pitch and roll. It defaults to the View/Back button.";
     spacing: Grid.gap * 2;
     alignment: start;
 
@@ -363,14 +398,22 @@ component TabGrid inherits HorizontalLayout {
         if root.pad: HorizontalLayout {
             spacing: Grid.gap;
             Section { rows: root.rows; pad: root.pad; section: "System"; }
-            Text {
+            if root.beside: Text {
                 width: Grid.card-w;
-                text: "The gyro emulation toggle activates tilt mode on gamepads without a gyroscope: the right stick then controls pitch and roll. It defaults to the View/Back button.";
+                text: root.gyro-note;
                 color: Theme.muted;
                 font-size: 12px;
                 wrap: word-wrap;
                 vertical-alignment: center;
             }
+            if !root.beside: ControllerDiagram { k: root.slot-k; }
+        }
+        if root.pad && !root.beside: Text {
+            width: root.cards-w;
+            text: root.gyro-note;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
         }
         if !root.pad: HorizontalLayout {
             spacing: Grid.gap;
@@ -388,10 +431,11 @@ component TabGrid inherits HorizontalLayout {
             spacing: Grid.gap;
             Section { rows: root.rows; pad: root.pad; section: "System"; }
             Section { rows: root.rows; pad: root.pad; section: "In-game shortcuts (cycle)"; }
-            Gap { }
+            if root.beside: Gap { }
+            if !root.beside: ControllerDiagram { k: root.slot-k; }
         }
     }
-    if root.k >= 0.55: VerticalLayout {
+    if root.beside: VerticalLayout {
         alignment: center;
         ControllerDiagram { k: root.k; }
     }
@@ -414,57 +458,54 @@ export component ControlsPage inherits Rectangle {
         padding-right: 24px;
         spacing: 10px;
 
-        // Title and the way back to the library.
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: start;
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    width: 110px;
-                    text: "← Library";
-                    clicked => { root.close(); }
+        // The way back and the tabs on one strip, as on the Settings page: the band and its hairline run
+        // to the window edges, and the active tab opens into the page.
+        Rectangle {
+            height: 28px;
+            Rectangle {
+                x: -24px;
+                y: -18px;
+                width: parent.width + 48px;
+                height: parent.height + 18px;
+                background: Theme.bg;
+            }
+            Rectangle {
+                x: -24px;
+                y: parent.height - 1px;
+                width: parent.width + 48px;
+                height: 1px;
+                background: Theme.card-border;
+            }
+            HorizontalLayout {
+                spacing: 2px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    AppButton {
+                        width: 110px;
+                        height: 28px;
+                        text: "← Library";
+                        clicked => { root.close(); }
+                    }
+                }
+                for tab[i] in ["Gamepad", "Keyboard & Mouse"]: TabButton {
+                    width: 140px;
+                    text: tab;
+                    active: i == Controls.tab;
+                    clicked => {
+                        if (!Controls.listening) {
+                            Controls.tab = i;
+                        }
+                    }
                 }
             }
-            Text {
-                text: "Controls";
-                color: Theme.text;
-                font-size: 20px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
         }
 
-        HorizontalLayout {
-            spacing: 4px;
-            alignment: start;
-            TabHeader { text: "Gamepad"; active: Controls.tab == 0; clicked => { if (!Controls.listening) { Controls.tab = 0; } } }
-            TabHeader { text: "Keyboard & Mouse"; active: Controls.tab == 1; clicked => { if (!Controls.listening) { Controls.tab = 1; } } }
-        }
-
-        // What the tab is for, and its own extra line: the controller's state, or the mouse sensitivity.
-        Text {
-            text: Controls.tab == 0
-                ? "Choose which button on your gamepad triggers each PS5 control. Click a binding, then press the button or trigger you want to use."
-                : "Choose which keyboard key or mouse button triggers each PS5 control. Click a binding, then press the key or mouse button.";
-            color: Theme.muted;
+        // The tab's own line: the controller's state, or the mouse sensitivity.
+        if Controls.tab == 0: Text {
+            text: Controls.status;
+            color: Theme.text;
             font-size: 12px;
-            overflow: elide;
-        }
-        if Controls.tab == 0: HorizontalLayout {
-            spacing: 16px;
-            alignment: start;
-            Text {
-                text: Controls.status;
-                color: Theme.text;
-                font-size: 12px;
-            }
-            Text {
-                text: "Older/fork builds may exit with 'Invalid input mapping' when a Pad: binding is set.";
-                color: Theme.faint;
-                font-size: 11px;
-                vertical-alignment: center;
-            }
         }
         if Controls.tab == 1: HorizontalLayout {
             spacing: 10px;
@@ -504,9 +545,11 @@ export component ControlsPage inherits Rectangle {
         // The groups. They scroll when the window is too short for them; everything else stays put.
         grid-view := ScrollView {
             vertical-stretch: 1;
-            content-width: self.visible-width;
+            // At least the grid's own width: in a narrow window the three keyboard columns scroll sideways
+            // instead of being cut off.
+            content-width: max(self.visible-width, Grid.card-w * (Controls.tab == 0 ? 2 : 3) + Grid.gap * (Controls.tab == 0 ? 1 : 2));
             VerticalLayout {
-                width: grid-view.visible-width;
+                width: grid-view.content-width;
                 padding-top: 8px; // room for the top groups' titles, which rise above their frames
                 padding-bottom: 4px;
                 if Controls.tab == 0: TabGrid { rows: Controls.gamepad-rows; pad: true; room: grid-view.visible-width; }

@@ -844,4 +844,95 @@ std::string InputMapping::PadStatus() const
 #endif
 }
 
+std::string InputMapping::LiveControls(float* sticks) const
+{
+	std::string live;
+	if (sticks != nullptr)
+	{
+		std::fill(sticks, sticks + 4, 0.0f);
+	}
+#ifdef _WIN32
+	const auto get = LoadXInput();
+	if (get == nullptr)
+	{
+		return live;
+	}
+	XInputState state {};
+	bool        found = false;
+	for (DWORD i = 0; i < 4 && !found; i++)
+	{
+		found = get(i, &state) == ERROR_SUCCESS;
+	}
+	if (!found)
+	{
+		return live;
+	}
+	const auto& pad = state.Gamepad;
+	std::vector<std::string> held;
+	for (const auto& button: kPadButtonBits)
+	{
+		if ((pad.wButtons & button.mask) != 0)
+		{
+			held.emplace_back(button.id);
+		}
+	}
+	if (pad.bLeftTrigger > kTriggerThreshold)
+	{
+		held.emplace_back("LeftTrigger");
+	}
+	if (pad.bRightTrigger > kTriggerThreshold)
+	{
+		held.emplace_back("RightTrigger");
+	}
+	for (const auto& [id, binding]: m_pad)
+	{
+		if (std::find(held.begin(), held.end(), binding) != held.end())
+		{
+			live += "|" + id;
+		}
+	}
+	// The sticks, as upstream's ControllerPreview reads them: -1..1 with y pointing down (XInput's points up),
+	// zero inside a 0.15 dead zone, and a direction counts past 0.25.
+	const auto stick = [&live](const char* name, int raw_x, int raw_y, float* out)
+	{
+		double x = raw_x / (raw_x < 0 ? 32768.0 : 32767.0);
+		double y = -raw_y / (raw_y > 0 ? 32767.0 : 32768.0);
+		if (std::hypot(x, y) < 0.15)
+		{
+			x = 0;
+			y = 0;
+		}
+		const std::string prefix = std::string("|") + name;
+		if (x < -0.25)
+		{
+			live += prefix + "Left";
+		}
+		if (x > 0.25)
+		{
+			live += prefix + "Right";
+		}
+		if (y < -0.25)
+		{
+			live += prefix + "Up";
+		}
+		if (y > 0.25)
+		{
+			live += prefix + "Down";
+		}
+		if (out != nullptr)
+		{
+			out[0] = static_cast<float>(x);
+			out[1] = static_cast<float>(y);
+		}
+	};
+	stick("LeftStick", pad.sThumbLX, pad.sThumbLY, sticks);
+	stick("RightStick", pad.sThumbRX, pad.sThumbRY, sticks != nullptr ? sticks + 2 : nullptr);
+	if (!live.empty())
+	{
+		live += "|";
+	}
+#endif
+	return live;
+}
+
 } // namespace kyty_launcher
