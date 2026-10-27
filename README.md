@@ -7,8 +7,8 @@ can switch over without losing anything.
 ![Library in grid view, classic theme](docs/screenshots/library.png)
 
 <p>
-  <img src="docs/screenshots/version-manager.png" alt="Version Manager: installed builds and GitHub release sources" width="49%">
-  <img src="docs/screenshots/controls.png" alt="Controls page with the controller diagram" width="49%">
+  <img src="docs/screenshots/V-M.png" alt="Version Manager: installed builds and GitHub release sources" width="49%">
+  <img src="docs/screenshots/Controller.png" alt="Controls page with the controller diagram" width="49%">
 </p>
 
 - [Features](#features)
