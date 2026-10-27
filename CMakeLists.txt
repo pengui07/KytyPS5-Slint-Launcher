@@ -127,6 +127,11 @@ add_executable(kyty_slint_launcher WIN32
 	src/versions.h
 	src/version_manager.cpp
 	src/trophies.cpp
+	# Cheats: <run folder>/_Patches/<TITLEID>.json and the online collection
+	src/cheats.cpp
+	src/cheats.h
+	src/cheats_page.cpp
+	src/cheats_page.h
 	src/secret_store.cpp
 	src/secret_store.h
 	src/qt_ini.cpp

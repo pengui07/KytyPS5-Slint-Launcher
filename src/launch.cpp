@@ -1,5 +1,6 @@
 #include "launch.h"
 
+#include "cheats.h"
 #include "library.h"
 
 #include <algorithm>
@@ -481,7 +482,7 @@ void FilterUnsupportedOptions(LaunchPlan& p, const std::string& exe)
 
 } // namespace
 
-LaunchPlan make_plan(const Settings& s)
+LaunchPlan make_plan(const Settings& s, const std::string& game_patch)
 {
 	LaunchPlan p;
 	p.exe = s.emulator;
@@ -607,7 +608,15 @@ LaunchPlan make_plan(const Settings& s)
 		                              std::pair {s.sync_raw, "--sync-raw-image-buffers"},
 		                              std::pair {s.vulkan_validation, "--vulkan-validation"},
 		                              std::pair {s.shader_validation, "--shader-validation"},
-		                              std::pair {s.cmd_dump, "--command-buffer-dump"}})
+		                              std::pair {s.cmd_dump, "--command-buffer-dump"},
+		                              std::pair {s.occlusion_queries, "--occlusion-queries"},
+		                              std::pair {s.shader_cache, "--shader-cache"},
+		                              std::pair {s.gpu_assisted_validation, "--gpu-assisted-validation"},
+		                              std::pair {s.graphics_debug_dump, "--graphics-debug-dump"},
+		                              std::pair {s.spirv_debug_printf, "--spirv-debug-printf"},
+		                              std::pair {!s.splash, "--no-splash"},
+		                              std::pair {s.vr, "--vr"},
+		                              std::pair {s.playgo_hack, "--playgo-hack"}})
 		{
 			if (on)
 			{
@@ -653,6 +662,12 @@ LaunchPlan make_plan(const Settings& s)
 		{
 			p.warnings.push_back("Add-ons folder not found, not passed: " + s.addons_dir);
 		}
+	}
+	// The game's cheats (Library > Cheats…); the emulator applies the enabled ones when the file matches the game.
+	if (!game_patch.empty())
+	{
+		p.args.push_back("--game-patch");
+		p.args.push_back(game_patch);
 	}
 	p.extra_args = s.extra_args;
 
@@ -718,7 +733,16 @@ LaunchPlan make_launch_plan(const Settings& user, const Paths& paths)
 		layers.push_back("emulator pin: " + launch.emulator);
 	}
 	std::vector<std::string> overridden;
-	LaunchPlan plan = make_plan(resolve_for_launch(launch, paths, title, &layers, true, &overridden));
+	const Settings resolved = resolve_for_launch(launch, paths, title, &layers, true, &overridden);
+	// A cheat file is passed whenever the game has one; which cheats run is the "enabled" flags inside it.
+	std::string     patch;
+	std::error_code patch_ec;
+	if (const auto file = cheat_file_path(resolved.run_dir, title); !file.empty() && fs::is_regular_file(file, patch_ec))
+	{
+		patch = path_utf8(file);
+		layers.push_back("cheats: " + patch);
+	}
+	LaunchPlan plan = make_plan(resolved, patch);
 	// A build's config files outrank the user's values, so say so: this is the usual reason a build "ignores" a
 	// setting. Shown with the plan (--dry-run) and in the console log before the command line.
 	for (auto& w: overridden)

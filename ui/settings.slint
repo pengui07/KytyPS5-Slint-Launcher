@@ -423,6 +423,14 @@ export component SettingsPage inherits VerticalLayout {
     in-out property <int> shader-opt;
     in-out property <bool> shader-validation;
     in-out property <bool> sync-raw;
+    in-out property <bool> occlusion-queries;
+    in-out property <bool> shader-cache: true;
+    in-out property <bool> gpu-assisted-validation;
+    in-out property <bool> graphics-debug-dump;
+    in-out property <bool> spirv-debug-printf;
+    in-out property <bool> splash: true;
+    in-out property <bool> vr;
+    in-out property <bool> playgo-hack;
     in-out property <bool> tessellation;
     in-out property <string> user-id-text;
     in-out property <string> user-name;
@@ -676,6 +684,10 @@ export component SettingsPage inherits VerticalLayout {
                         toggled(on) => { root.skip-boot-logos = on; }
                     }
                     ToggleRow {
+                        item: { env: "--no-splash", label: "Show the startup splash screen", hint: "The emulator's own splash while a game boots. Off passes `--no-splash`.", on: root.splash };
+                        toggled(on) => { root.splash = on; }
+                    }
+                    ToggleRow {
                         item: { env: "--network-connected", label: "Network connected", hint: "", on: root.network-connected };
                         toggled(on) => { root.network-connected = on; }
                     }
@@ -715,6 +727,16 @@ export component SettingsPage inherits VerticalLayout {
                             tag: "EXPERIMENTAL";
                             note: "Windows only";
                             toggled(on) => { root.red-zone = on; }
+                        }
+                        ToggleRow {
+                            item: { env: "--playgo-hack", label: "PlayGo stub fallback", hint: "Use the supplied PlayGo stub fallback. `--playgo-hack`", on: root.playgo-hack };
+                            tag: "EXPERIMENTAL";
+                            toggled(on) => { root.playgo-hack = on; }
+                        }
+                        ToggleRow {
+                            item: { env: "--vr", label: "Virtual VR headset", hint: "Enable the emulator's virtual VR headset. `--vr`", on: root.vr };
+                            tag: "EXPERIMENTAL";
+                            toggled(on) => { root.vr = on; }
                         }
                     }
                     // Launcher settings, saved with the others (not per game).
@@ -880,14 +902,6 @@ export component SettingsPage inherits VerticalLayout {
                         placeholder: "60";
                         text <=> root.vblank-text;
                     }
-                    FormRow {
-                        label: "Shader optimization";
-                        Dropdown {
-                            horizontal-stretch: 1;
-                            model: ["None", "Size", "Performance"];
-                            current-index <=> root.shader-opt;
-                        }
-                    }
                     // STEP6:6e: the Vulkan devices as a picker ("Auto" = the emulator's default, -1); a typed
                     // index stays possible while nothing was detected.
                     if Devices.gpu-choices.length > 1: FormRow {
@@ -920,27 +934,49 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     ToggleRow {
                         indent: true;
-                        item: { env: "--readback-linear-images", label: "Enable readback", hint: "", on: root.readback };
+                        item: { env: "--readback-linear-images", label: "Enable readback", hint: "Read back writable linear images on submit. `--readback-linear-images`", on: root.readback };
                         toggled(on) => { root.readback = on; }
                     }
                     ToggleRow {
                         indent: true;
-                        item: { env: "--readback-tiled-images", label: "Enable tiled image readback", hint: "", on: root.readback-tiled };
+                        item: { env: "--readback-tiled-images", label: "Enable tiled readback", hint: "Read back small writable tiled images on submit. `--readback-tiled-images`", on: root.readback-tiled };
                         toggled(on) => { root.readback-tiled = on; }
                     }
                     ToggleRow {
                         indent: true;
-                        item: { env: "--tessellation", label: "Enable tessellation support (experimental)", hint: "", on: root.tessellation };
+                        item: { env: "--tessellation", label: "Enable tessellation support", hint: "Draw tessellated geometry. Off by default: unsupported tessellation may crash. `--tessellation`", on: root.tessellation };
+                        tag: "EXPERIMENTAL";
                         toggled(on) => { root.tessellation = on; }
                     }
                     ToggleRow {
                         indent: true;
-                        item: { env: "--hdr", label: "Enable HDR display support", hint: "", on: root.hdr };
+                        item: { env: "--occlusion-queries", label: "Enable occlusion queries", hint: "Count the samples of occlusion queries on the GPU, so hidden lights and objects stay hidden. Costs some performance. `--occlusion-queries`", on: root.occlusion-queries };
+                        toggled(on) => { root.occlusion-queries = on; }
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--hdr", label: "Enable HDR display support", hint: "HDR10 output for supported games. Needs HDR turned on for the host display. `--hdr`", on: root.hdr };
                         toggled(on) => { root.hdr = on; }
+                    }
+                    ToggleRow {
+                        indent: true;
+                        item: { env: "--shader-cache", label: "Cache shaders", hint: "Save compiled shaders and pipelines per game and load them at startup. `--shader-cache`", on: root.shader-cache };
+                        toggled(on) => { root.shader-cache = on; }
                     }
                 }
             }
-            Column {}
+            Column {
+                Section {
+                    title: "Rendering compatibility";
+                    Hint {
+                        text: "These may help with rendering bugs, at a slight performance cost.";
+                    }
+                    ToggleRow {
+                        item: { env: "--sync-raw-image-buffers", label: "Accurate texture synchronization", hint: "Synchronizes raw reads of GPU images. Can fix missing textures and wrong transparency (Resident Evil 2). `--sync-raw-image-buffers`", on: root.sync-raw };
+                        toggled(on) => { root.sync-raw = on; }
+                    }
+                }
+            }
         }
     }
 
@@ -1108,6 +1144,18 @@ export component SettingsPage inherits VerticalLayout {
                     ToggleRow {
                         item: { env: "--command-buffer-dump", label: "Command buffer dump", hint: "", on: root.cmd-dump };
                         toggled(on) => { root.cmd-dump = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--gpu-assisted-validation", label: "GPU-assisted validation", hint: "Bounds-check shader accesses on the GPU. Turns on Vulkan validation too; very slow. `--gpu-assisted-validation`", on: root.gpu-assisted-validation };
+                        toggled(on) => { root.gpu-assisted-validation = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--graphics-debug-dump", label: "Graphics debug dump", hint: "", on: root.graphics-debug-dump };
+                        toggled(on) => { root.graphics-debug-dump = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--spirv-debug-printf", label: "SPIR-V debug printf", hint: "", on: root.spirv-debug-printf };
+                        toggled(on) => { root.spirv-debug-printf = on; }
                     }
                     ToggleRow {
                         item: { env: "--profile", label: "Tracy profiler", hint: "", on: root.profiler };

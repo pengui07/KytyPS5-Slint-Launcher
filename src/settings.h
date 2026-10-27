@@ -37,6 +37,8 @@ struct JsonValue
 };
 
 bool parse_json(const std::string& text, JsonValue& out);
+// Indented JSON text of `v` (object keys in name order), with a final newline.
+std::string dump_json(const JsonValue& v);
 
 struct Settings
 {
@@ -80,6 +82,8 @@ struct Settings
 	bool                        readback = false;
 	bool                        readback_tiled = false;
 	bool                        tessellation = false;
+	bool                        occlusion_queries = false; // --occlusion-queries
+	bool                        shader_cache = true;       // --shader-cache (on by default, as in the Qt launcher)
 	bool                        sync_raw = false;
 	bool                        hdr = false;
 	bool                        vulkan_validation = false;
@@ -87,6 +91,13 @@ struct Settings
 	bool                        renderdoc = false;
 	bool                        cmd_dump = false;
 	bool                        profiler = false;
+	bool                        gpu_assisted_validation = false; // --gpu-assisted-validation (implies Vulkan validation)
+	bool                        graphics_debug_dump = false;     // --graphics-debug-dump
+	bool                        spirv_debug_printf = false;      // --spirv-debug-printf
+	// Experimental switches the Qt launcher has no checkbox for (--no-splash, --vr, --playgo-hack)
+	bool                        splash = true;
+	bool                        vr = false;
+	bool                        playgo_hack = false;
 	std::string                 printf_file; // empty = emulator default
 	std::string                 shader_log_folder; // empty = emulator default
 	std::string                 cmd_dump_folder; // empty = emulator default
