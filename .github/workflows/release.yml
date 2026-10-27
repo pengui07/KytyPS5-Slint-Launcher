@@ -5,15 +5,14 @@
 # Release: push a tag like v1.2.0 (git tag v1.2.0 && git push origin v1.2.0), or run this workflow by hand
 # with the tag to create.
 #
-# A push to main only builds (no release). That keeps the build cache warm: a tag's run can read the caches
-# saved on main, but not the ones an earlier tag saved.
+# Run it by hand on main for the build cache: that run reads and saves main's caches, while a pushed tag's run
+# can only read main's, not an earlier tag's.
 
 name: Release
 
 on:
   push:
     tags: ["v*"]
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -81,9 +80,8 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install ninja --no-progress -y
 
-      # A main build is a development build (no version, so it doesn't offer itself updates).
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DKYTY_LAUNCHER_VERSION=${{ (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && env.TAG || '' }}"
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DKYTY_LAUNCHER_VERSION=${{ env.TAG }}"
 
       - name: Build
         run: cmake --build build
@@ -109,7 +107,6 @@ jobs:
 
   release:
     needs: build
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
