@@ -242,6 +242,9 @@ add_executable(kyty_slint_launcher WIN32
 	src/themes.h
 	$<$<BOOL:${WIN32}>:src/app.rc>
 )
+# Icons and images go into the exe. Slint's default for C++ only records their absolute paths at build
+# time, which exist on the build machine and nowhere else, so a release build showed no menu icons.
+set_property(TARGET kyty_slint_launcher PROPERTY SLINT_EMBED_RESOURCES embed-files)
 slint_target_sources(kyty_slint_launcher ui/app.slint)
 target_link_libraries(kyty_slint_launcher PRIVATE Slint::Slint zarchive)
 target_compile_definitions(kyty_slint_launcher PRIVATE KYTY_LAUNCHER_VERSION="${KYTY_LAUNCHER_VERSION}")
