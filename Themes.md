@@ -73,8 +73,8 @@ things.
 |---|---|
 | `text` | Normal text |
 | `text-strong` | The picked row of a drop-down |
-| `muted` | Secondary text, such as hints and folder paths |
-| `faint` | The quietest text, such as disabled labels |
+| `muted` | Secondary text: labels, hints, comments and the search icon |
+| `faint` | The dimmest text: disabled items and icons, unsupported cheats and small markers |
 | `placeholder` | Placeholder text in empty edit boxes |
 | `log-text` | Text in the console log and edit boxes |
 | `on-accent` | Text on accent and danger fills |
@@ -98,7 +98,7 @@ things.
 | `button-top`, `button-bottom` | The top and bottom of the normal button gradient. Make them equal for a flat button |
 | `button-hover` | A button under the mouse |
 | `button-pressed` | A button while pressed |
-| `control-hover` | Other controls under the mouse, such as check boxes and drop-downs |
+| `control-hover` | The hover background of icon buttons, the console button and the key-binding boxes |
 | `tab-inactive` | Tabs that aren't selected |
 
 **Library rows**
@@ -122,8 +122,8 @@ Problems are listed in the status bar at start-up and after **Reload**.
 
 - **Skipped files**: a file that isn't valid JSON, one with an unknown `base`, or one named `dark.json`,
   `light.json` or `classic.json` (those names belong to the built-in themes).
-- **Ignored keys**: an unknown colour key, or an unknown top-level key, is ignored. Check the spelling against the
-  tables above.
+- **Ignored keys**: an unknown colour key or top-level key is ignored and reported. Check the spelling against
+  the tables above.
 - **Bad colours**: a value that isn't `#rrggbb` or `#rrggbbaa` keeps the base theme's colour.
 - **Theme gone**: if the file of the theme you're using is deleted or renamed, **Reload** falls back to Classic.
 
