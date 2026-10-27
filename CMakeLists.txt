@@ -65,6 +65,44 @@ FetchContent_Declare(
 	SOURCE_SUBDIR api/cpp
 )
 FetchContent_MakeAvailable(Slint)
+# Slint bug (v1.18.1, still on master): while a context menu is open, a pointer event outside it is
+# passed to the menu's parent item shifted by +(that parent's window position) where it needs minus
+# it, so hover and clicks on the page land one title bar height (32px) below the cursor. Patched in
+# the fetched source; written only once, so later configures leave window.rs (and the Rust build) alone.
+set(_kyty_window_rs "${slint_SOURCE_DIR}/internal/core/window.rs")
+file(READ "${_kyty_window_rs}" _kyty_window_src)
+string(REPLACE "\r\n" "\n" _kyty_window_src "${_kyty_window_src}")
+set(_kyty_popup_old [=[
+                Some(menubar_item) => {
+                    event.translate(
+                        menubar_item
+                            .map_to_item_tree(Default::default(), &self.component())
+                            .to_vector(),
+                    );
+                    menubar_item.parent_item(ParentItemTraversalMode::StopAtPopups)
+                }]=])
+set(_kyty_popup_new [=[
+                Some(menubar_item) => {
+                    let parent = menubar_item.parent_item(ParentItemTraversalMode::StopAtPopups);
+                    if let Some(parent) = &parent {
+                        event.translate(
+                            -parent
+                                .map_to_item_tree(Default::default(), &self.component())
+                                .to_vector(),
+                        );
+                    }
+                    parent
+                }]=])
+string(FIND "${_kyty_window_src}" "${_kyty_popup_old}" _kyty_popup_at)
+if(NOT _kyty_popup_at EQUAL -1)
+	string(REPLACE "${_kyty_popup_old}" "${_kyty_popup_new}" _kyty_window_src "${_kyty_window_src}")
+	file(WRITE "${_kyty_window_rs}" "${_kyty_window_src}")
+else()
+	string(FIND "${_kyty_window_src}" "${_kyty_popup_new}" _kyty_popup_at)
+	if(_kyty_popup_at EQUAL -1)
+		message(FATAL_ERROR "Slint's window.rs changed: re-check the context menu offset patch in CMakeLists.txt")
+	endif()
+endif()
 # Menus shaped like the shadPS4 launcher's, and the menu bar drawn as the window's title bar. Slint
 # has no per-app menu styling, so the fluent style's menu file, its Palette (which carries the
 # launcher's theme to the menus) and the shared menu bar implementation are replaced in the fetched
