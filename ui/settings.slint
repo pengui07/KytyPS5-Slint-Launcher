@@ -73,15 +73,6 @@ global Form {
 }
 
 
-// One of the two columns of a tab; both get the same width.
-component Column inherits VerticalLayout {
-    horizontal-stretch: 1;
-    preferred-width: 0px;
-    alignment: start;
-    padding-top: 8px;
-    spacing: Form.gap;
-}
-
 // A settings group: a filled box with its title inside, at the top. `hint` is what the title explains on hover.
 // Side by side in a row, the boxes share the width equally and take the height of the tallest.
 component Section inherits Rectangle {
@@ -309,11 +300,9 @@ component Hint inherits Text {
 }
 
 // An on/off setting: a checkbox, its hint in grey after it, the variable or flag in the tooltip.
-// `indent` lines it up with the controls of the label rows above it.
 // `tag` is a small boxed label after the text (EXPERIMENTAL), `note` grey text at the right end of the row.
 component ToggleRow inherits Rectangle {
     in property <ToggleItem> item;
-    in property <bool> indent: false;
     in property <bool> enabled: true;
     in property <string> tag;
     in property <string> note;
@@ -322,7 +311,6 @@ component ToggleRow inherits Rectangle {
     HorizontalLayout {
         spacing: 8px;
         min-height: 26px;
-        if root.indent: Rectangle { width: Form.label-w; }
         AppCheckBox {
             horizontal-stretch: 0;
             text: root.item.label;
@@ -836,19 +824,23 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
+    // Graphics, Advanced and Debug are laid out like General: cards in rows of two, each pair the same height.
     if root.settings-tab == 1: graphics-view := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
-        HorizontalLayout {
+        graphics-col := VerticalLayout {
+            property <length> half: (self.width - self.padding-right - Form.gap) / 2;
             width: graphics-view.visible-width;
+            padding-top: 8px;
             padding-right: 12px;
+            padding-bottom: 4px;
             spacing: Form.gap;
-            // Fixed width (see General tab): an unbounded left column grows and
-            // pushes the right column off-screen at wide window sizes.
-            Column {
-                width: 700px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: Form.gap;
                 Section {
-                    title: "Graphics & display";
+                    width: graphics-col.half;
+                    title: "Display";
                     FormRow {
                         label: "Screen resolution";
                         Dropdown {
@@ -874,20 +866,17 @@ export component SettingsPage inherits VerticalLayout {
                     if root.size-index == 5: FormRow {
                         label: "Custom size";
                         ThemedEdit {
-                            horizontal-stretch: 1;
+                            width: 90px;
                             placeholder: "width";
                             text <=> root.width-text;
                         }
-                        Text {
-                            text: "x";
-                            color: Theme.muted;
-                            vertical-alignment: center;
-                        }
+                        Unit { text: "x"; }
                         ThemedEdit {
-                            horizontal-stretch: 1;
+                            width: 90px;
                             placeholder: "height";
                             text <=> root.height-text;
                         }
+                        Rectangle { horizontal-stretch: 1; }
                     }
                     FormRow {
                         label: "Present mode";
@@ -897,15 +886,28 @@ export component SettingsPage inherits VerticalLayout {
                             current-index <=> root.present-mode;
                         }
                     }
-                    Field {
+                    FormRow {
                         label: "Vblank frequency";
-                        placeholder: "60";
-                        text <=> root.vblank-text;
+                        ThemedEdit {
+                            width: 90px;
+                            placeholder: "60";
+                            text <=> root.vblank-text;
+                        }
+                        Unit { text: "Hz"; }
+                        Rectangle { horizontal-stretch: 1; }
                     }
+                    ToggleRow {
+                        item: { env: "--hdr", label: "HDR display support", hint: "HDR10 output for supported games. Needs HDR turned on for the host display. `--hdr`", on: root.hdr };
+                        toggled(on) => { root.hdr = on; }
+                    }
+                }
+                Section {
+                    width: graphics-col.half;
+                    title: "GPU";
                     // STEP6:6e: the Vulkan devices as a picker ("Auto" = the emulator's default, -1); a typed
                     // index stays possible while nothing was detected.
                     if Devices.gpu-choices.length > 1: FormRow {
-                        label: "GPU";
+                        label: "Device";
                         Dropdown {
                             horizontal-stretch: 1;
                             model: Devices.gpu-choices;
@@ -921,7 +923,7 @@ export component SettingsPage inherits VerticalLayout {
                         }
                     }
                     if Devices.gpu-choices.length <= 1: FormRow {
-                        label: "GPU";
+                        label: "Device";
                         ThemedEdit {
                             horizontal-stretch: 1;
                             placeholder: "Auto";
@@ -933,47 +935,43 @@ export component SettingsPage inherits VerticalLayout {
                         }
                     }
                     ToggleRow {
-                        indent: true;
-                        item: { env: "--readback-linear-images", label: "Enable readback", hint: "Read back writable linear images on submit. `--readback-linear-images`", on: root.readback };
-                        toggled(on) => { root.readback = on; }
-                    }
-                    ToggleRow {
-                        indent: true;
-                        item: { env: "--readback-tiled-images", label: "Enable tiled readback", hint: "Read back small writable tiled images on submit. `--readback-tiled-images`", on: root.readback-tiled };
-                        toggled(on) => { root.readback-tiled = on; }
-                    }
-                    ToggleRow {
-                        indent: true;
-                        item: { env: "--tessellation", label: "Enable tessellation support", hint: "Draw tessellated geometry. Off by default: unsupported tessellation may crash. `--tessellation`", on: root.tessellation };
-                        tag: "EXPERIMENTAL";
-                        toggled(on) => { root.tessellation = on; }
-                    }
-                    ToggleRow {
-                        indent: true;
-                        item: { env: "--occlusion-queries", label: "Enable occlusion queries", hint: "Count the samples of occlusion queries on the GPU, so hidden lights and objects stay hidden. Costs some performance. `--occlusion-queries`", on: root.occlusion-queries };
-                        toggled(on) => { root.occlusion-queries = on; }
-                    }
-                    ToggleRow {
-                        indent: true;
-                        item: { env: "--hdr", label: "Enable HDR display support", hint: "HDR10 output for supported games. Needs HDR turned on for the host display. `--hdr`", on: root.hdr };
-                        toggled(on) => { root.hdr = on; }
-                    }
-                    ToggleRow {
-                        indent: true;
                         item: { env: "--shader-cache", label: "Cache shaders", hint: "Save compiled shaders and pipelines per game and load them at startup. `--shader-cache`", on: root.shader-cache };
                         toggled(on) => { root.shader-cache = on; }
                     }
+                    ToggleRow {
+                        item: { env: "--occlusion-queries", label: "Occlusion queries", hint: "Count the samples of occlusion queries on the GPU, so hidden lights and objects stay hidden. Costs some performance. `--occlusion-queries`", on: root.occlusion-queries };
+                        toggled(on) => { root.occlusion-queries = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--tessellation", label: "Tessellation", hint: "Draw tessellated geometry. Off by default: unsupported tessellation may crash. `--tessellation`", on: root.tessellation };
+                        tag: "EXPERIMENTAL";
+                        toggled(on) => { root.tessellation = on; }
+                    }
                 }
             }
-            Column {
+            HorizontalLayout {
+                spacing: Form.gap;
                 Section {
-                    title: "Rendering compatibility";
-                    Hint {
-                        text: "These may help with rendering bugs, at a slight performance cost.";
+                    width: graphics-col.half;
+                    title: "Image readback";
+                    ToggleRow {
+                        item: { env: "--readback-linear-images", label: "Readback", hint: "Read back writable linear images on submit. `--readback-linear-images`", on: root.readback };
+                        toggled(on) => { root.readback = on; }
                     }
+                    ToggleRow {
+                        item: { env: "--readback-tiled-images", label: "Tiled readback", hint: "Read back small writable tiled images on submit. `--readback-tiled-images`", on: root.readback-tiled };
+                        toggled(on) => { root.readback-tiled = on; }
+                    }
+                }
+                Section {
+                    width: graphics-col.half;
+                    title: "Rendering compatibility";
                     ToggleRow {
                         item: { env: "--sync-raw-image-buffers", label: "Accurate texture synchronization", hint: "Synchronizes raw reads of GPU images. Can fix missing textures and wrong transparency (Resident Evil 2). `--sync-raw-image-buffers`", on: root.sync-raw };
                         toggled(on) => { root.sync-raw = on; }
+                    }
+                    Hint {
+                        text: "May fix rendering bugs, at a slight performance cost.";
                     }
                 }
             }
@@ -983,129 +981,138 @@ export component SettingsPage inherits VerticalLayout {
     if root.settings-tab == 2: advanced-view := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
-        HorizontalLayout {
+        advanced-col := VerticalLayout {
+            property <length> half: (self.width - self.padding-right - Form.gap) / 2;
             width: advanced-view.visible-width;
+            padding-top: 8px;
             padding-right: 12px;
+            padding-bottom: 4px;
             spacing: Form.gap;
-            // Fixed width (see General tab).
-            Column {
-                width: 700px;
-                Section {
-                    title: "Launch";
-                    Field {
-                        label: "Extra arguments";
-                        placeholder: "e.g. --no-async-pipelines";
-                        text <=> root.extra-args;
-                    }
-                }
-                // STEP6:6e: the env table of the emulator process (kyty.json "emu" / "env"), in global and
-                // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
-                Section {
-                    title: "Environment variables";
-                    hint: "Empty value removes the variable. Names: letters, digits, underscore.";
-                    for v[i] in EnvEditor.vars: HorizontalLayout {
-                        spacing: 8px;
-                        ThemedEdit {
-                            horizontal-stretch: 1;
-                            placeholder: "NAME";
-                            text: v.name;
-                            edited(text) => { EnvEditor.edited(i, text, v.value); }
-                        }
-                        ThemedEdit {
-                            horizontal-stretch: 2;
-                            placeholder: "value";
-                            text: v.value;
-                            edited(text) => { EnvEditor.edited(i, v.name, text); }
-                        }
-                        AppButton {
-                            text: "Remove";
-                            clicked => { EnvEditor.removed(i); }
+            alignment: start;
+            HorizontalLayout {
+                spacing: Form.gap;
+                alignment: start;
+                VerticalLayout {
+                    width: advanced-col.half;
+                    spacing: Form.gap;
+                    Section {
+                        title: "Launch";
+                        vertical-stretch: 0;
+                        Field {
+                            label: "Extra arguments";
+                            placeholder: "e.g. --no-async-pipelines";
+                            text <=> root.extra-args;
                         }
                     }
-                    if EnvEditor.vars.length == 0: Hint {
-                        text: "No variables yet: the emulator inherits the launcher's environment.";
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        AppButton {
-                            text: "Add variable";
-                            clicked => { EnvEditor.added(); }
-                        }
-                    }
-                }
-                if !root.game-mode: Section {
-                    title: "GitHub token";
-                    hint: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. A saved token is encrypted in the system credential store and cannot be shown again.";
-                    if !VM.gh-token-set: VerticalLayout {
-                        spacing: 8px;
-                        FormRow {
-                            label: "Token";
-                            token-edit := ThemedEdit {
+                    // STEP6:6e: the env table of the emulator process (kyty.json "emu" / "env"), in global and
+                    // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
+                    Section {
+                        title: "Environment variables";
+                        vertical-stretch: 1;
+                        hint: "Empty value removes the variable. Names: letters, digits, underscore.";
+                        for v[i] in EnvEditor.vars: HorizontalLayout {
+                            spacing: 8px;
+                            ThemedEdit {
                                 horizontal-stretch: 1;
-                                input-type: InputType.password;
-                                placeholder: "ghp_… or github_pat_…";
-                                accepted => {
-                                    VM.gh-token-changed(self.text);
-                                    self.text = "";
-                                }
+                                placeholder: "NAME";
+                                text: v.name;
+                                edited(text) => { EnvEditor.edited(i, text, v.value); }
+                            }
+                            ThemedEdit {
+                                horizontal-stretch: 2;
+                                placeholder: "value";
+                                text: v.value;
+                                edited(text) => { EnvEditor.edited(i, v.name, text); }
+                            }
+                            AppButton {
+                                text: "Remove";
+                                clicked => { EnvEditor.removed(i); }
                             }
                         }
+                        if EnvEditor.vars.length == 0: Hint {
+                            text: "No variables yet: the emulator inherits the launcher's environment.";
+                        }
                         HorizontalLayout {
-                            spacing: 8px;
                             alignment: start;
-                            Rectangle { width: Form.label-w; }
                             AppButton {
-                                text: "Save";
-                                primary: true;
-                                enabled: token-edit.text != "";
-                                clicked => {
-                                    VM.gh-token-changed(token-edit.text);
-                                    token-edit.text = "";
-                                }
+                                text: "Add variable";
+                                clicked => { EnvEditor.added(); }
+                            }
+                        }
+                    }
+                }
+                // The Version Manager's GitHub access: the token and the cached release lists. Launcher-wide, so
+                // not shown for a game.
+                if !root.game-mode: Section {
+                    width: advanced-col.half;
+                    title: "GitHub";
+                    hint: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. A saved token is encrypted in the system credential store and cannot be shown again.";
+                    if !VM.gh-token-set: FormRow {
+                        label: "Token";
+                        token-edit := ThemedEdit {
+                            horizontal-stretch: 1;
+                            input-type: InputType.password;
+                            placeholder: "ghp_… or github_pat_…";
+                            accepted => {
+                                VM.gh-token-changed(self.text);
+                                self.text = "";
+                            }
+                        }
+                        AppButton {
+                            text: "Save";
+                            primary: true;
+                            enabled: token-edit.text != "";
+                            clicked => {
+                                VM.gh-token-changed(token-edit.text);
+                                token-edit.text = "";
                             }
                         }
                     }
                     if VM.gh-token-set: FormRow {
                         label: "Token";
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
-                            // Only the start of the token, to tell which one is saved.
-                            Rectangle {
-                                background: Theme.card;
-                                border-color: Theme.card-border;
-                                border-width: 1px;
-                                border-radius: 0px;
-                                HorizontalLayout {
-                                    padding-left: 10px;
-                                    padding-right: 10px;
-                                    padding-top: 5px;
-                                    padding-bottom: 5px;
-                                    Text {
-                                        text: VM.gh-token-hint;
-                                        font-family: "Consolas";
-                                        color: Theme.text;
-                                        vertical-alignment: center;
-                                    }
+                        // Only the start of the token, to tell which one is saved.
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: Theme.log-bg;
+                            border-color: Theme.card-border;
+                            border-width: 1px;
+                            border-radius: 0px;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 8px;
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: VM.gh-token-hint;
+                                    font-family: "Consolas";
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: VM.gh-token-storable ? "Encrypted" : "This session only";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
                                 }
                             }
-                            Text {
-                                text: VM.gh-token-storable ? "Encrypted" : "This session only";
-                                color: Theme.muted;
-                                vertical-alignment: center;
-                            }
-                            AppButton {
-                                text: "Clear";
-                                clicked => { VM.gh-token-changed(""); }
-                            }
+                        }
+                        AppButton {
+                            text: "Clear";
+                            clicked => { VM.gh-token-changed(""); }
                         }
                     }
-                }
-                if !root.game-mode: Section {
-                    title: "Release list cache";
-                    hint: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
-                    HorizontalLayout {
-                        alignment: start;
+                    Hint {
+                        text: "Optional. Raises GitHub's limit from 60 to 5000 release-list requests an hour.";
+                    }
+                    FormRow {
+                        label: "Release list cache";
+                        hint: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub.";
+                        Unit {
+                            horizontal-stretch: 1;
+                            text: VM.cache-info;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
                         AppButton {
                             text: "Delete cache";
                             enabled: !VM.busy;
@@ -1120,15 +1127,19 @@ export component SettingsPage inherits VerticalLayout {
     if root.settings-tab == 3: debug-view := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
-        HorizontalLayout {
+        debug-col := VerticalLayout {
+            property <length> half: (self.width - self.padding-right - Form.gap) / 2;
             width: debug-view.visible-width;
+            padding-top: 8px;
             padding-right: 12px;
+            padding-bottom: 4px;
             spacing: Form.gap;
-            // Fixed width (see General tab).
-            Column {
-                width: 700px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: Form.gap;
                 Section {
-                    title: "Debug";
+                    width: debug-col.half;
+                    title: "Validation";
                     ToggleRow {
                         item: { env: "--vulkan-validation", label: "Vulkan validation", hint: "", on: root.vulkan-validation };
                         toggled(on) => { root.vulkan-validation = on; }
@@ -1138,33 +1149,17 @@ export component SettingsPage inherits VerticalLayout {
                         toggled(on) => { root.shader-validation = on; }
                     }
                     ToggleRow {
-                        item: { env: "--rd", label: "RenderDoc capture", hint: "", on: root.renderdoc };
-                        toggled(on) => { root.renderdoc = on; }
-                    }
-                    ToggleRow {
-                        item: { env: "--command-buffer-dump", label: "Command buffer dump", hint: "", on: root.cmd-dump };
-                        toggled(on) => { root.cmd-dump = on; }
-                    }
-                    ToggleRow {
                         item: { env: "--gpu-assisted-validation", label: "GPU-assisted validation", hint: "Bounds-check shader accesses on the GPU. Turns on Vulkan validation too; very slow. `--gpu-assisted-validation`", on: root.gpu-assisted-validation };
+                        note: "Very slow";
                         toggled(on) => { root.gpu-assisted-validation = on; }
-                    }
-                    ToggleRow {
-                        item: { env: "--graphics-debug-dump", label: "Graphics debug dump", hint: "", on: root.graphics-debug-dump };
-                        toggled(on) => { root.graphics-debug-dump = on; }
                     }
                     ToggleRow {
                         item: { env: "--spirv-debug-printf", label: "SPIR-V debug printf", hint: "", on: root.spirv-debug-printf };
                         toggled(on) => { root.spirv-debug-printf = on; }
                     }
-                    ToggleRow {
-                        item: { env: "--profile", label: "Tracy profiler", hint: "", on: root.profiler };
-                        toggled(on) => { root.profiler = on; }
-                    }
                 }
-            }
-            Column {
                 Section {
+                    width: debug-col.half;
                     title: "Logging";
                     FormRow {
                         label: "Shader logging";
@@ -1192,8 +1187,35 @@ export component SettingsPage inherits VerticalLayout {
                         placeholder: "_kyty.txt";
                         text <=> root.printf-file;
                     }
+                }
+            }
+            HorizontalLayout {
+                spacing: Form.gap;
+                Section {
+                    width: debug-col.half;
+                    title: "Capture & profiling";
+                    ToggleRow {
+                        item: { env: "--rd", label: "RenderDoc capture", hint: "", on: root.renderdoc };
+                        toggled(on) => { root.renderdoc = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--profile", label: "Tracy profiler", hint: "", on: root.profiler };
+                        toggled(on) => { root.profiler = on; }
+                    }
+                    ToggleRow {
+                        item: { env: "--graphics-debug-dump", label: "Graphics debug dump", hint: "", on: root.graphics-debug-dump };
+                        toggled(on) => { root.graphics-debug-dump = on; }
+                    }
+                }
+                Section {
+                    width: debug-col.half;
+                    title: "Command buffers";
+                    ToggleRow {
+                        item: { env: "--command-buffer-dump", label: "Command buffer dump", hint: "", on: root.cmd-dump };
+                        toggled(on) => { root.cmd-dump = on; }
+                    }
                     Field {
-                        label: "Command buffer folder";
+                        label: "Dump folder";
                         placeholder: "_Buffers";
                         text <=> root.cmd-dump-folder;
                     }
