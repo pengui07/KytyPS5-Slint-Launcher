@@ -499,13 +499,16 @@ export component SettingsPage inherits VerticalLayout {
                     clicked => { root.back(); }
                 }
             }
-            for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
+            // Shown in this order; `tab` is the settings-tab number (Games is 4 wherever it sits).
+            for tab in root.game-mode
+                ? [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]
+                : [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Games", tab: 4 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]: TabButton {
                 // Fixed width (not fill): HBox children grow by default and push
                 // later tabs off-screen.
                 width: 110px;
-                text: tab;
-                active: i == root.settings-tab;
-                clicked => { root.settings-tab = i; }
+                text: tab.label;
+                active: tab.tab == root.settings-tab;
+                clicked => { root.settings-tab = tab.tab; }
             }
         }
     }

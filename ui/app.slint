@@ -800,6 +800,11 @@ export component AppWindow inherits Window {
                 activated => { root.open-settings(1); }
             }
             MenuItem {
+                title: "Games";
+                icon: @image-url("icons/library.svg");
+                activated => { root.open-settings(4); }
+            }
+            MenuItem {
                 title: "Advanced";
                 icon: @image-url("icons/wrench.svg");
                 activated => { root.open-settings(2); }
@@ -808,11 +813,6 @@ export component AppWindow inherits Window {
                 title: "Debug";
                 icon: @image-url("icons/bug.svg");
                 activated => { root.open-settings(3); }
-            }
-            MenuItem {
-                title: "Games";
-                icon: @image-url("icons/library.svg");
-                activated => { root.open-settings(4); }
             }
         }
         Menu {
