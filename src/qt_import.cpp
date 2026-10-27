@@ -259,7 +259,6 @@ ImportReport import_qt_ini(const std::string& ini_path, const Paths& paths, Sett
 	}
 
 	// [MainDialog]: the Qt launcher's own "check for updates on startup" (a launcher setting, not the emulator's).
-	// STEP7:3.
 	{
 		const std::string key = "MainDialog/check_updates_on_startup";
 		use(key);

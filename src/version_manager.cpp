@@ -1101,7 +1101,7 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	// release list while it is fresh) and offers the ones that are behind. Quiet when nothing is.
 	void CheckForUpdates()
 	{
-		// STEP7:3: "Check for updates on startup" off (Settings > General): no automatic check at all. The
+		// "Check for updates on startup" off (Settings > General): no automatic check at all. The
 		// Version Manager's Update buttons still work, and so does turning it back on mid-session.
 		if (!s.check_updates)
 		{

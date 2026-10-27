@@ -120,19 +120,14 @@ struct Settings
 	std::vector<std::string> build_names;   // "exe|name" display names given with Rename
 	std::vector<std::string> menu_hidden;   // build exes unticked in the Version Manager (not in the toolbar menu)
 	std::vector<std::string> source_names;  // "owner/repo|name" tab names given with Rename
-	// STEP6:6d app keys: begin
 	std::vector<std::string> pinned_builds;  // build exes pinned to the top of the Installed table, in pin order
 	std::string              vm_sort      = "name"; // Installed table sort: name, codename, date, tracked, path
 	bool                     vm_sort_desc = false;
-	// STEP6:6d app keys: end
 	std::vector<std::string> hidden_games;  // title ids (eboot path for a game without one) taken off the library (files stay on disk)
-	// STEP7:3 app keys: begin
 	// Look for newer "-latest" builds when the launcher starts and every hour while it is open. Off: only the
 	// Version Manager's own Update buttons fetch anything.
 	bool check_updates = true;
-	// STEP7:3 app keys: end
 	std::string theme = "classic"; // launcher colours: "dark", "light", "classic" or a file in <data root>/themes (themes.h)
-	// STEP6:6e app keys: begin
 	// The launcher window's last geometry. Not the emulator's window size (width/height above are that).
 	// window_x/window_y are the screen position (-1: let the window manager place it); window_w/window_h
 	// 0 means the Slint default (the page's preferred-width/height).
@@ -140,13 +135,10 @@ struct Settings
 	int window_y = -1;
 	int window_w = 0;
 	int window_h = 0;
-	// STEP6:6e app keys: end
-	// STEP6:6c app keys: begin
 	std::string              library_sort      = "name"; // library sort key: name, status, serial, firmware, size, version, playtime, path, comment
 	bool                     library_sort_desc = false;  // descending instead of ascending
 	bool                     library_grid      = false;  // grid view instead of the table
 	std::vector<std::string> favourite_games;            // "Pin to top": title ids (eboot path for a game without one)
-	// STEP6:6c app keys: end
 	// Help > Check for updates: look for a newer launcher release when the launcher starts.
 	bool check_launcher_updates = true;
 	// Library > Additional Content…: the user's add-ons of each game, by upper-case title id. An entry is an

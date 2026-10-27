@@ -74,7 +74,7 @@ void reveal_in_file_manager(const std::string& file)
 
 namespace {
 
-// STEP6:6e: device enumeration for the settings page.
+// Device enumeration for the settings page.
 // winmm is loaded on demand: the launcher must not gain a link library for two calls (CMake is not ours).
 using WaveInGetNumDevsFn  = UINT(__stdcall*)();
 using WaveInGetDevCapsWFn = MMRESULT(__stdcall*)(UINT_PTR, WAVEINCAPSW*, UINT);
@@ -583,7 +583,7 @@ bool detect_primary_monitor(int* width, int* height)
 #endif
 }
 
-// STEP6:6e: no device enumeration outside Windows yet; the settings page keeps its text fields.
+// No device enumeration outside Windows yet; the settings page keeps its text fields.
 std::vector<std::string> list_audio_input_devices()
 {
 	return {};

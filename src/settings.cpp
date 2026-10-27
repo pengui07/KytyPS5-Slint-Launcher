@@ -409,35 +409,27 @@ void ReadApp(const JsonValue& root, Settings& s)
 	}
 	r.str("addons_dir", s.addons_dir);
 	r.str("columns", s.columns);
-	// STEP6:6e app keys: begin
 	r.num("window_x", s.window_x);
 	r.num("window_y", s.window_y);
 	r.num("window_w", s.window_w);
 	r.num("window_h", s.window_h);
-	// STEP6:6e app keys: end
 	r.str("versions_dir", s.versions_dir);
 	r.list("custom_builds", s.custom_builds);
 	r.list("sources", s.sources);
 	r.list("hidden_builds", s.hidden_builds);
 	r.list("hidden_games", s.hidden_games);
-	// STEP7:3 app keys: begin
 	r.flag("check_updates", s.check_updates);
-	// STEP7:3 app keys: end
 	r.str("theme", s.theme);
 	r.list("source_names", s.source_names);
 	r.list("menu_hidden", s.menu_hidden);
 	r.list("build_names", s.build_names);
-	// STEP6:6d app keys: begin
 	r.list("pinned_builds", s.pinned_builds);
 	r.str("vm_sort", s.vm_sort);
 	r.flag("vm_sort_desc", s.vm_sort_desc);
-	// STEP6:6d app keys: end
-	// STEP6:6c app keys: begin
 	r.str("library_sort", s.library_sort);
 	r.flag("library_sort_desc", s.library_sort_desc);
 	r.flag("library_grid", s.library_grid);
 	r.list("favourite_games", s.favourite_games);
-	// STEP6:6c app keys: end
 	r.flag("check_launcher_updates", s.check_launcher_updates);
 	// Library > Additional Content…: {"PPSA01234": ["LABEL", "LABEL=DIR"]}
 	if (const auto* v = r.find("addcont", JsonValue::Type::Object))
@@ -1151,7 +1143,7 @@ bool save_game_overrides(const Paths& paths, const std::string& title_id, const 
 			file_env = env->second;
 		}
 	}
-	// STEP6:6e: only the differences go into the file: a variable the page added or changed gets its value, a
+	// Only the differences go into the file: a variable the page added or changed gets its value, a
 	// variable it removed gets an empty value (removed from the child's environment). Values inherited from
 	// the global table or a build config are never baked in.
 	bool env_changed = false;
@@ -1268,35 +1260,27 @@ bool save_settings(const std::filesystem::path& path, const Settings& s)
 	out += "    \"game_dirs\": " + QuoteList(SplitList(s.game_dirs)) + ",\n";
 	out += "    \"addons_dir\": " + Quote(s.addons_dir) + ",\n";
 	out += "    \"columns\": " + Quote(s.columns) + ",\n";
-	// STEP6:6e app keys: begin
 	out += "    \"window_x\": " + std::to_string(s.window_x) + ",\n";
 	out += "    \"window_y\": " + std::to_string(s.window_y) + ",\n";
 	out += "    \"window_w\": " + std::to_string(s.window_w) + ",\n";
 	out += "    \"window_h\": " + std::to_string(s.window_h) + ",\n";
-	// STEP6:6e app keys: end
 	out += "    \"versions_dir\": " + Quote(s.versions_dir) + ",\n";
 	out += "    \"custom_builds\": " + QuoteList(s.custom_builds) + ",\n";
 	out += "    \"sources\": " + QuoteList(s.sources) + ",\n";
 	out += "    \"hidden_builds\": " + QuoteList(s.hidden_builds) + ",\n";
 	out += "    \"hidden_games\": " + QuoteList(s.hidden_games) + ",\n";
-	// STEP7:3 app keys: begin
 	out += "    \"check_updates\": " + std::string(s.check_updates ? "true" : "false") + ",\n";
-	// STEP7:3 app keys: end
 	out += "    \"theme\": " + Quote(s.theme) + ",\n";
 	out += "    \"source_names\": " + QuoteList(s.source_names) + ",\n";
 	out += "    \"menu_hidden\": " + QuoteList(s.menu_hidden) + ",\n";
 	out += "    \"build_names\": " + QuoteList(s.build_names) + ",\n";
-	// STEP6:6d app keys: begin
 	out += "    \"pinned_builds\": " + QuoteList(s.pinned_builds) + ",\n";
 	out += "    \"vm_sort\": " + Quote(s.vm_sort) + ",\n";
 	out += "    \"vm_sort_desc\": " + std::string(s.vm_sort_desc ? "true" : "false") + ",\n";
-	// STEP6:6d app keys: end
-	// STEP6:6c app keys: begin
 	out += "    \"library_sort\": " + Quote(s.library_sort) + ",\n";
 	out += "    \"library_sort_desc\": " + std::string(s.library_sort_desc ? "true" : "false") + ",\n";
 	out += "    \"library_grid\": " + std::string(s.library_grid ? "true" : "false") + ",\n";
 	out += "    \"favourite_games\": " + QuoteList(s.favourite_games) + ",\n";
-	// STEP6:6c app keys: end
 	out += "    \"check_launcher_updates\": " + std::string(s.check_launcher_updates ? "true" : "false") + ",\n";
 	{
 		std::string addcont = "{";

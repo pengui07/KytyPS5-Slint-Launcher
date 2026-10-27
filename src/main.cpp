@@ -6,7 +6,7 @@
 
 #include "app.h"
 #include "cheats_page.h"
-#include "input_mapping.h" // STEP6:6f: the Controls page's bindings and capture
+#include "input_mapping.h" // the Controls page's bindings and capture
 #include "launch.h"
 #include "library.h"
 #include "paths.h"
@@ -24,19 +24,19 @@
 #include <cctype>
 #include <cmath>
 #include <algorithm>
-#include <condition_variable> // STEP6:6c: the image decoder pool
+#include <condition_variable> // the image decoder pool
 #include <cstdio>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
-#include <deque> // STEP6:6c
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <list> // STEP6:6c: the icon LRU
+#include <list> // the icon LRU
 #include <map>
 #include <memory>
-#include <mutex> // STEP6:6c
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -324,7 +324,7 @@ slint::Color ParseHexColor(const std::string& text)
 	return slint::Color::from_rgb_uint8(static_cast<uint8_t>(v >> 16), static_cast<uint8_t>(v >> 8), static_cast<uint8_t>(v));
 }
 
-// STEP6:6c: a small fixed-size worker pool. Images are decoded here, never on the UI thread, and the pool
+// A small fixed-size worker pool. Images are decoded here, never on the UI thread, and the pool
 // keeps its threads for the whole session: `bg_threads` used to add one thread per image and join them only
 // at exit. Jobs that are still queued when the pool stops are dropped.
 class WorkPool
@@ -399,7 +399,7 @@ private:
 	bool                              stopping_ = false;
 };
 
-// STEP6:6c: the decoded icons kept in memory, least recently used one evicted past `capacity`. Only touched
+// The decoded icons kept in memory, least recently used one evicted past `capacity`. Only touched
 // on the UI thread (requests and completions are posted there), so it needs no lock.
 class IconCache
 {
@@ -449,7 +449,7 @@ constexpr int kIconPixels = 256;
 // Play time only counts a session at least this long: a game that crashes while booting is not play time.
 constexpr std::chrono::seconds kMinPlaySession{10};
 
-// STEP6:6c: builds one library row. The icon is never decoded here: the row starts with an empty placeholder
+// Builds one library row. The icon is never decoded here: the row starts with an empty placeholder
 // and `request_icon` asks the decoder pool for it (the completion patches that one row in the model).
 std::string to_lower(std::string text)
 {
@@ -482,7 +482,7 @@ GameRow MakeRow(const GameEntry& g, const std::set<std::string>& pinned_keys,
 	return r;
 }
 
-// STEP6:6e: helper for the environment table and the .zar entries.
+// Helper for the environment table and the .zar entries.
 std::string TrimText(const std::string& s)
 {
 	size_t b = 0;
@@ -520,7 +520,7 @@ bool PathIsUnder(const fs::path& child, const fs::path& parent)
 	return true;
 }
 
-// STEP7:1: the build the selected game is pinned to, for the bottom bar (the pin saved in
+// The build the selected game is pinned to, for the bottom bar (the pin saved in
 // configs/games/<TITLEID>.json). Empty when the game has no pin: the bar says nothing, since the library's own
 // build is already shown by the toolbar's build list. `missing` says the pinned exe is gone (shown in red).
 void UpdateSelectedEmu(const slint::ComponentHandle<AppWindow>& ui, const Settings& s, const Paths& paths, const std::vector<GameEntry>& games)
@@ -545,7 +545,7 @@ void UpdateSelectedEmu(const slint::ComponentHandle<AppWindow>& ui, const Settin
 	ui->set_selected_emu_missing(missing);
 }
 
-// STEP7:2: one row of Settings > Games' "Removed games" list. The saved key is a title id, or the start file
+// One row of Settings > Games' "Removed games" list. The saved key is a title id, or the start file
 // (eboot.bin, a .bin/.elf or a .zar) of a game without one; the label is what the user recognises, the detail
 // the saved key itself.
 RemovedGameRow RemovedRow(const std::string& key)
@@ -942,7 +942,7 @@ int main(int argc, char** argv)
 
 	auto log_model  = std::make_shared<slint::VectorModel<slint::SharedString>>();
 
-	// STEP6:6e: the Advanced tab's environment table (C++ owns the rows) and the device pickers of the page.
+	// The Advanced tab's environment table (C++ owns the rows) and the device pickers of the page.
 	auto env_model   = std::make_shared<slint::VectorModel<EnvVar>>();
 	auto audio_model = std::make_shared<slint::VectorModel<slint::SharedString>>();
 	auto gpu_model   = std::make_shared<slint::VectorModel<slint::SharedString>>();
@@ -975,7 +975,7 @@ int main(int argc, char** argv)
 		env_editor.on_added([env_model] { env_model->push_back(EnvVar {}); });
 	}
 	{
-		// STEP6:6e: the microphone and GPU lists are enumerated at most once per session (a few ms), again when
+		// The microphone and GPU lists are enumerated at most once per session (a few ms), again when
 		// the page asks for a rescan, and never where the platform has no enumeration (macOS, Linux).
 		auto device_cache = std::make_shared<std::vector<std::string>>(); // audio input devices
 		auto gpu_cache    = std::make_shared<std::vector<std::string>>();
@@ -1075,7 +1075,7 @@ int main(int argc, char** argv)
 		ui->set_controller_vibration(v.controller_vibration);
 		ui->set_controller_volume(v.controller_volume);
 		ui->set_keyboard_player(v.keyboard_player);
-		// STEP6:6e: the environment table, and the GPU picker's index (0 = Auto, so the device at N is gpu index N-1).
+		// The environment table, and the GPU picker's index (0 = Auto, so the device at N is gpu index N-1).
 		{
 			std::vector<EnvVar> rows;
 			rows.reserve(v.env.size());
@@ -1114,7 +1114,7 @@ int main(int argc, char** argv)
 			cols.set_playtime(w[8]);
 		}
 	};
-	// STEP6:6e: every field of the settings page (and of the launcher's own bar) from one Settings: startup, and
+	// Every field of the settings page (and of the launcher's own bar) from one Settings: startup, and
 	// Settings > Discard, which is why this is one function.
 	auto push_all = [&](const Settings& v)
 	{
@@ -1123,7 +1123,7 @@ int main(int argc, char** argv)
 		ui->set_game(slint::SharedString(v.game));
 		ui->set_run_dir(slint::SharedString(v.run_dir));
 		ui->set_addons_dir(slint::SharedString(v.addons_dir));
-		// STEP7:3: the update check is a launcher setting, not an emulator one.
+		// The update check is a launcher setting, not an emulator one.
 		ui->set_check_updates(v.check_updates);
 		ui->set_check_launcher_updates(v.check_launcher_updates);
 		const int theme = find_theme(*themes, v.theme);
@@ -1148,11 +1148,11 @@ int main(int argc, char** argv)
 
 	// Title id of the game whose settings the page is editing (per-game mode); empty on the global page.
 	std::string game_mode_tid;
-	// STEP6:6e: what the per-game page showed when it was opened: Discard puts it back.
+	// What the per-game page showed when it was opened: Discard puts it back.
 	Settings game_mode_opened;
-	// STEP6:6e: the last settings written to disk; Settings > Discard reloads them.
+	// The last settings written to disk; Settings > Discard reloads them.
 	Settings saved_settings = s;
-	// STEP6:6e: set by collect_emu when the environment table has a row that can't be saved.
+	// Set by collect_emu when the environment table has a row that can't be saved.
 	std::string env_error;
 	// The emulator settings shown on the settings page, written into `t`.
 	auto collect_emu = [&](Settings& t)
@@ -1207,7 +1207,7 @@ int main(int argc, char** argv)
 		t.controller_vibration = std::clamp(ui->get_controller_vibration(), 0, 100);
 		t.controller_volume    = std::clamp(ui->get_controller_volume(), 0, 100);
 		t.keyboard_player      = std::clamp(ui->get_keyboard_player(), 0, 4);
-		// STEP6:6e: the environment table. Names are trimmed; an empty name is an unused row, a blank value
+		// The environment table. Names are trimmed; an empty name is an unused row, a blank value
 		// leaves the variable out (the launcher unsets what is not in the table for the child), and a bad row is
 		// reported (env_error) instead of being saved silently.
 		env_error.clear();
@@ -1268,7 +1268,6 @@ int main(int argc, char** argv)
 		s.run_dir    = ToStd(ui->get_run_dir());
 		s.game_dirs  = ToStd(ui->get_game_dirs());
 		s.addons_dir = ToStd(ui->get_addons_dir());
-		// STEP7:3
 		s.check_updates          = ui->get_check_updates();
 		s.check_launcher_updates = ui->get_check_launcher_updates();
 		const int scheme = ui->global<Theme>().get_scheme();
@@ -1276,7 +1275,7 @@ int main(int argc, char** argv)
 		{
 			s.theme = (*themes)[static_cast<size_t>(scheme)].id;
 		}
-		// STEP6:6c: the library's view state (the sort key and direction, list or grid).
+		// The library's view state (the sort key and direction, list or grid).
 		s.library_sort      = ToStd(ui->get_sort_key());
 		s.library_sort_desc = ui->get_sort_desc();
 		s.library_grid      = ui->get_library_grid();
@@ -1298,7 +1297,7 @@ int main(int argc, char** argv)
 		const bool ok = save_settings(settings_path, out);
 		if (ok)
 		{
-			// STEP6:6e: what Settings > Discard puts back (the effective values, not the sparse file).
+			// What Settings > Discard puts back (the effective values, not the sparse file).
 			saved_settings = s;
 		}
 		return ok;
@@ -1306,7 +1305,7 @@ int main(int argc, char** argv)
 
 	// View > Console window: created on first use, shows the emulator output.
 	auto console = std::make_shared<std::optional<slint::ComponentHandle<ConsoleWindow>>>();
-	// STEP6:6a: output is coalesced into 30 ms batches, trimmed once per batch and pinned only while following.
+	// Output is coalesced into 30 ms batches, trimmed once per batch and pinned only while following.
 	auto pending_lines = std::make_shared<std::vector<std::string>>();
 	auto flush_timer   = std::make_shared<slint::Timer>();
 	auto flush         = std::make_shared<std::function<void()>>();
@@ -1408,7 +1407,7 @@ int main(int argc, char** argv)
 	auto list_model = std::make_shared<slint::VectorModel<int>>(); // list view: indices into `games` the search lets through
 	ui->set_list_rows(list_model);
 
-	// STEP6:6c: the library order. Pinned games come first, then the saved sort key; both views use this one
+	// The library order. Pinned games come first, then the saved sort key; both views use this one
 	// order, because the grid rows only hold indices into `games`.
 	auto favourite_keys = std::make_shared<std::set<std::string>>();
 	auto favourite_list = std::make_shared<std::vector<std::string>>(s.favourite_games);
@@ -1425,13 +1424,13 @@ int main(int argc, char** argv)
 	ui->set_sort_key(slint::SharedString(s.library_sort));
 	ui->set_sort_desc(*sort_desc);
 
-	// STEP6:6c: icons and backdrop art are decoded by this one bounded pool: never on the UI thread, and never
+	// Icons and backdrop art are decoded by this one bounded pool: never on the UI thread, and never
 	// with a thread per image (the backdrop threads used to grow for the whole session).
 	auto pool       = std::make_shared<WorkPool>(2);
 	auto icon_cache = std::make_shared<IconCache>(200);
 	auto icon_jobs  = std::make_shared<std::set<std::string>>(); // icons the pool is decoding right now
 
-	// STEP6:6c: asks for one game's icon. The result comes back on the event loop and is matched to the game by
+	// Asks for one game's icon. The result comes back on the event loop and is matched to the game by
 	// eboot path, because sorting may have moved its row since the request; nothing is changed for a game that
 	// is no longer in the list.
 	auto request_icon = std::make_shared<std::function<void(const std::string&)>>();
@@ -1520,7 +1519,7 @@ int main(int argc, char** argv)
 		{
 			return;
 		}
-		// STEP6:6c: the same bounded pool decodes the backdrop; the "still wanted" check below survives.
+		// The same bounded pool decodes the backdrop; the "still wanted" check below survives.
 		pool->Post(
 		    [path, weak_ui, bg_cache, bg_loading, bg_wanted, bg_shown]
 		    {
@@ -1555,7 +1554,7 @@ int main(int argc, char** argv)
 
 	const std::string compat_cache = path_utf8(paths.compat_cache_file());
 
-	// STEP6:6c: builds the models from `games`, which is already in display order. The list and grid rows hold
+	// Builds the models from `games`, which is already in display order. The list and grid rows hold
 	// indices, so the two views can never disagree; an icon that is already decoded is put in without a request.
 	// Both views only list the games whose name or serial contains the search text.
 	auto rebuild = [games, games_model, grid_model, list_model, grid_columns, search_query, icon_cache, favourite_keys,
@@ -1630,7 +1629,7 @@ int main(int argc, char** argv)
 		}
 		(*h)->set_selected(selected);
 		(*want_bg)(selected >= 0 ? (*games)[static_cast<size_t>(selected)].background : std::string());
-		// STEP7:1: the same pick decides the build named in the bottom bar.
+		// The same pick decides the build named in the bottom bar.
 		UpdateSelectedEmu(*h, s, paths, *games);
 	};
 
@@ -1722,7 +1721,7 @@ int main(int argc, char** argv)
 		    {
 			    return;
 		    }
-		    // STEP6:6e: the previous game's status line does not apply to this one. Only the game-specific
+		    // The previous game's status line does not apply to this one. Only the game-specific
 		    // texts go (the version manager's and the library's own messages stay), and never while a game runs.
 		    if (i != previous && !ui->get_running())
 		    {
@@ -1743,11 +1742,11 @@ int main(int argc, char** argv)
 				                                       + " is a .zar archive without a readable sce_sys/param.json: the name comes from the file name"));
 			    }
 		    }
-		    // STEP7:1: the build this game starts with, named after it in the bottom bar.
+		    // The build this game starts with, named after it in the bottom bar.
 		    UpdateSelectedEmu(ui, s, paths, *games);
 	    });
 
-	// STEP6:6c: a header click (or a flip of the sorted column) re-sorts the library and saves the order.
+	// A header click (or a flip of the sorted column) re-sorts the library and saves the order.
 	ui->on_sort_by(
 	    [&, resort, rebuild, restore_selection, sort_key, sort_desc](slint::SharedString key, bool desc)
 	    {
@@ -1760,7 +1759,7 @@ int main(int argc, char** argv)
 		    restore_selection();
 		    save();
 	    });
-	// STEP6:6c: "Pin to top" / "Unpin". Keyed by title id (by eboot path for a game without one); the pinned
+	// "Pin to top" / "Unpin". Keyed by title id (by eboot path for a game without one); the pinned
 	// games keep their place in the chosen sort.
 	ui->on_pin_game(
 	    [&, resort, rebuild, restore_selection, favourite_keys, favourite_list](int i)
@@ -1785,7 +1784,7 @@ int main(int argc, char** argv)
 		    restore_selection();
 		    save();
 	    });
-	// STEP6:6c: how many cards the grid fits per row; Slint debounces the library box width and calls this.
+	// How many cards the grid fits per row; Slint debounces the library box width and calls this.
 	ui->on_grid_columns_changed(
 	    [grid_columns, rebuild](int columns)
 	    {
@@ -1811,7 +1810,7 @@ int main(int argc, char** argv)
 		    *search_query = std::move(q);
 		    rebuild();
 	    });
-	// STEP6:6c: list/grid toggle. The mode is one of the app keys.
+	// List/grid toggle. The mode is one of the app keys.
 	ui->on_library_view_changed(
 	    [&](bool grid)
 	    {
@@ -1843,7 +1842,7 @@ int main(int argc, char** argv)
 	};
 	sync_game_dirs();
 
-	// STEP6:6b Trophies page: progress of every library game that has a trophy package. The overview is
+	// Trophies page: progress of every library game that has a trophy package. The overview is
 	// scanned off the UI thread (bg_threads joins the scans when the launcher exits) and cached by file stamp.
 	auto trophy_rows     = std::make_shared<std::vector<size_t>>(); // overview row -> library index
 	auto trophy_cache    = std::make_shared<TrophyCache>();
@@ -1975,7 +1974,7 @@ int main(int argc, char** argv)
 		    });
 	};
 	ui->global<Trophies>().on_opened(open_trophy_overview);
-	// STEP6:6b: the emulator may have written unlocks: drop the running game's cache and refresh an open page.
+	// The emulator may have written unlocks: drop the running game's cache and refresh an open page.
 	auto trophy_after_exit = std::make_shared<std::function<void()>>();
 	*trophy_after_exit    = [&, games, trophy_cache]
 	{
@@ -2099,7 +2098,7 @@ int main(int argc, char** argv)
 		    }
 		    open_in_system(path_utf8(dir));
 	    });
-	// STEP6:6e: "Delete save data…" - only <run folder>/_SaveData/<serial>, never the game folder, _Trophies or
+	// "Delete save data…" - only <run folder>/_SaveData/<serial>, never the game folder, _Trophies or
 	// anything else. The dialog in the launcher window asks first; Settings > Games routes through GameActions.
 	auto delete_save_data = [&](int i)
 	{
@@ -2177,7 +2176,7 @@ int main(int argc, char** argv)
 		    const GameEntry& hide = (*games)[static_cast<size_t>(i)];
 		    s.hidden_games.push_back(hide.title_id.empty() ? hide.eboot : hide.title_id);
 		    games->erase(games->begin() + i);
-		    // STEP6:6c: rebuilds both models, so the grid does not keep the removed game's card.
+		    // Rebuilds both models, so the grid does not keep the removed game's card.
 		    rebuild();
 		    ui->set_selected(-1);
 		    (*want_bg)(std::string());
@@ -2191,7 +2190,7 @@ int main(int argc, char** argv)
 		    {
 			    return;
 		    }
-		    // A folder holding eboot.bin is scanned as a game of its own. STEP6:6e: a .zar archive is listed as
+		    // A folder holding eboot.bin is scanned as a game of its own. A .zar archive is listed as
 		    // the game itself, so its full path goes into the game folders (scan_games takes file roots).
 		    const std::string dir = IsArchivePath(p) ? p : path_utf8(utf8_path(p).parent_path());
 		    std::string       cur = ToStd(ui->get_game_dirs());
@@ -2334,15 +2333,15 @@ int main(int argc, char** argv)
 			    Settings edited = baseline;
 			    collect_emu(edited);
 			    const bool ok = save_game_overrides(paths, tid, baseline, edited);
-			    // STEP6:6e: a bad environment row is reported instead of "saved" (the other values did save).
+			    // A bad environment row is reported instead of "saved" (the other values did save).
 			    ui->set_status(slint::SharedString(!ok ? "Could not save the settings of " + tid
 			                                           : env_error.empty() ? "Game settings saved for " + tid : env_error));
 			    return;
 		    }
 		    const bool ok = save();
-		    // STEP7:1: Save can change the emulator the whole library runs, so the bottom bar's build name follows.
+		    // Save can change the emulator the whole library runs, so the bottom bar's build name follows.
 		    UpdateSelectedEmu(ui, s, paths, *games);
-		    // STEP6:6e: same for the env table (save() ran collect(), which fills env_error).
+		    // Same for the env table (save() ran collect(), which fills env_error).
 		    ui->set_status(slint::SharedString(!env_error.empty() ? env_error
 		                                         : ok                 ? std::string("Settings saved")
 		                                                              : std::string("Could not save settings")));
@@ -2371,7 +2370,7 @@ int main(int argc, char** argv)
 		                  : PickPath(current, false, L"Emulator (kyty_emulator.exe)", L"*.exe");
 	    });
 
-	// STEP7:2: Settings > Games' "Removed games" list: the keys saved in hidden_games, in their saved order, with
+	// Settings > Games' "Removed games" list: the keys saved in hidden_games, in their saved order, with
 	// a Restore that drops the key and rescans (the game's files were never touched).
 	auto removed_model = std::make_shared<slint::VectorModel<RemovedGameRow>>();
 	ui->set_removed_games(removed_model);
@@ -2453,7 +2452,7 @@ int main(int argc, char** argv)
 			rows.push_back(r);
 		}
 		game_config_model->set_vector(rows);
-		// STEP7:1 and STEP7:2: a rescan, a pin or a build change moves the Removed list and the bottom bar's build
+		// A rescan, a pin or a build change moves the Removed list and the bottom bar's build
 		// name as well (this runs from games_changed and from the Games tab being opened).
 		refresh_removed_games();
 		UpdateSelectedEmu(ui, s, paths, *games);
@@ -2514,7 +2513,7 @@ int main(int argc, char** argv)
 		Settings user = s;
 		user.emulator = emulator_for_game(s, paths, tid);
 		const Settings resolved = resolve_for_launch(user, paths, tid);
-		// STEP6:6e: what Discard puts back in per-game mode.
+		// What Discard puts back in per-game mode.
 		game_mode_opened = resolved;
 		push_emu(resolved);
 	};
@@ -2793,7 +2792,7 @@ int main(int argc, char** argv)
 		                                                                               : "Could not write " + file));
 	    });
 
-	// ---- STEP6:6f: Controls page (keyboard/mouse and gamepad bindings) ----
+	// ---- Controls page (keyboard/mouse and gamepad bindings) ----
 	// The page edits a working copy of Settings::host_input_mapping; Save writes it into `s` and saves the file.
 	auto input_mapping = std::make_shared<InputMapping>();
 	auto capture_timer = std::make_shared<slint::Timer>();
@@ -3017,7 +3016,7 @@ int main(int argc, char** argv)
 		    {
 			    auto c = ConsoleWindow::create();
 			    c->set_log_lines(log_model);
-			    // STEP6:6a: clear drops queued lines too and starts following again.
+			    // Clear drops queued lines too and starts following again.
 			    c->on_clear(
 			        [log_model, pending_lines, weak_console = slint::ComponentWeakHandle<ConsoleWindow>(c)]
 			        {
@@ -3242,14 +3241,14 @@ int main(int argc, char** argv)
 					        append_text(rest);
 				        }
 				        append_text("---- emulator exited, code " + std::to_string(code) + " ----");
-				        (*flush)(); // STEP6:6a: show the last lines now, not in 30 ms
+				        (*flush)(); // show the last lines now, not in 30 ms
 				        // The session is over: add its time to the totals. This runs even when the window handle is gone,
 				        // and is a no-op when the close path recorded it first.
 				        (*finish_session)();
 				        if (auto h = weak.lock())
 				        {
 					        (*h)->set_running(false);
-					        // STEP6:6b: the game may have written unlock files; refresh the trophy page if it is open.
+					        // The game may have written unlock files; refresh the trophy page if it is open.
 					        if (*trophy_after_exit)
 					        {
 						        (*trophy_after_exit)();
@@ -3655,7 +3654,7 @@ int main(int argc, char** argv)
 		    slint::quit_event_loop();
 	    });
 
-	// STEP6:6e: the window's last size and position (window_x/y/window_w/window_h). Sizes that don't look like a
+	// The window's last size and position (window_x/y/window_w/window_h). Sizes that don't look like a
 	// real window, or a position off the primary monitor (whose rect is taken as 0,0..w,h), fall back to the
 	// Slint defaults: the page's preferred-width/height, placed by the window manager.
 	const bool restore_size = s.window_w >= 800 && s.window_h >= 500;
@@ -3682,7 +3681,7 @@ int main(int argc, char** argv)
 	                  });
 #endif
 	ui->run();
-	// STEP6:6e: keep the geometry for the next start. Read once, after run() returns: the native window is gone
+	// Keep the geometry for the next start. Read once, after run() returns: the native window is gone
 	// but the component handle still reports its last size and position (never saved on every resize).
 	{
 		const float                   scale  = ui->window().scale_factor();
@@ -3705,7 +3704,7 @@ int main(int argc, char** argv)
 	{
 		scan_thread.join();
 	}
-	// STEP6:6c: the image pool had its threads for the whole session; join them before the window goes.
+	// The image pool had its threads for the whole session; join them before the window goes.
 	pool->Stop();
 	// Closing stopped the game; wait for its output to finish (into the log file).
 	child.Wait();
