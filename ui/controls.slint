@@ -354,15 +354,19 @@ component ControllerDiagram inherits Rectangle {
     Part { k: root.k; id: "RightStickLeft"; tip: "Right stick left"; x0: 270; y0: 161.35; w: 15.38; h: 45.3; shape: "M 9.09 1 A 33 33 0 0 0 9.09 44.3 L 14.38 39.71 A 26 26 0 0 1 14.38 5.59 Z"; ghost: true; clickable: Controls.tab == 1; }
 }
 
-// The groups of one tab, row by row, with the diagram on the right.
+// The groups of one tab, row by row, with the diagram on the right. When the window is too narrow for it there,
+// the diagram takes the grid's empty slot instead (next to System / the shortcuts).
 component TabGrid inherits HorizontalLayout {
     in property <[ControlRow]> rows;
     in property <bool> pad;
     in property <length> room; // the width the grid may use
     property <int> columns: root.pad ? 2 : 3;
     property <length> cards-w: Grid.card-w * root.columns + Grid.gap * (root.columns - 1);
-    // The diagram takes what is left, up to its full size, and hides when that is too small to read.
+    // Beside the grid, the diagram takes what is left up to its full size; below 0.55 it moves into the slot.
     property <float> k: min(1, (root.room - root.cards-w - Grid.gap * 2) / Grid.diagram-w);
+    property <bool> beside: root.k >= 0.55;
+    property <float> slot-k: Grid.card-w / Grid.diagram-w;
+    property <string> gyro-note: "The gyro emulation toggle activates tilt mode on gamepads without a gyroscope: the right stick then controls pitch and roll. It defaults to the View/Back button.";
     spacing: Grid.gap * 2;
     alignment: start;
 
@@ -382,14 +386,22 @@ component TabGrid inherits HorizontalLayout {
         if root.pad: HorizontalLayout {
             spacing: Grid.gap;
             Section { rows: root.rows; pad: root.pad; section: "System"; }
-            Text {
+            if root.beside: Text {
                 width: Grid.card-w;
-                text: "The gyro emulation toggle activates tilt mode on gamepads without a gyroscope: the right stick then controls pitch and roll. It defaults to the View/Back button.";
+                text: root.gyro-note;
                 color: Theme.muted;
                 font-size: 12px;
                 wrap: word-wrap;
                 vertical-alignment: center;
             }
+            if !root.beside: ControllerDiagram { k: root.slot-k; }
+        }
+        if root.pad && !root.beside: Text {
+            width: root.cards-w;
+            text: root.gyro-note;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
         }
         if !root.pad: HorizontalLayout {
             spacing: Grid.gap;
@@ -407,10 +419,11 @@ component TabGrid inherits HorizontalLayout {
             spacing: Grid.gap;
             Section { rows: root.rows; pad: root.pad; section: "System"; }
             Section { rows: root.rows; pad: root.pad; section: "In-game shortcuts (cycle)"; }
-            Gap { }
+            if root.beside: Gap { }
+            if !root.beside: ControllerDiagram { k: root.slot-k; }
         }
     }
-    if root.k >= 0.55: VerticalLayout {
+    if root.beside: VerticalLayout {
         alignment: center;
         ControllerDiagram { k: root.k; }
     }
@@ -520,9 +533,11 @@ export component ControlsPage inherits Rectangle {
         // The groups. They scroll when the window is too short for them; everything else stays put.
         grid-view := ScrollView {
             vertical-stretch: 1;
-            content-width: self.visible-width;
+            // At least the grid's own width: in a narrow window the three keyboard columns scroll sideways
+            // instead of being cut off.
+            content-width: max(self.visible-width, Grid.card-w * (Controls.tab == 0 ? 2 : 3) + Grid.gap * (Controls.tab == 0 ? 1 : 2));
             VerticalLayout {
-                width: grid-view.visible-width;
+                width: grid-view.content-width;
                 padding-top: 8px; // room for the top groups' titles, which rise above their frames
                 padding-bottom: 4px;
                 if Controls.tab == 0: TabGrid { rows: Controls.gamepad-rows; pad: true; room: grid-view.visible-width; }
