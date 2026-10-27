@@ -2344,12 +2344,17 @@ int main(int argc, char** argv)
 		    live_timer->start(slint::TimerMode::Repeated, std::chrono::milliseconds(33),
 		                      [&]
 		                      {
-			                      auto&                    c    = ui->global<Controls>();
-			                      const slint::SharedString live = slint::SharedString(input_mapping->LiveControls());
+			                      auto&                    c         = ui->global<Controls>();
+			                      float                    sticks[4] = {};
+			                      const slint::SharedString live      = slint::SharedString(input_mapping->LiveControls(sticks));
 			                      if (c.get_live() != live)
 			                      {
 				                      c.set_live(live);
 			                      }
+			                      c.set_left_x(sticks[0]);
+			                      c.set_left_y(sticks[1]);
+			                      c.set_right_x(sticks[2]);
+			                      c.set_right_y(sticks[3]);
 		                      });
 	    });
 	// A click on a binding starts a capture: the timer polls the keyboard/mouse or the gamepad until it has one.

@@ -96,8 +96,9 @@ public:
 
 	// The controls the first connected gamepad is pressing right now, as "|Cross|L2|" (empty when none): every
 	// control whose gamepad binding is held, and the stick directions past the dead zone. The page lights them
-	// up live. Always empty off Windows.
-	std::string LiveControls() const;
+	// up live. `sticks`, when given, gets the left and right stick positions (x, y, x, y; -1..1, y down, zero
+	// in the dead zone). Always empty (and centred) off Windows.
+	std::string LiveControls(float* sticks = nullptr) const;
 
 private:
 	const std::string* Find(bool pad, const std::string& id) const;

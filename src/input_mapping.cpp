@@ -844,9 +844,13 @@ std::string InputMapping::PadStatus() const
 #endif
 }
 
-std::string InputMapping::LiveControls() const
+std::string InputMapping::LiveControls(float* sticks) const
 {
 	std::string live;
+	if (sticks != nullptr)
+	{
+		std::fill(sticks, sticks + 4, 0.0f);
+	}
 #ifdef _WIN32
 	const auto get = LoadXInput();
 	if (get == nullptr)
@@ -887,30 +891,42 @@ std::string InputMapping::LiveControls() const
 			live += "|" + id;
 		}
 	}
-	// The sticks: a direction counts past XInput's recommended left-stick dead zone (Y points up).
-	constexpr int kDeadZone = 7849;
-	const auto    stick     = [&live](const char* name, int x, int y)
+	// The sticks, as upstream's ControllerPreview reads them: -1..1 with y pointing down (XInput's points up),
+	// zero inside a 0.15 dead zone, and a direction counts past 0.25.
+	const auto stick = [&live](const char* name, int raw_x, int raw_y, float* out)
 	{
-		const std::string prefix = std::string("|") + name;
-		if (x > kDeadZone)
+		double x = raw_x / (raw_x < 0 ? 32768.0 : 32767.0);
+		double y = -raw_y / (raw_y > 0 ? 32767.0 : 32768.0);
+		if (std::hypot(x, y) < 0.15)
 		{
-			live += prefix + "Right";
+			x = 0;
+			y = 0;
 		}
-		else if (x < -kDeadZone)
+		const std::string prefix = std::string("|") + name;
+		if (x < -0.25)
 		{
 			live += prefix + "Left";
 		}
-		if (y > kDeadZone)
+		if (x > 0.25)
+		{
+			live += prefix + "Right";
+		}
+		if (y < -0.25)
 		{
 			live += prefix + "Up";
 		}
-		else if (y < -kDeadZone)
+		if (y > 0.25)
 		{
 			live += prefix + "Down";
 		}
+		if (out != nullptr)
+		{
+			out[0] = static_cast<float>(x);
+			out[1] = static_cast<float>(y);
+		}
 	};
-	stick("LeftStick", pad.sThumbLX, pad.sThumbLY);
-	stick("RightStick", pad.sThumbRX, pad.sThumbRY);
+	stick("LeftStick", pad.sThumbLX, pad.sThumbLY, sticks);
+	stick("RightStick", pad.sThumbRX, pad.sThumbRY, sticks != nullptr ? sticks + 2 : nullptr);
 	if (!live.empty())
 	{
 		live += "|";
