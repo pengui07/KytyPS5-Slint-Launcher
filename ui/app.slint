@@ -529,7 +529,9 @@ export component AppWindow inherits Window {
     resize-border-width: self.maximized ? 0px : 5px;
     preferred-width: 1200px;
     preferred-height: 780px;
-    min-width: 1000px;
+    // The Controls page fits narrower: its two gamepad columns (2 x 340 + 14) plus the page padding and the
+    // scroll bar; the diagram moves into the grid and the keyboard columns scroll sideways.
+    min-width: root.show-controls ? 760px : 1000px;
     min-height: 560px;
     // The window background shows through the menu bar (the menu style cannot see Theme, so it draws
     // none) as the title bar's colour; the first child below gives the page its own.
