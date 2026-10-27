@@ -423,29 +423,11 @@ export component ControlsPage inherits Rectangle {
             }
         }
 
-        // What the tab is for, and its own extra line: the controller's state, or the mouse sensitivity.
-        Text {
-            text: Controls.tab == 0
-                ? "Choose which button on your gamepad triggers each PS5 control. Click a binding, then press the button or trigger you want to use."
-                : "Choose which keyboard key or mouse button triggers each PS5 control. Click a binding, then press the key or mouse button.";
-            color: Theme.muted;
+        // The tab's own line: the controller's state, or the mouse sensitivity.
+        if Controls.tab == 0: Text {
+            text: Controls.status;
+            color: Theme.text;
             font-size: 12px;
-            overflow: elide;
-        }
-        if Controls.tab == 0: HorizontalLayout {
-            spacing: 16px;
-            alignment: start;
-            Text {
-                text: Controls.status;
-                color: Theme.text;
-                font-size: 12px;
-            }
-            Text {
-                text: "Older/fork builds may exit with 'Invalid input mapping' when a Pad: binding is set.";
-                color: Theme.faint;
-                font-size: 11px;
-                vertical-alignment: center;
-            }
         }
         if Controls.tab == 1: HorizontalLayout {
             spacing: 10px;
