@@ -81,8 +81,9 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install ninja --no-progress -y
 
+      # A main build is a development build (no version, so it doesn't offer itself updates).
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DKYTY_LAUNCHER_VERSION=${{ env.TAG }}"
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DKYTY_LAUNCHER_VERSION=${{ (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && env.TAG || '' }}"
 
       - name: Build
         run: cmake --build build
