@@ -243,6 +243,10 @@ slint_target_sources(kyty_slint_launcher ui/app.slint)
 target_link_libraries(kyty_slint_launcher PRIVATE Slint::Slint zarchive)
 target_compile_definitions(kyty_slint_launcher PRIVATE KYTY_LAUNCHER_VERSION="${KYTY_LAUNCHER_VERSION}")
 target_include_directories(kyty_slint_launcher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(WIN32)
+	# Rounded corners and the 1px border on the frameless main window (main.cpp).
+	target_link_libraries(kyty_slint_launcher PRIVATE dwmapi)
+endif()
 if(NOT WIN32)
 	# Downloads go through libcurl here (WinHTTP on Windows); stb_image decodes the game art.
 	find_package(CURL REQUIRED)

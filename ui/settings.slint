@@ -495,9 +495,10 @@ export component SettingsPage inherits VerticalLayout {
     padding-top: 10px;
     spacing: 10px;
 
-    // Tabs on a strip: full-width 1px bottom border like Qt Fusion / shadPS4.
+    // Tabs on a strip: full-width 1px bottom border like Qt Fusion / shadPS4. The tabs sit on the line; the back
+    // button stops short of it.
     Rectangle {
-        height: 28px;
+        height: 36px;
         // The band behind the tabs runs to the window edges, ignoring the page padding, as in the reference.
         Rectangle {
             x: -12px;
@@ -515,11 +516,12 @@ export component SettingsPage inherits VerticalLayout {
             background: Theme.card-border;
         }
         HorizontalLayout {
-            spacing: 2px;
+            spacing: 12px;
             // Back first (not after a stretch spacer): a stretch here evaluates to
             // infinity and pushes the back button off-screen, trapping the user.
             VerticalLayout {
-                alignment: center;
+                alignment: start;
+                padding-top: 1px;
                 AppButton {
                     width: 110px;
                     height: 28px;
@@ -527,16 +529,22 @@ export component SettingsPage inherits VerticalLayout {
                     clicked => { root.back(); }
                 }
             }
-            // Shown in this order; `tab` is the settings-tab number (Games is 4 wherever it sits).
-            for tab in root.game-mode
-                ? [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]
-                : [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Games", tab: 4 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]: TabButton {
-                // Fixed width (not fill): HBox children grow by default and push
-                // later tabs off-screen.
-                width: 110px;
-                text: tab.label;
-                active: tab.tab == root.settings-tab;
-                clicked => { root.settings-tab = tab.tab; }
+            VerticalLayout {
+                alignment: end;
+                HorizontalLayout {
+                    spacing: 2px;
+                    // Shown in this order; `tab` is the settings-tab number (Games is 4 wherever it sits).
+                    for tab in root.game-mode
+                        ? [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]
+                        : [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Games", tab: 4 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]: TabButton {
+                        // Fixed width (not fill): HBox children grow by default and push
+                        // later tabs off-screen.
+                        width: 110px;
+                        text: tab.label;
+                        active: tab.tab == root.settings-tab;
+                        clicked => { root.settings-tab = tab.tab; }
+                    }
+                }
             }
         }
     }
@@ -1508,7 +1516,11 @@ export component SettingsPage inherits VerticalLayout {
                 width: 110px;
                 text: "Save";
                 primary: true;
-                clicked => { root.save(); }
+                // Saves and goes back to the library, where the status line says how the save went.
+                clicked => {
+                    root.save();
+                    root.back();
+                }
             }
             // Drops the unsaved changes and goes back to the library.
             AppButton {

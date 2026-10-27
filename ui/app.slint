@@ -152,7 +152,7 @@ component GameRowView inherits Rectangle {
                 Rectangle {
                     width: 10px;
                     height: 10px;
-                    border-radius: 0px;
+                    border-radius: self.width / 2;
                     background: Theme.status-color(root.game.status-code);
                 }
             }
@@ -1310,7 +1310,9 @@ export component AppWindow inherits Window {
 
         HorizontalLayout {
             spacing: 14px;
+            // Takes the width the running block leaves, so that block sits at the right edge beside its button.
             VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
                 // STEP7:1: the selected game's name, then the build it is pinned to in brackets.
@@ -1355,7 +1357,8 @@ export component AppWindow inherits Window {
             }
             // While a game runs: "<game> is running" and a button for the console window.
             if root.running: HorizontalLayout {
-                spacing: 8px;
+                horizontal-stretch: 0;
+                spacing: 10px;
                 VerticalLayout {
                     alignment: center;
                     Text {
