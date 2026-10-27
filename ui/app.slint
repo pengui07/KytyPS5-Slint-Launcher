@@ -17,7 +17,7 @@ import { FirstRunWindow } from "first_run.slint";
 // and the Games tab's delete-save action).
 // STEP6:6f: Controls, ControlRow are the Controls page's global and row.
 export { VM, EmuVersion, ReleaseItem, Trophies, TrophyGame, TrophyItem, GameConfigRow, BuildChoice, RemovedGameRow, EnvVar, EnvEditor, Devices, GameActions, Controls, ControlRow, Cheats, CheatRow, RemoteCheatRow, Addons, AddonRow, Prompt }
-// Theme.scheme is the launcher's light/dark setting (main.cpp).
+// Theme.scheme is the launcher's theme setting, an index into Theme.names (main.cpp).
 import { PaletteSync } from "common.slint";
 export { Theme }
 // The setup window is exported so C++ can create it before AppWindow (main.cpp includes only this header).
@@ -539,7 +539,7 @@ export component AppWindow inherits Window {
         background: Theme.bg;
     }
     PaletteSync {}
-    // Each window has its own Theme; C++ passes a change on to the console window.
+    // Each window has its own Theme; C++ sets the picked theme's colours here and in the console window.
     callback theme-changed(int);
     property <int> theme-scheme: Theme.scheme;
     changed theme-scheme => { root.theme-changed(self.theme-scheme); }
@@ -613,6 +613,8 @@ export component AppWindow inherits Window {
     callback open-game-settings(int, bool); // library index, from the library's menu
     callback leave-game-settings();
     callback reset-game-settings();
+    callback reload-themes();
+    callback open-themes-folder();
     callback set-game-emu(int, int);        // library index, index in pin-builds (-1: None)
     callback restore-game(int);             // STEP7:2: Settings > Games: put a removed game back on the library
     changed show-settings => {
@@ -1497,6 +1499,8 @@ export component AppWindow inherits Window {
             root.pin-dialog-open = true;
         }
         reset-game => { root.reset-game-settings(); }
+        reload-themes => { root.reload-themes(); }
+        open-themes-folder => { root.open-themes-folder(); }
         back => {
             if (root.game-mode && !root.game-mode-from-library) {
                 // Opened from the Games tab: back to that tab.

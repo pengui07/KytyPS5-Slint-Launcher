@@ -16,6 +16,7 @@ namespace kyty_launcher {
 //   <config_dir>\kyty.json              user config
 //   <config_dir>\games\<TITLEID>.json   per-game overrides
 //   <root>\playtime.json                per-game play time totals (see PlayTimeDb)
+//   <root>\themes\*.json                launcher colour themes (see themes.h)
 //   <root>\versions\  <root>\cache\  <root>\logs\  <root>\run\
 // where config_dir is <root>\configs, except on Linux (non-portable) where it is $XDG_CONFIG_HOME/kytyps5 itself.
 // The Qt launcher's own paths (%ProgramData%\Kyty\Kyty.ini, ~/.config/Kyty) are not these: see qt_import.cpp.
@@ -36,6 +37,8 @@ struct Paths
 	std::filesystem::path compat_cache_file() const { return cache_dir / "compat.json"; }
 	// Play time totals: user data (it can't be rebuilt), so it stays out of cache_dir and out of kyty.json.
 	std::filesystem::path play_time_file() const { return root / "playtime.json"; }
+	// Launcher colour themes, one .json file each (themes.h).
+	std::filesystem::path themes_dir() const { return root / "themes"; }
 	std::filesystem::path trophy_cache_dir(const std::string& title_id) const
 	{
 		return cache_dir / "trophies" / (title_id.empty() ? std::string("unknown") : title_id);

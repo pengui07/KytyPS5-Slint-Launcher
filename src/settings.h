@@ -131,7 +131,7 @@ struct Settings
 	// Version Manager's own Update buttons fetch anything.
 	bool check_updates = true;
 	// STEP7:3 app keys: end
-	std::string theme = "dark"; // launcher colours: "dark", "light" or "classic"
+	std::string theme = "classic"; // launcher colours: "dark", "light", "classic" or a file in <data root>/themes (themes.h)
 	// STEP6:6e app keys: begin
 	// The launcher window's last geometry. Not the emulator's window size (width/height above are that).
 	// window_x/window_y are the screen position (-1: let the window manager place it); window_w/window_h
