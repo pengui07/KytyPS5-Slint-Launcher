@@ -176,6 +176,7 @@ component HeaderCell inherits Rectangle {
 // Text field whose example text is dark and see-through (LineEdit's placeholder colour can't be set).
 export component ThemedEdit inherits Rectangle {
     in property <string> placeholder;
+    in property <image> icon; // optional, shown before the text (a magnifier on search boxes)
     in property <bool> editable: true;
     in property <InputType> input-type: InputType.text; // password hides what is typed
     in-out property <string> text <=> input.text;
@@ -191,6 +192,16 @@ export component ThemedEdit inherits Rectangle {
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
+        spacing: 6px;
+        if root.icon.width > 0: VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 13px;
+                height: 13px;
+                colorize: Theme.muted;
+            }
+        }
         // Clipped, and the text scrolls to keep the cursor in view (as std-widgets' LineEdit does).
         Rectangle {
             horizontal-stretch: 1;
@@ -659,6 +670,49 @@ export component AppButton inherits Rectangle {
                 root.clicked();
             }
         }
+    }
+}
+
+// Top of a full page (Version Manager, Controls, Trophies): the way back to the library, the page
+// title, any page-wide controls on the right (the children), and a hairline under it all that runs
+// out to the window edges. Back button first: a control after growing content gets pushed
+// off-screen, the leading position is immune.
+export component PageHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> back-text: "← Library";
+    in property <length> bleed: 24px; // the page's side padding: the hairline reaches past it to the edges
+    callback back();
+    height: 44px;
+    HorizontalLayout {
+        padding-bottom: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            AppButton {
+                width: 110px;
+                text: root.back-text;
+                clicked => { root.back(); }
+            }
+        }
+        // Takes the free width, so the children pack against the right edge; a long title is cut.
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            text: root.title;
+            color: Theme.text;
+            font-size: 20px;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        @children
+    }
+    Rectangle {
+        x: -root.bleed;
+        y: root.height - 1px;
+        width: root.width + 2 * root.bleed;
+        height: 1px;
+        background: Theme.card-border;
     }
 }
 

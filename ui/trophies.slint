@@ -1,7 +1,7 @@
 // Trophies page: progress of every game that has trophies.
 
 import { ScrollView } from "std-widgets.slint";
-import { Theme, AppButton, AppCheckBox } from "common.slint";
+import { Theme, AppButton, AppCheckBox, PageHeader } from "common.slint";
 
 export struct TrophyGame {
     name: string,
@@ -253,25 +253,9 @@ export component TrophiesPage inherits Rectangle {
         padding-right: 24px;
         spacing: 10px;
 
-        // Title + back (back first: a control after growing content gets pushed off-screen).
-        HorizontalLayout {
-            spacing: 12px;
-            VerticalLayout {
-                alignment: center;
-                AppButton {
-                    width: 110px;
-                    text: "← Library";
-                    clicked => { root.back(); }
-                }
-            }
-            Text {
-                text: Trophies.detail-open ? Trophies.detail-game.name : "Trophies";
-                color: Theme.text;
-                font-size: 20px;
-                font-weight: 700;
-                vertical-alignment: center;
-                overflow: elide;
-            }
+        PageHeader {
+            title: Trophies.detail-open ? Trophies.detail-game.name : "Trophies";
+            back => { root.back(); }
         }
 
         // Grade summary on its own row (was crammed into the header): totals, cups,
