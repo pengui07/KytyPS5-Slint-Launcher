@@ -36,8 +36,9 @@ struct LaunchPlan
 	std::vector<std::string> layers; // config layer files looked at, one line each (shown by the dry run)
 };
 
-// `game_patch`: the game's cheat file (--game-patch), empty for none.
-LaunchPlan make_plan(const Settings& s, const std::string& game_patch = std::string());
+// `game_patch`: the game's cheat file (--game-patch), empty for none. `addcont`: the game's own add-ons, one
+// --addcont each ("LABEL" or "LABEL=DIR", see addcont.h).
+LaunchPlan make_plan(const Settings& s, const std::string& game_patch = std::string(), const std::vector<std::string>& addcont = {});
 
 // The plan for starting `user.game`: the settings resolved through the config layers (build config, user,
 // per-game override of the game's title id) and then make_plan. The game's emulator pin (see

@@ -140,6 +140,57 @@ if(WIN32 AND KYTY_SLINT_STATIC_CRT)
 	corrosion_add_target_rustflags(slint_cpp "-Ctarget-feature=+crt-static")
 endif()
 
+
+# ZArchive reads .zar game archives (the library lists them with their name, icon and trophies) and writes them
+# (Library > Compress to ZAR). Only the reader/writer library and its zstd dependency are built, at the same
+# revisions and with the same hardening patch as the emulator.
+find_package(Git REQUIRED)
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
+set(ZSTD_MULTITHREAD_SUPPORT OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+	zstd
+	GIT_REPOSITORY https://github.com/facebook/zstd.git
+	GIT_TAG f8745da6ff1ad1e7bab384bd1f9d742439278e99
+	GIT_SHALLOW FALSE
+	SOURCE_SUBDIR build/cmake
+)
+FetchContent_Declare(
+	zarchive_source
+	GIT_REPOSITORY https://github.com/Exzap/ZArchive.git
+	GIT_TAG d2c717730092c7bf8cbb033b12fd4001b7c4d932
+	GIT_SHALLOW FALSE
+	PATCH_COMMAND "${GIT_EXECUTABLE}" apply --ignore-whitespace
+		"${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/patches/zarchive-reader.patch"
+	# Not a real folder: ZArchive's own CMakeLists (the command-line tool) is not used.
+	SOURCE_SUBDIR kyty-library-only
+)
+FetchContent_MakeAvailable(zstd zarchive_source)
+add_library(zarchive STATIC
+	"${zarchive_source_SOURCE_DIR}/src/zarchivereader.cpp"
+	"${zarchive_source_SOURCE_DIR}/src/zarchivewriter.cpp"
+	"${zarchive_source_SOURCE_DIR}/src/sha_256.c"
+)
+target_include_directories(zarchive SYSTEM PUBLIC "${zarchive_source_SOURCE_DIR}/include")
+target_include_directories(zarchive PRIVATE "${zstd_SOURCE_DIR}/lib")
+target_link_libraries(zarchive PRIVATE libzstd_static)
+target_compile_features(zarchive PRIVATE cxx_std_20)
+if(MSVC)
+	target_compile_options(zarchive PRIVATE /W0)
+else()
+	target_compile_options(zarchive PRIVATE -w)
+endif()
+if(WIN32 AND KYTY_SLINT_STATIC_CRT)
+	set_property(TARGET zarchive libzstd_static PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+endif()
+
+# The version the self-updater compares with the latest release ("v1.2.3"; the release workflow passes the tag).
+# A build without one is a development build and never offers an update.
+set(KYTY_LAUNCHER_VERSION "" CACHE STRING "Release tag of this build (vX.Y.Z), empty for a development build")
+
 if(WIN32)
 	# The exe's own icon (Explorer, taskbar pin); the windows get theirs from the .slint files.
 	enable_language(RC)
@@ -177,10 +228,20 @@ add_executable(kyty_slint_launcher WIN32
 	src/qt_import.cpp
 	src/qt_import.h
 	src/version_manager.h
+	# .zar game archives (read and write)
+	src/zar.cpp
+	src/zar.h
+	# Library > Additional Content… (add-ons by title id, --addcont)
+	src/addcont.cpp
+	src/addcont.h
+	# Help > Check for updates (this repo's GitHub releases)
+	src/self_update.cpp
+	src/self_update.h
 	$<$<BOOL:${WIN32}>:src/app.rc>
 )
 slint_target_sources(kyty_slint_launcher ui/app.slint)
-target_link_libraries(kyty_slint_launcher PRIVATE Slint::Slint)
+target_link_libraries(kyty_slint_launcher PRIVATE Slint::Slint zarchive)
+target_compile_definitions(kyty_slint_launcher PRIVATE KYTY_LAUNCHER_VERSION="${KYTY_LAUNCHER_VERSION}")
 target_include_directories(kyty_slint_launcher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 if(NOT WIN32)
 	# Downloads go through libcurl here (WinHTTP on Windows); stb_image decodes the game art.

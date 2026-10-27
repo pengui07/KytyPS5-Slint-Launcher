@@ -482,7 +482,7 @@ void FilterUnsupportedOptions(LaunchPlan& p, const std::string& exe)
 
 } // namespace
 
-LaunchPlan make_plan(const Settings& s, const std::string& game_patch)
+LaunchPlan make_plan(const Settings& s, const std::string& game_patch, const std::vector<std::string>& addcont)
 {
 	LaunchPlan p;
 	p.exe = s.emulator;
@@ -663,6 +663,13 @@ LaunchPlan make_plan(const Settings& s, const std::string& game_patch)
 			p.warnings.push_back("Add-ons folder not found, not passed: " + s.addons_dir);
 		}
 	}
+	// The game's own add-ons (Library > Additional Content…): a license ("LABEL") or a label with its data
+	// folder ("LABEL=DIR"), one --addcont each.
+	for (const auto& entry: addcont)
+	{
+		p.args.push_back("--addcont");
+		p.args.push_back(entry);
+	}
 	// The game's cheats (Library > Cheats…); the emulator applies the enabled ones when the file matches the game.
 	if (!game_patch.empty())
 	{
@@ -742,7 +749,18 @@ LaunchPlan make_launch_plan(const Settings& user, const Paths& paths)
 		patch = path_utf8(file);
 		layers.push_back("cheats: " + patch);
 	}
-	LaunchPlan plan = make_plan(resolved, patch);
+	// The add-ons are kept by upper-case title id (as the Qt launcher keeps them).
+	std::vector<std::string> addcont;
+	{
+		std::string key = title;
+		std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+		if (auto it = user.addcont.find(key); !key.empty() && it != user.addcont.end())
+		{
+			addcont = it->second;
+			layers.push_back("add-ons: " + std::to_string(addcont.size()) + " from Additional Content");
+		}
+	}
+	LaunchPlan plan = make_plan(resolved, patch, addcont);
 	// A build's config files outrank the user's values, so say so: this is the usual reason a build "ignores" a
 	// setting. Shown with the plan (--dry-run) and in the console log before the command line.
 	for (auto& w: overridden)

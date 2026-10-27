@@ -1,0 +1,219 @@
+// Additional Content page: one game's add-ons (DLC). The installed packages in the shared add-ons folder, and the
+// user's own entries (a license only, or a label with its data folder), each passed to the emulator as --addcont.
+// The C++ side (src/addcont.cpp) fills the Addons global.
+
+import { ListView } from "std-widgets.slint";
+import { Theme, AppButton, PageHeader, ThemedEdit } from "common.slint";
+
+export struct AddonRow {
+    title: string,
+    detail: string,    // content id, "License only", "Data: <folder>"
+    kind: string,      // "INSTALLED", "LICENSE", "DATA"
+    missing: bool,     // a DATA entry whose folder is gone
+    removable: bool,   // the user's own entries can be removed; installed packages can't
+    icon: image,
+}
+
+export global Addons {
+    in property <string> game-name;
+    in property <string> serial;
+    in property <string> folder;          // the shared add-ons folder (Settings > Paths)
+    in property <bool> folder-exists;
+    in property <[AddonRow]> rows;
+    in property <bool> scanning;
+    in property <string> status;
+    in-out property <int> selected: -1;
+    in-out property <string> label-text;
+    in-out property <string> dir-text;
+    callback add();
+    callback remove(int);
+    callback refresh();
+    callback browse-dir();
+    callback open-folder();
+}
+
+component Tag inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent;
+    in property <bool> warn;
+    width: tag-text.preferred-width + 10px;
+    height: 16px;
+    border-width: 1px;
+    border-color: root.warn ? Theme.danger : root.accent ? Theme.accent : Theme.card-border;
+    tag-text := Text {
+        text: root.text;
+        color: root.warn ? Theme.danger : root.accent ? Theme.accent : Theme.muted;
+        font-size: 10px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component AddonsPage inherits Rectangle {
+    callback back();
+    background: Theme.bg;
+    // The library stays underneath: keep its clicks and wheel from reaching it.
+    TouchArea { }
+
+    VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        padding: 18px;
+        padding-left: 24px;
+        padding-right: 24px;
+        spacing: 12px;
+
+        PageHeader {
+            title: "Additional Content · " + Addons.game-name;
+            back => { root.back(); }
+            Text {
+                text: Addons.serial;
+                color: Theme.muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: "Installed add-ons are the extracted packages for this game in the add-ons folder" + (Addons.folder != "" ? " (" + Addons.folder + ")" : "") + ". Add a license for an add-on that has no data, or point a label at its data folder; they apply the next time the game starts.";
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.log-bg;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            clip: true;
+            ListView {
+                for addon[i] in Addons.rows: Rectangle {
+                    height: 60px;
+                    background: i == Addons.selected ? Theme.row-selected : row-touch.has-hover ? Theme.row-hover : transparent;
+                    row-touch := TouchArea {
+                        clicked => { Addons.selected = i; }
+                    }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 44px;
+                                height: 44px;
+                                background: Theme.card;
+                                clip: true;
+                                Image {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    source: addon.icon;
+                                    image-fit: cover;
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 3px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    min-width: 0px;
+                                    horizontal-stretch: 1;
+                                    text: addon.title;
+                                    color: Theme.text;
+                                    font-size: 14px;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Tag {
+                                        text: addon.kind;
+                                        accent: addon.kind == "INSTALLED";
+                                        warn: addon.missing;
+                                    }
+                                }
+                            }
+                            Text {
+                                text: addon.detail;
+                                color: addon.missing ? Theme.danger : Theme.muted;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+            if Addons.rows.length == 0: Text {
+                x: 16px;
+                width: parent.width - 32px;
+                text: Addons.scanning ? "Looking for add-ons…" : Addons.status;
+                color: Theme.muted;
+                font-size: 13px;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        if Addons.rows.length > 0: Text {
+            text: Addons.status;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            ThemedEdit {
+                width: 230px;
+                placeholder: "Entitlement label or content id";
+                text <=> Addons.label-text;
+                accepted => { Addons.add(); }
+            }
+            ThemedEdit {
+                horizontal-stretch: 1;
+                placeholder: "Add-on data folder (empty for a license only)";
+                text <=> Addons.dir-text;
+                accepted => { Addons.add(); }
+            }
+            AppButton {
+                text: "Browse…";
+                clicked => { Addons.browse-dir(); }
+            }
+            AppButton {
+                width: 90px;
+                text: "Add";
+                primary: true;
+                enabled: Addons.label-text != "";
+                clicked => { Addons.add(); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            AppButton {
+                width: 110px;
+                text: "Remove";
+                enabled: Addons.selected >= 0 && Addons.selected < Addons.rows.length && Addons.rows[Addons.selected].removable;
+                clicked => { Addons.remove(Addons.selected); }
+            }
+            AppButton {
+                text: "Refresh";
+                enabled: !Addons.scanning;
+                clicked => { Addons.refresh(); }
+            }
+            AppButton {
+                text: "Open add-ons folder";
+                enabled: Addons.folder-exists;
+                clicked => { Addons.open-folder(); }
+            }
+        }
+    }
+}
