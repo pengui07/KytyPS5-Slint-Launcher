@@ -165,7 +165,10 @@ component Part inherits Rectangle {
     in property <string> shape; // SVG path on the part's own w x h box, drawn instead of the rounded frame
     in property <float> label-x: -1; // where the label is centred, in the part's units (-1 = the middle)
     in property <float> label-y: -1;
-    property <color> ink: root.lit ? Theme.accent : touch.has-hover && root.id != "" ? Theme.text : Theme.muted;
+    in property <string> tip; // shown after hovering for a moment
+    in property <bool> faint; // drawn in the border colour while idle (the stick wells and directions)
+    in property <bool> clickable: true; // clicking starts the capture (the stick directions: keyboard tab only)
+    property <color> ink: root.lit ? Theme.accent : touch.has-hover && root.id != "" ? Theme.text : root.faint ? Theme.card-border : Theme.muted;
     property <color> wash: root.lit ? Theme.accent.with-alpha(0.25) : transparent;
     property <bool> hovered: touch.has-hover;
     x: (root.cx - root.w / 2) * root.k * 1px;
@@ -227,11 +230,14 @@ component Part inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
+    if root.tip != "": Tooltip {
+        text: @markdown("\{root.tip}");
+    }
     touch := TouchArea {
         enabled: root.id != "";
-        mouse-cursor: root.id != "" ? pointer : default;
+        mouse-cursor: root.id != "" && root.clickable ? pointer : default;
         clicked => {
-            if (!Controls.listening) {
+            if (root.clickable && !Controls.listening) {
                 Controls.begin-capture(root.id, Controls.tab == 0);
             }
         }
@@ -242,8 +248,6 @@ component ControllerDiagram inherits Rectangle {
     in property <float> k: 1;
     // The highlighted control: the one being captured, else the hovered one.
     property <string> on: Controls.listening ? Controls.capture-id : Controls.hover-id;
-    property <bool> left-stick: on == "L3" || on == "LeftStickUp" || on == "LeftStickDown" || on == "LeftStickLeft" || on == "LeftStickRight";
-    property <bool> right-stick: on == "R3" || on == "RightStickUp" || on == "RightStickDown" || on == "RightStickLeft" || on == "RightStickRight";
     width: 420px * root.k;
     height: 300px * root.k;
 
@@ -255,10 +259,23 @@ component ControllerDiagram inherits Rectangle {
         height: parent.height;
         viewbox-width: 420;
         viewbox-height: 300;
-        commands: "M 130 46 L 290 46 C 332 46 360 50 372 66 C 398 118 418 200 416 246 C 414 284 384 294 364 274 C 346 254 330 214 312 198 C 282 186 138 186 108 198 C 90 214 74 254 56 274 C 36 294 6 284 4 246 C 2 200 22 118 48 66 C 60 50 88 46 130 46 Z";
+        commands: "M 130 46 L 290 46 C 332 46 360 50 372 66 C 398 118 418 200 416 246 C 414 284 384 294 364 274 C 348 256 336 228 318 214 C 284 202 136 202 102 214 C 84 228 72 256 56 274 C 36 294 6 284 4 246 C 2 200 22 118 48 66 C 60 50 88 46 130 46 Z";
         stroke: Theme.muted;
         stroke-width: 1.5px;
         fill: Theme.card;
+    }
+    // The face's seams: a line down each handle, and the centre panel around the touch pad and sticks.
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 420;
+        viewbox-height: 300;
+        commands: "M 60 62 C 36 116 18 198 20 242 C 21 264 32 276 44 274 M 360 62 C 384 116 402 198 400 242 C 399 264 388 276 376 274 M 134 47 C 133 96 126 114 132 132 M 286 47 C 287 96 294 114 288 132 M 132 180 C 122 188 116 194 112 200 C 140 190 280 190 308 200 C 304 194 298 188 288 180";
+        stroke: Theme.muted;
+        stroke-width: 1.5px;
+        fill: transparent;
     }
 
     // Shoulders and triggers: the bumper follows the body's shoulder, the trigger rises behind it.
@@ -268,37 +285,38 @@ component ControllerDiagram inherits Rectangle {
     Part { k: root.k; id: "R1"; label: "R1"; cx: 335; cy: 44; w: 90; h: 40; shape: "M 86 36 C 74 19 46 15 8 15 A 5.5 5.5 0 0 1 8 4 C 46 4 72 8 80 22 Q 88 30 86 36 Z"; label-x: 24; label-y: 9.5; lit: root.on == self.id; }
 
     // Touch pad (the right half lights up for its keyboard-only "right" click), Create and Options.
-    Part { k: root.k; id: "TouchPad"; cx: 210; cy: 86; w: 140; h: 70; corner: 8; lit: root.on == self.id; }
-    Rectangle {
-        visible: root.on == "TouchPadRight";
-        x: 210px * root.k;
-        y: 51px * root.k;
-        width: 70px * root.k;
-        height: 70px * root.k;
-        background: Theme.accent.with-alpha(0.25);
-        border-width: 1.5px;
-        border-color: Theme.accent;
-        border-radius: 8px * root.k;
-    }
-    Part { k: root.k; id: "GyroToggle"; cx: 124; cy: 66; w: 8; h: 18; lit: root.on == self.id; }
-    Part { k: root.k; id: "Options"; cx: 296; cy: 66; w: 8; h: 18; lit: root.on == self.id; }
+    Part { k: root.k; id: "TouchPad"; tip: "Touch pad click"; cx: 210; cy: 82; w: 144; h: 66; shape: "M 4 2 L 140 2 C 143 2 144 4 143 8 L 136 50 C 134 60 127 64 118 64 L 26 64 C 17 64 10 60 8 50 L 1 8 C 0 4 1 2 4 2 Z"; lit: root.on == self.id; }
+    if root.on == "TouchPadRight": Part { k: root.k; cx: 210; cy: 82; w: 144; h: 66; shape: "M 72 2 L 140 2 C 143 2 144 4 143 8 L 136 50 C 134 60 127 64 118 64 L 72 64 Z"; lit: true; }
+    Part { k: root.k; id: "GyroToggle"; tip: "Create (gyro emulation toggle)"; cx: 124; cy: 64; w: 8; h: 18; lit: root.on == self.id; }
+    Part { k: root.k; id: "Options"; tip: "Options"; cx: 296; cy: 64; w: 8; h: 18; lit: root.on == self.id; }
 
     // D-pad.
-    Part { k: root.k; id: "Up"; cx: 92; cy: 92; w: 18; h: 22; corner: 3; glyph: "M 2 7 L 5 3 L 8 7"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Down"; cx: 92; cy: 136; w: 18; h: 22; corner: 3; glyph: "M 2 3 L 5 7 L 8 3"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Left"; cx: 70; cy: 114; w: 22; h: 18; corner: 3; glyph: "M 7 2 L 3 5 L 7 8"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Right"; cx: 114; cy: 114; w: 22; h: 18; corner: 3; glyph: "M 3 2 L 7 5 L 3 8"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Up"; tip: "D-pad up"; cx: 84; cy: 88; w: 18; h: 22; corner: 3; glyph: "M 2 7 L 5 3 L 8 7"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Down"; tip: "D-pad down"; cx: 84; cy: 132; w: 18; h: 22; corner: 3; glyph: "M 2 3 L 5 7 L 8 3"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Left"; tip: "D-pad left"; cx: 62; cy: 110; w: 22; h: 18; corner: 3; glyph: "M 7 2 L 3 5 L 7 8"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Right"; tip: "D-pad right"; cx: 106; cy: 110; w: 22; h: 18; corner: 3; glyph: "M 3 2 L 7 5 L 3 8"; lit: root.on == self.id; }
 
     // Face buttons.
-    Part { k: root.k; id: "Triangle"; cx: 328; cy: 90; w: 24; h: 24; glyph: "M 5 1.5 L 9 8.5 L 1 8.5 Z"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Circle"; cx: 352; cy: 114; w: 24; h: 24; glyph: "M 5 1.5 A 3.5 3.5 0 1 1 4.99 1.5 Z"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Cross"; cx: 328; cy: 138; w: 24; h: 24; glyph: "M 2 2 L 8 8 M 8 2 L 2 8"; lit: root.on == self.id; }
-    Part { k: root.k; id: "Square"; cx: 304; cy: 114; w: 24; h: 24; glyph: "M 2 2 L 8 2 L 8 8 L 2 8 Z"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Triangle"; tip: "Triangle"; cx: 336; cy: 86; w: 24; h: 24; glyph: "M 5 1.5 L 9 8.5 L 1 8.5 Z"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Circle"; tip: "Circle"; cx: 360; cy: 110; w: 24; h: 24; glyph: "M 5 1.5 A 3.5 3.5 0 1 1 4.99 1.5 Z"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Cross"; tip: "Cross"; cx: 336; cy: 134; w: 24; h: 24; glyph: "M 2 2 L 8 8 M 8 2 L 2 8"; lit: root.on == self.id; }
+    Part { k: root.k; id: "Square"; tip: "Square"; cx: 312; cy: 110; w: 24; h: 24; glyph: "M 2 2 L 8 2 L 8 8 L 2 8 Z"; lit: root.on == self.id; }
 
-    // Sticks (L3 / R3, and the stick directions of the keyboard tab) and the PS button.
-    Part { k: root.k; id: "L3"; cx: 156; cy: 160; w: 52; h: 52; ring: true; lit: root.left-stick; }
-    Part { k: root.k; id: "R3"; cx: 264; cy: 160; w: 52; h: 52; ring: true; lit: root.right-stick; }
-    Part { k: root.k; cx: 210; cy: 164; w: 14; h: 14; }
+    // Sticks: the cap (L3 / R3) in its well, and the four directions around it. The directions are bound on
+    // the keyboard tab only; on the gamepad tab the stick drives them, so they are just shown.
+    Part { k: root.k; cx: 156; cy: 156; w: 68; h: 68; }
+    Part { k: root.k; cx: 264; cy: 156; w: 68; h: 68; }
+    Part { k: root.k; id: "L3"; tip: "L3 (left stick click)"; cx: 156; cy: 156; w: 48; h: 48; ring: true; lit: root.on == self.id; }
+    Part { k: root.k; id: "R3"; tip: "R3 (right stick click)"; cx: 264; cy: 156; w: 48; h: 48; ring: true; lit: root.on == self.id; }
+    Part { k: root.k; id: "LeftStickRight"; tip: "Left stick right"; cx: 182.3; cy: 156; w: 12.4; h: 40; shape: "M 5.5 0 A 32.5 32.5 0 0 1 5.5 40 L 0 35.7 A 25.5 25.5 0 0 0 0 4.3 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "LeftStickDown"; tip: "Left stick down"; cx: 156; cy: 182.3; w: 40; h: 12.4; shape: "M 40 5.5 A 32.5 32.5 0 0 1 0 5.5 L 4.3 0 A 25.5 25.5 0 0 0 35.7 0 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "LeftStickLeft"; tip: "Left stick left"; cx: 129.7; cy: 156; w: 12.4; h: 40; shape: "M 6.9 40 A 32.5 32.5 0 0 1 6.9 0 L 12.4 4.3 A 25.5 25.5 0 0 0 12.4 35.7 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "LeftStickUp"; tip: "Left stick up"; cx: 156; cy: 129.7; w: 40; h: 12.4; shape: "M 0 6.9 A 32.5 32.5 0 0 1 40 6.9 L 35.7 12.4 A 25.5 25.5 0 0 0 4.3 12.4 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "RightStickRight"; tip: "Right stick right"; cx: 290.3; cy: 156; w: 12.4; h: 40; shape: "M 5.5 0 A 32.5 32.5 0 0 1 5.5 40 L 0 35.7 A 25.5 25.5 0 0 0 0 4.3 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "RightStickDown"; tip: "Right stick down"; cx: 264; cy: 182.3; w: 40; h: 12.4; shape: "M 40 5.5 A 32.5 32.5 0 0 1 0 5.5 L 4.3 0 A 25.5 25.5 0 0 0 35.7 0 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "RightStickLeft"; tip: "Right stick left"; cx: 237.7; cy: 156; w: 12.4; h: 40; shape: "M 6.9 40 A 32.5 32.5 0 0 1 6.9 0 L 12.4 4.3 A 25.5 25.5 0 0 0 12.4 35.7 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; id: "RightStickUp"; tip: "Right stick up"; cx: 264; cy: 129.7; w: 40; h: 12.4; shape: "M 0 6.9 A 32.5 32.5 0 0 1 40 6.9 L 35.7 12.4 A 25.5 25.5 0 0 0 4.3 12.4 Z"; faint: true; clickable: Controls.tab == 1; lit: root.on == self.id; }
+    Part { k: root.k; cx: 210; cy: 166; w: 14; h: 14; }
 }
 
 // The groups of one tab, row by row, with the diagram on the right.
