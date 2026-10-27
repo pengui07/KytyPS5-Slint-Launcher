@@ -448,8 +448,8 @@ struct FirstRunOutcome
 	std::string  note;
 };
 
-// The first launch: ask where the data root and the saves go, and whether to bring over the Qt launcher's settings,
-// then write the answers down so the setup never shows again. `paths` arrives as the per-user root and leaves as the
+// The first launch: ask for the theme, where the data root and the saves go, the game and add-ons folders, and
+// whether to bring over the Qt launcher's settings, then write the answers down so the setup never shows again. `paths` arrives as the per-user root and leaves as the
 // root the answers imply. Nothing is written before Continue or the window being closed.
 FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 {
@@ -484,17 +484,51 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 	setup->set_qt_ini_path(slint::SharedString(ini));
 	setup->set_qt_run_dir(slint::SharedString(qt_run_dir.empty() ? std::string() : path_utf8(qt_run_dir)));
 	setup->set_qt_run_dir_available(!qt_run_dir.empty());
-	// Those users' saves are already in the Qt launcher's folder, so that is the preselected answer for them.
-	setup->set_run_choice(qt_run_dir.empty() ? 0 : 1);
-	setup->set_picked_run_dir(slint::SharedString(std::string()));
+	// Those users' saves are already in the Qt launcher's folder, so the window recommends (and starts with) that one.
+	setup->set_run_dir_follows(true);
+	setup->set_run_dir(setup->get_recommended_run_dir());
 	setup->set_import_qt(!ini.empty());
 	setup->on_pick_run_dir(
 	    [&] {
-		    const std::string picked = PickPath(ToStd(setup->get_chosen_run_dir()), true, nullptr, nullptr);
+		    const std::string picked = PickPath(ToStd(setup->get_run_dir()), true, nullptr, nullptr);
 		    if (!picked.empty())
 		    {
-			    setup->set_picked_run_dir(slint::SharedString(picked));
-			    setup->set_run_choice(2);
+			    setup->set_run_dir(slint::SharedString(picked));
+			    setup->set_run_dir_follows(false);
+		    }
+	    });
+	// The game folders, as on Settings > General; the Qt launcher's own are added by the import.
+	auto game_dirs = std::make_shared<slint::VectorModel<slint::SharedString>>();
+	setup->set_game_dirs(game_dirs);
+	setup->on_add_game_dir(
+	    [&] {
+		    const std::string picked = PickPath(std::string(), true, nullptr, nullptr);
+		    if (picked.empty())
+		    {
+			    return;
+		    }
+		    for (size_t i = 0; i < game_dirs->row_count(); i++)
+		    {
+			    if (path_key(ToStd(*game_dirs->row_data(i))) == path_key(picked))
+			    {
+				    return;
+			    }
+		    }
+		    game_dirs->push_back(slint::SharedString(picked));
+	    });
+	setup->on_remove_game_dir(
+	    [&](int index) {
+		    if (index >= 0 && static_cast<size_t>(index) < game_dirs->row_count())
+		    {
+			    game_dirs->erase(static_cast<size_t>(index));
+		    }
+	    });
+	setup->on_pick_addons_dir(
+	    [&] {
+		    const std::string picked = PickPath(ToStd(setup->get_addons_dir()), true, nullptr, nullptr);
+		    if (!picked.empty())
+		    {
+			    setup->set_addons_dir(slint::SharedString(picked));
 		    }
 	    });
 	setup->on_continue_clicked([&] { setup->hide(); });
@@ -504,6 +538,8 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 	const bool        portable_chosen = setup->get_portable_selected() && portable_ok;
 	const std::string chosen_run      = ToStd(setup->get_chosen_run_dir());
 	const bool        do_import       = setup->get_import_qt() && !ini.empty();
+	const int         scheme          = setup->global<Theme>().get_scheme();
+	const std::string addons_dir      = ToStd(setup->get_addons_dir());
 
 	// Portable: the marker is what compute_paths looks for, so it is written before the paths are recomputed.
 	if (portable_chosen)
@@ -530,6 +566,20 @@ FirstRunOutcome run_first_run_setup(const char* argv0, Paths& paths)
 		{
 			out.note = out.import.text() + " (defaults kept)";
 		}
+	}
+	s.theme = scheme == 1 ? "light" : scheme == 2 ? "classic" : "dark";
+	// The folders picked here go after the imported ones (a folder already on the list is not added twice).
+	for (size_t i = 0; i < game_dirs->row_count(); i++)
+	{
+		const std::string dir = ToStd(*game_dirs->row_data(i));
+		if ((";" + path_key(s.game_dirs) + ";").find(";" + path_key(dir) + ";") == std::string::npos)
+		{
+			s.game_dirs += (s.game_dirs.empty() ? "" : ";") + dir;
+		}
+	}
+	if (!addons_dir.empty())
+	{
+		s.addons_dir = addons_dir;
 	}
 	// An empty run dir means the default (root/run), as everywhere else; anything else is a folder the user chose.
 	s.run_dir = chosen_run.empty() || same_path(chosen_run, path_utf8(paths.run_dir)) ? std::string() : chosen_run;
