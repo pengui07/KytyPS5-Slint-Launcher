@@ -1,5 +1,5 @@
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, Chevron, Dropdown, AppButton, AppCheckBox, AppSlider, AppSpinBox, Card } from "common.slint";
+import { Theme, ThemedEdit, IconButton, TextCell, HeaderCell, Chevron, Dropdown, AppButton, AppCheckBox, AppSlider, AppSpinBox } from "common.slint";
 import { VM, TabButton } from "version_manager.slint";
 
 export struct ToggleItem {
@@ -67,7 +67,7 @@ export global GameActions {
 
 // Sizes shared by the form rows, so the controls of every group line up.
 global Form {
-    out property <length> label-w: 124px; // the "Label:" column (tightened so inputs have more room)
+    out property <length> label-w: 140px; // the label column
     out property <length> row-h: 26px;
     out property <length> gap: 10px;     // between groups, and between the two columns
 }
@@ -78,11 +78,54 @@ component Column inherits VerticalLayout {
     horizontal-stretch: 1;
     preferred-width: 0px;
     alignment: start;
-    padding-top: 8px; // prevents ScrollView from clipping the top Card's floating title
+    padding-top: 8px;
     spacing: Form.gap;
 }
 
-// "Label:" and its control(s), which fill the rest of the row.
+// A settings group: a filled box with its title inside, at the top. `hint` is what the title explains on hover.
+// Side by side in a row, the boxes share the width equally and take the height of the tallest.
+component Section inherits Rectangle {
+    in property <string> title;
+    in property <string> hint;
+    horizontal-stretch: 1;
+    preferred-width: 0px;
+    background: Theme.card;
+    border-width: 1px;
+    border-radius: 0px;
+    border-color: Theme.card-border;
+    VerticalLayout {
+        padding: 14px;
+        padding-top: 12px;
+        spacing: 6px;
+        alignment: start;
+        Rectangle {
+            height: 22px;
+            Text {
+                x: 0px;
+                width: self.preferred-width;
+                height: parent.height;
+                text: root.title;
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            if root.hint != "": Tooltip {
+                text: @markdown("\{root.hint}");
+            }
+        }
+        @children
+    }
+}
+
+// Grey text after a control: a unit ("%", "s") or a few words.
+component Unit inherits Text {
+    color: Theme.muted;
+    font-size: 13px;
+    vertical-alignment: center;
+}
+
+// The label and its control(s), which fill the rest of the row.
 // A label column entry: hovering it shows the row's explanation.
 component RowLabel inherits Rectangle {
     in property <string> text;
@@ -109,7 +152,7 @@ component FormRow inherits HorizontalLayout {
     spacing: 8px;
     min-height: Form.row-h;
     RowLabel {
-        text: root.label + ":";
+        text: root.label;
         hint: root.hint;
     }
     @children
@@ -155,22 +198,6 @@ component FolderRow inherits Rectangle {
         padding-left: 8px;
         padding-right: 8px;
         spacing: 8px;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 52px;
-                height: 18px;
-                border-radius: 0px;
-                background: Theme.accent-soft;
-                Text {
-                    text: "Game";
-                    color: Theme.text;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-        }
         Text {
             horizontal-stretch: 1;
             text: root.path;
@@ -283,52 +310,55 @@ component Hint inherits Text {
 
 // An on/off setting: a checkbox, its hint in grey after it, the variable or flag in the tooltip.
 // `indent` lines it up with the controls of the label rows above it.
+// `tag` is a small boxed label after the text (EXPERIMENTAL), `note` grey text at the right end of the row.
 component ToggleRow inherits Rectangle {
     in property <ToggleItem> item;
     in property <bool> indent: false;
     in property <bool> enabled: true;
+    in property <string> tag;
+    in property <string> note;
     callback toggled(bool);
+    horizontal-stretch: 1;
     HorizontalLayout {
         spacing: 8px;
         min-height: 26px;
         if root.indent: Rectangle { width: Form.label-w; }
         AppCheckBox {
+            horizontal-stretch: 0;
             text: root.item.label;
             enabled: root.enabled;
             checked: root.item.on;
             toggled => { root.toggled(self.checked); }
+        }
+        if root.tag != "": VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: tag-text.preferred-width + 10px;
+                height: 16px;
+                border-width: 1px;
+                border-radius: 0px;
+                border-color: Theme.card-border;
+                tag-text := Text {
+                    text: root.tag;
+                    color: Theme.muted;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if root.note != "": Text {
+            text: root.note;
+            color: Theme.muted;
+            font-size: 12px;
+            vertical-alignment: center;
         }
     }
     if root.item.hint != "" || root.item.env != "": Tooltip {
         text: root.item.hint != ""
             ? @markdown("\{root.item.hint}")
             : @markdown("`\{root.item.env}`");
-    }
-}
-
-component ActionButton inherits Rectangle {
-    in property <string> text;
-    in property <color> base: Theme.accent;
-    in property <color> hover: Theme.accent-hover;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 32px;
-    border-radius: 0px;
-    background: !root.enabled ? Theme.card-border : touch.has-hover ? root.hover : root.base;
-    animate background { duration: 120ms; }
-    Text {
-        overflow: elide;
-        text: root.text;
-        color: root.enabled ? white : Theme.faint;
-        font-size: 13px;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -386,7 +416,7 @@ export component SettingsPage inherits VerticalLayout {
     in-out property <bool> red-zone;
     in-out property <bool> renderdoc;
     in-out property <string> run-dir;
-    in property <bool> running;
+    in property <bool> running; // a game is running: the Games tab locks its save-data delete
     in-out property <int> settings-tab;
     in-out property <int> shader-log;
     in-out property <string> shader-log-folder;
@@ -411,15 +441,10 @@ export component SettingsPage inherits VerticalLayout {
     callback browse-game-dir();
     callback browse-run-dir();
     callback delete-cache-requested();
-    callback dry-run();
-    callback open-versions();
-    callback play();
     callback remove-game-dir(int);
     callback save();
-    callback stop();
     callback controller-color-edited(string);
     callback browse-addons-dir();
-    callback import-ini();                   // Paths: "Import from Kyty.ini..." (the app shows the file picker)
     // Goes back to the library; edits already made stay until the launcher closes.
     callback discard();
     callback games-opened();                 // the Games tab was shown: refresh its rows
@@ -506,30 +531,37 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    // One tab at a time, each two columns of groups.
+    // General tab: cards in rows of two, each pair the same height, and the game folders across the bottom.
     if root.settings-tab == 0: general-view := ScrollView {
         vertical-stretch: 1;
         content-width: self.visible-width;
-        HorizontalLayout {
+        general-col := VerticalLayout {
+            // One column of a row: rows share these widths, so the cards line up from row to row.
+            property <length> half: (self.width - self.padding-right - Form.gap) / 2;
             width: general-view.visible-width;
+            padding-top: 8px;
             padding-right: 12px;
+            padding-bottom: 4px;
             spacing: Form.gap;
-            // Fixed width (not fill): an unbounded left column grows and pushes
-            // the right column off-screen. 700px fits the fields; total stays
-            // under the 1000px minimum window width.
-            Column {
-                width: 700px;
-                Card {
+            alignment: start;
+            HorizontalLayout {
+                spacing: Form.gap;
+                Section {
+                    width: general-col.half;
                     title: "User profile";
                     Field {
                         label: "User name";
                         placeholder: "Kyty";
                         text <=> root.user-name;
                     }
-                    Field {
+                    FormRow {
                         label: "User ID";
-                        placeholder: "1000";
-                        text <=> root.user-id-text;
+                        ThemedEdit {
+                            width: 120px;
+                            placeholder: "1000";
+                            text <=> root.user-id-text;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
                     }
                     FormRow {
                         label: "Console language";
@@ -540,8 +572,61 @@ export component SettingsPage inherits VerticalLayout {
                         }
                     }
                 }
-                Card {
-                    title: "Audio";
+                Section {
+                    width: general-col.half;
+                    title: "Controller & audio";
+                    FormRow {
+                        label: "DualSense lightbar";
+                        // The colour as hex text, with a swatch of it; empty (or not a colour) = the default lightbar.
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 24px;
+                                height: 24px;
+                                border-width: 1px;
+                                border-radius: 0px;
+                                border-color: Theme.card-border;
+                                background: root.controller-swatch;
+                            }
+                        }
+                        ThemedEdit {
+                            width: 110px;
+                            placeholder: "Default";
+                            text <=> root.controller-color;
+                            edited(text) => { root.controller-color-edited(text); }
+                        }
+                        AppButton {
+                            text: "Reset";
+                            enabled: root.controller-color != "";
+                            clicked => {
+                                root.controller-color = "";
+                                root.controller-color-edited("");
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    // AppSpinBox (not AppSlider): AppSlider does not paint here
+                    // (thumb/value missing in all variants tried); SpinBox does.
+                    FormRow {
+                        label: "Vibration";
+                        AppSpinBox {
+                            width: 90px;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.controller-vibration;
+                        }
+                        Unit { text: "%"; }
+                    }
+                    FormRow {
+                        label: "Speaker volume";
+                        AppSpinBox {
+                            width: 90px;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.controller-volume;
+                        }
+                        Unit { text: "%"; }
+                    }
                     // STEP6:6e: the detected input devices as a menu next to the editable name (typing keeps
                     // working: the emulator also accepts a name the system doesn't list).
                     FormRow {
@@ -558,124 +643,21 @@ export component SettingsPage inherits VerticalLayout {
                             selected(i) => { root.microphone = i == 0 ? "" : Devices.audio-inputs[i]; }
                         }
                     }
-                }
-                if !root.game-mode: Card {
-                    title: "Paths & Game folders";
-                    hint: "The folder the emulator runs in, the shared add-ons folder, where downloaded builds are saved, and the folders scanned for games. Import configs from Kyty.ini brings over the old Qt launcher's settings; the Version Manager installs and switches builds.";
-                    PathField {
-                        label: "Run folder";
-                        hint: "Save data, flags.ctl and the logs go in the run folder.";
-                        text <=> root.run-dir;
-                        browse => { root.browse-run-dir(); }
-                    }
                     FormRow {
-                        label: "Add-ons folder";
-                        hint: "One folder holding the extracted add-ons (DLC), shared by every game.";
-                        ThemedEdit {
-                            horizontal-stretch: 1;
-                            placeholder: "None (--addcont-dir)";
-                            text <=> root.addons-dir;
-                        }
-                        AppButton {
-                            text: "Browse…";
-                            clicked => { root.browse-addons-dir(); }
-                        }
-                        AppButton {
-                            text: "Clear";
-                            enabled: root.addons-dir != "";
-                            clicked => { root.addons-dir = ""; }
-                        }
-                    }
-                    FormRow {
-                        label: "Save versions to";
-                        ThemedEdit {
-                            horizontal-stretch: 1;
-                            text <=> VM.versions-path;
-                            // Enter applies the typed folder, like Browse does.
-                            accepted => { VM.refresh-installed(); }
-                        }
-                        AppButton {
-                            text: "Browse…";
-                            clicked => { VM.browse-path(); }
-                        }
-                    }
-                    // The folders scanned for games, sized so the left and right columns align cleanly at the bottom.
-                    Rectangle {
-                        height: 120px;
-                        background: Theme.log-bg;
-                        border-width: 1px;
-                        border-radius: 0px;
-                        border-color: Theme.card-border;
-                        clip: true;
-                        ScrollView {
-                            VerticalLayout {
-                                alignment: start;
-                                padding: 4px;
-                                for dir[i] in root.game-dir-list: FolderRow {
-                                    path: dir;
-                                    selected: i == root.game-dir-selected;
-                                    clicked => { root.game-dir-selected = i; }
-                                }
-                            }
-                        }
-                    }
-                    // Unified action bar at the foot of the card: folder actions on the left, utilities on the right.
-                    HorizontalLayout {
-                        spacing: 6px;
-                        AppButton {
-                            text: "Add folder…";
-                            clicked => { root.browse-game-dir(); }
-                        }
-                        AppButton {
-                            text: "Remove";
-                            enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dir-list.length;
-                            clicked => { root.remove-game-dir(root.game-dir-selected); }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        AppButton {
-                            text: "Import Kyty.ini…";
-                            clicked => { root.import-ini(); }
-                        }
-                        AppButton {
-                            text: "Version Manager…";
-                            clicked => { root.open-versions(); }
-                        }
-                    }
-                }
-
-            }
-            Column {
-                // A launcher setting, saved with the others (not per game).
-                if !root.game-mode: Card {
-                    title: "Appearance";
-                    FormRow {
-                        label: "Theme";
+                        label: "Keyboard controls";
                         Dropdown {
                             horizontal-stretch: 1;
-                            model: ["Dark", "Light", "Classic"];
-                            current-index <=> Theme.scheme;
+                            model: ["Player 1 (shared)", "Player 1", "Player 2", "Player 3", "Player 4"];
+                            current-index <=> root.keyboard-player;
                         }
                     }
                 }
-                Card {
-                    title: "System & Compatibility";
-                    ToggleRow {
-                        item: { env: "--amd-cpu", label: "AMD CPU patch (experimental)", hint: "", on: root.amd-cpu };
-                        toggled(on) => { root.amd-cpu = on; }
-                    }
-                    // Windows only: shown everywhere, greyed out elsewhere.
-                    ToggleRow {
-                        enabled: root.is-windows;
-                        item: { env: "--redzone", label: "Windows SysV red zone crash protection (experimental)", hint: root.is-windows ? "" : "Windows only", on: root.red-zone };
-                        toggled(on) => { root.red-zone = on; }
-                    }
-                    // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
-                    if !root.game-mode: ToggleRow {
-                        item: { env: "check_updates", label: "Check for updates on startup",
-                        hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
-                        on: root.check-updates };
-                        toggled(on) => { root.check-updates = on; }
-                    }
+            }
+            HorizontalLayout {
+                spacing: Form.gap;
+                Section {
+                    width: general-col.half;
+                    title: "General";
                     ToggleRow {
                         item: { env: "--fullscreen", label: "Run in fullscreen", hint: "", on: root.fullscreen };
                         toggled(on) => { root.fullscreen = on; }
@@ -686,6 +668,7 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     ToggleRow {
                         item: { env: "--perf-overlay (F2 toggles it, Shift+F2 shows the detailed view)", label: "Show performance panel", hint: "", on: root.perf-panel };
+                        note: "F2 toggles in game";
                         toggled(on) => { root.perf-panel = on; }
                     }
                     ToggleRow {
@@ -696,100 +679,134 @@ export component SettingsPage inherits VerticalLayout {
                         item: { env: "--network-connected", label: "Network connected", hint: "", on: root.network-connected };
                         toggled(on) => { root.network-connected = on; }
                     }
-                    ToggleRow {
-                        item: { env: "--no-trophy-notifications", label: "Enable trophy notifications", hint: "", on: root.trophy };
-                        toggled(on) => { root.trophy = on; }
-                    }
-                    FormRow {
-                        label: "Trophy duration";
+                    // The duration sits on the notifications' own line, outside the row's tooltip.
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ToggleRow {
+                            item: { env: "--no-trophy-notifications", label: "Trophy notifications", hint: "", on: root.trophy };
+                            toggled(on) => { root.trophy = on; }
+                        }
+                        Unit { text: "show for"; }
                         AppSpinBox {
-                            width: 90px;
+                            width: 70px;
                             minimum: 5;
                             maximum: 10;
                             enabled: root.trophy;
                             value <=> root.trophy-duration;
                         }
-                        Text {
-                            horizontal-stretch: 1;
-                            text: "s";
-                            color: Theme.text;
-                            font-size: 13px;
-                            vertical-alignment: center;
+                        Unit { text: "s"; }
+                    }
+                }
+                VerticalLayout {
+                    width: general-col.half;
+                    spacing: Form.gap;
+                    Section {
+                        title: "Compatibility";
+                        vertical-stretch: 0;
+                        ToggleRow {
+                            item: { env: "--amd-cpu", label: "AMD CPU patch", hint: "", on: root.amd-cpu };
+                            tag: "EXPERIMENTAL";
+                            toggled(on) => { root.amd-cpu = on; }
+                        }
+                        // Windows only: shown everywhere, greyed out elsewhere.
+                        ToggleRow {
+                            enabled: root.is-windows;
+                            item: { env: "--redzone", label: "Red zone crash protection", hint: "Protects the Windows SysV red zone (experimental).", on: root.red-zone };
+                            tag: "EXPERIMENTAL";
+                            note: "Windows only";
+                            toggled(on) => { root.red-zone = on; }
+                        }
+                    }
+                    // Launcher settings, saved with the others (not per game).
+                    if !root.game-mode: Section {
+                        title: "Launcher";
+                        vertical-stretch: 1;
+                        FormRow {
+                            label: "Theme";
+                            Dropdown {
+                                horizontal-stretch: 1;
+                                model: ["Dark", "Light", "Classic"];
+                                current-index <=> Theme.scheme;
+                            }
+                        }
+                        // STEP7:3: the Version Manager's automatic check for newer "-latest" builds.
+                        ToggleRow {
+                            item: { env: "check_updates", label: "Check for emulator updates on startup",
+                            hint: "Looks for a newer build of every \"-latest\" folder when the launcher starts, and every hour while it stays open. Off: nothing is fetched in the background; Update in the Version Manager still works.",
+                            on: root.check-updates };
+                            toggled(on) => { root.check-updates = on; }
                         }
                     }
                 }
-                Card {
-                    title: "Controller";
-                    FormRow {
-                        label: "DualSense lightbar";
-                        // The colour as hex text, with a swatch of it; empty (or not a colour) = the default lightbar.
+            }
+            if !root.game-mode: Section {
+                title: "Game folders";
+                hint: "The folders scanned for games, the folder the emulator runs in, and the shared add-ons folder.";
+                // Split on the same line as the rows above: the list under the left cards, the paths under the right.
+                HorizontalLayout {
+                    spacing: Form.gap + 28px;
+                    VerticalLayout {
+                        width: general-col.half - 28px;
+                        spacing: 6px;
                         Rectangle {
-                            width: 24px;
-                            height: 24px;
-                            y: (parent.height - self.height) / 2;
+                            height: 120px;
+                            background: Theme.log-bg;
                             border-width: 1px;
                             border-radius: 0px;
                             border-color: Theme.card-border;
-                            background: root.controller-swatch;
+                            clip: true;
+                            ScrollView {
+                                VerticalLayout {
+                                    alignment: start;
+                                    padding: 4px;
+                                    for dir[i] in root.game-dir-list: FolderRow {
+                                        path: dir;
+                                        selected: i == root.game-dir-selected;
+                                        clicked => { root.game-dir-selected = i; }
+                                    }
+                                }
+                            }
                         }
-                        ThemedEdit {
-                            horizontal-stretch: 1;
-                            placeholder: "Default (#RRGGBB)";
-                            text <=> root.controller-color;
-                            edited(text) => { root.controller-color-edited(text); }
-                        }
-                        AppButton {
-                            text: "Default";
-                            enabled: root.controller-color != "";
-                            clicked => {
-                                root.controller-color = "";
-                                root.controller-color-edited("");
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            AppButton {
+                                text: "Add folder…";
+                                clicked => { root.browse-game-dir(); }
+                            }
+                            AppButton {
+                                text: "Remove";
+                                enabled: root.game-dir-selected >= 0 && root.game-dir-selected < root.game-dir-list.length;
+                                clicked => { root.remove-game-dir(root.game-dir-selected); }
                             }
                         }
                     }
-                    // AppSpinBox (not AppSlider): AppSlider does not paint here
-                    // (thumb/value missing in all variants tried); SpinBox does.
-                    FormRow {
-                        label: "Vibration intensity";
-                        AppSpinBox {
-                            width: 90px;
-                            minimum: 0;
-                            maximum: 100;
-                            value <=> root.controller-vibration;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 6px;
+                        alignment: start;
+                        PathField {
+                            label: "Run folder";
+                            hint: "Save data, flags.ctl and the logs go in the run folder.";
+                            text <=> root.run-dir;
+                            browse => { root.browse-run-dir(); }
                         }
-                        Text {
-                            width: 40px;
-                            text: root.controller-vibration + "%";
-                            color: Theme.text;
-                            font-size: 13px;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
-                        }
-                    }
-                    // AppSpinBox (not AppSlider): see Vibration intensity above.
-                    FormRow {
-                        label: "Speaker volume";
-                        AppSpinBox {
-                            width: 90px;
-                            minimum: 0;
-                            maximum: 100;
-                            value <=> root.controller-volume;
-                        }
-                        Text {
-                            width: 40px;
-                            text: root.controller-volume + "%";
-                            color: Theme.text;
-                            font-size: 13px;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
-                        }
-                    }
-                    FormRow {
-                        label: "Keyboard player";
-                        Dropdown {
-                            horizontal-stretch: 1;
-                            model: ["Shared with player 1 (default)", "Player 1", "Player 2", "Player 3", "Player 4"];
-                            current-index <=> root.keyboard-player;
+                        FormRow {
+                            label: "Add-ons (DLC) folder";
+                            hint: "One folder holding the extracted add-ons (DLC), shared by every game.";
+                            ThemedEdit {
+                                horizontal-stretch: 1;
+                                placeholder: "None";
+                                text <=> root.addons-dir;
+                            }
+                            AppButton {
+                                text: "Browse…";
+                                clicked => { root.browse-addons-dir(); }
+                            }
+                            if root.addons-dir != "": AppButton {
+                                text: "Clear";
+                                clicked => { root.addons-dir = ""; }
+                            }
                         }
                     }
                 }
@@ -808,7 +825,7 @@ export component SettingsPage inherits VerticalLayout {
             // pushes the right column off-screen at wide window sizes.
             Column {
                 width: 700px;
-                Card {
+                Section {
                     title: "Graphics & display";
                     FormRow {
                         label: "Screen resolution";
@@ -937,7 +954,7 @@ export component SettingsPage inherits VerticalLayout {
             // Fixed width (see General tab).
             Column {
                 width: 700px;
-                Card {
+                Section {
                     title: "Launch";
                     Field {
                         label: "Extra arguments";
@@ -947,7 +964,7 @@ export component SettingsPage inherits VerticalLayout {
                 }
                 // STEP6:6e: the env table of the emulator process (kyty.json "emu" / "env"), in global and
                 // per-game mode. C++ owns the rows: it appends, removes and re-reads them on save.
-                Card {
+                Section {
                     title: "Environment variables";
                     hint: "Empty value removes the variable. Names: letters, digits, underscore.";
                     for v[i] in EnvEditor.vars: HorizontalLayout {
@@ -980,7 +997,7 @@ export component SettingsPage inherits VerticalLayout {
                         }
                     }
                 }
-                if !root.game-mode: Card {
+                if !root.game-mode: Section {
                     title: "GitHub token";
                     hint: "Without a token GitHub allows 60 release-list requests an hour; with one, 5000. Private repositories need Contents: Read-only. Without one, the GITHUB_TOKEN or GH_TOKEN environment variable is used. A saved token is encrypted in the system credential store and cannot be shown again.";
                     if !VM.gh-token-set: VerticalLayout {
@@ -1048,7 +1065,7 @@ export component SettingsPage inherits VerticalLayout {
                         }
                     }
                 }
-                if !root.game-mode: Card {
+                if !root.game-mode: Section {
                     title: "Release list cache";
                     hint: "Release lists are saved on disk and reused for 10 minutes, then rechecked with GitHub. " + VM.cache-info + ".";
                     HorizontalLayout {
@@ -1074,7 +1091,7 @@ export component SettingsPage inherits VerticalLayout {
             // Fixed width (see General tab).
             Column {
                 width: 700px;
-                Card {
+                Section {
                     title: "Debug";
                     ToggleRow {
                         item: { env: "--vulkan-validation", label: "Vulkan validation", hint: "", on: root.vulkan-validation };
@@ -1099,7 +1116,7 @@ export component SettingsPage inherits VerticalLayout {
                 }
             }
             Column {
-                Card {
+                Section {
                     title: "Logging";
                     FormRow {
                         label: "Shader logging";
@@ -1338,7 +1355,7 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    // Bottom bar: crisp 1px top divider, run on the left, save on the right. (Games tab: nothing to save there, pins apply at once.)
+    // Bottom bar: crisp 1px top divider, Save and Discard on the left. (Games tab: nothing to save there, pins apply at once.)
     if !(root.settings-tab == 4 && !root.game-mode): VerticalLayout {
         spacing: 8px;
         Rectangle {
@@ -1347,29 +1364,13 @@ export component SettingsPage inherits VerticalLayout {
         }
         HorizontalLayout {
             spacing: 8px;
-            if !root.game-mode: ActionButton {
+            alignment: start;
+            AppButton {
                 width: 110px;
-                text: root.running ? "Stop" : "Play";
-                base: root.running ? Theme.danger : Theme.accent;
-                hover: root.running ? Theme.danger-hover : Theme.accent-hover;
-                clicked => {
-                    if (root.running) {
-                        root.stop();
-                    } else {
-                        root.play();
-                    }
-                }
+                text: "Save";
+                primary: true;
+                clicked => { root.save(); }
             }
-            if !root.game-mode: AppButton {
-                text: "Dry run";
-                clicked => { root.dry-run(); }
-            }
-            // Per-game mode: deletes the game's overrides (its emulator pin stays).
-            if root.game-mode: AppButton {
-                text: "Reset to global";
-                clicked => { root.reset-game(); }
-            }
-            Rectangle { horizontal-stretch: 1; }
             // Drops the unsaved changes and goes back to the library.
             AppButton {
                 width: 110px;
@@ -1379,11 +1380,10 @@ export component SettingsPage inherits VerticalLayout {
                     root.back();
                 }
             }
-            AppButton {
-                width: 110px;
-                text: "Save";
-                primary: true;
-                clicked => { root.save(); }
+            // Per-game mode: deletes the game's overrides (its emulator pin stays).
+            if root.game-mode: AppButton {
+                text: "Reset to global";
+                clicked => { root.reset-game(); }
             }
         }
     }

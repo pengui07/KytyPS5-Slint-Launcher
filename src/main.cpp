@@ -2558,14 +2558,6 @@ int main(int argc, char** argv)
 		    open_in_system(ToStd(url));
 	    });
 
-	ui->on_dry_run(
-	    [&]
-	    {
-		    save();
-		    append_text("---- dry run ----\n" + describe(make_launch_plan(s, paths)));
-		    ui->set_status("Dry run: nothing started");
-	    });
-
 	ChildProcess child;
 	auto         weak = slint::ComponentWeakHandle<AppWindow>(ui);
 
