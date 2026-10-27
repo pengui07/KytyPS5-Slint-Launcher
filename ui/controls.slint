@@ -36,6 +36,12 @@ export global Controls {
     in-out property <bool> show-cursor: true;
     // The control under the mouse, in the list or on the diagram (UI only): both light it up.
     in-out property <string> hover-id;
+    // What the gamepad is pressing right now, as "|Cross|L2|": those rows and parts light up while held.
+    in property <string> live;
+
+    public pure function is-live(id: string) -> bool {
+        return id != "" && self.live.replace-all("|" + id + "|", "") != self.live;
+    }
 
     callback opened();
     callback begin-capture(string, bool); // control id, gamepad tab
@@ -69,6 +75,7 @@ component BindingRow inherits Rectangle {
     in property <bool> shown: true;
     property <bool> capturing: Controls.listening && Controls.capture-id == root.entry.id;
     property <bool> lit: root.capturing || Controls.hover-id == root.entry.id;
+    property <bool> live: root.pad && Controls.is-live(root.entry.id);
     property <bool> hovered: bind.has-hover;
     visible: root.shown;
     height: root.shown ? Grid.row-h + Grid.row-gap : 0px;
@@ -99,14 +106,15 @@ component BindingRow inherits Rectangle {
         height: Grid.row-h;
         border-radius: 0px;
         border-width: 1px;
-        border-color: root.lit ? Theme.accent : Theme.card-border;
-        background: bind.has-hover ? Theme.control-hover : Theme.log-bg;
+        border-color: root.lit || root.live ? Theme.accent : Theme.card-border;
+        background: root.live ? Theme.accent : bind.has-hover ? Theme.control-hover : Theme.log-bg;
         Text {
             x: 6px;
             width: parent.width - 12px;
             text: root.capturing ? "Press…" : root.entry.binding;
-            color: root.capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
+            color: root.live ? Theme.on-accent : root.capturing ? Theme.accent : root.entry.binding == "None" ? Theme.faint : Theme.text;
             font-size: 12px;
+            font-weight: root.live ? 700 : 400;
             horizontal-alignment: center;
             vertical-alignment: center;
             overflow: elide;
@@ -168,8 +176,10 @@ component Part inherits Rectangle {
     in property <string> tip; // shown after hovering for a moment
     in property <bool> faint; // drawn in the border colour while idle (the stick wells and directions)
     in property <bool> clickable: true; // clicking starts the capture (the stick directions: keyboard tab only)
-    property <color> ink: root.lit ? Theme.accent : touch.has-hover && root.id != "" ? Theme.text : root.faint ? Theme.card-border : Theme.muted;
-    property <color> wash: root.lit ? Theme.accent.with-alpha(0.25) : transparent;
+    // Held on the gamepad right now (Gamepad tab): filled in the accent colour.
+    property <bool> live: Controls.tab == 0 && Controls.is-live(root.id);
+    property <color> ink: root.lit || root.live ? Theme.accent : touch.has-hover && root.id != "" ? Theme.text : root.faint ? Theme.card-border : Theme.muted;
+    property <color> wash: root.live ? Theme.accent.with-alpha(0.7) : root.lit ? Theme.accent.with-alpha(0.25) : transparent;
     property <bool> hovered: touch.has-hover;
     x: (root.cx - root.w / 2) * root.k * 1px;
     y: (root.cy - root.h / 2) * root.k * 1px;
@@ -201,7 +211,7 @@ component Part inherits Rectangle {
         commands: root.shape;
         stroke: root.ink;
         stroke-width: 1.5px;
-        fill: root.lit ? root.wash : Theme.card;
+        fill: root.lit || root.live ? root.wash : Theme.card;
     }
     if root.ring: Rectangle {
         width: parent.width * 0.68;
@@ -216,7 +226,7 @@ component Part inherits Rectangle {
         viewbox-width: 10;
         viewbox-height: 10;
         commands: root.glyph;
-        stroke: root.ink;
+        stroke: root.live ? Theme.on-accent : root.ink;
         stroke-width: 1.5px;
         fill: transparent;
     }
@@ -224,7 +234,7 @@ component Part inherits Rectangle {
         x: root.label-x < 0 ? (parent.width - self.width) / 2 : root.label-x * root.k * 1px - self.width / 2;
         y: root.label-y < 0 ? (parent.height - self.height) / 2 : root.label-y * root.k * 1px - self.height / 2;
         text: root.label;
-        color: root.ink;
+        color: root.live ? Theme.on-accent : root.ink;
         font-size: max(8px, 10px * root.k);
         font-weight: 700;
         horizontal-alignment: center;

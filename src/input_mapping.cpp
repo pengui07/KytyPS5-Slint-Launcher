@@ -844,4 +844,79 @@ std::string InputMapping::PadStatus() const
 #endif
 }
 
+std::string InputMapping::LiveControls() const
+{
+	std::string live;
+#ifdef _WIN32
+	const auto get = LoadXInput();
+	if (get == nullptr)
+	{
+		return live;
+	}
+	XInputState state {};
+	bool        found = false;
+	for (DWORD i = 0; i < 4 && !found; i++)
+	{
+		found = get(i, &state) == ERROR_SUCCESS;
+	}
+	if (!found)
+	{
+		return live;
+	}
+	const auto& pad = state.Gamepad;
+	std::vector<std::string> held;
+	for (const auto& button: kPadButtonBits)
+	{
+		if ((pad.wButtons & button.mask) != 0)
+		{
+			held.emplace_back(button.id);
+		}
+	}
+	if (pad.bLeftTrigger > kTriggerThreshold)
+	{
+		held.emplace_back("LeftTrigger");
+	}
+	if (pad.bRightTrigger > kTriggerThreshold)
+	{
+		held.emplace_back("RightTrigger");
+	}
+	for (const auto& [id, binding]: m_pad)
+	{
+		if (std::find(held.begin(), held.end(), binding) != held.end())
+		{
+			live += "|" + id;
+		}
+	}
+	// The sticks: a direction counts past XInput's recommended left-stick dead zone (Y points up).
+	constexpr int kDeadZone = 7849;
+	const auto    stick     = [&live](const char* name, int x, int y)
+	{
+		const std::string prefix = std::string("|") + name;
+		if (x > kDeadZone)
+		{
+			live += prefix + "Right";
+		}
+		else if (x < -kDeadZone)
+		{
+			live += prefix + "Left";
+		}
+		if (y > kDeadZone)
+		{
+			live += prefix + "Up";
+		}
+		else if (y < -kDeadZone)
+		{
+			live += prefix + "Down";
+		}
+	};
+	stick("LeftStick", pad.sThumbLX, pad.sThumbLY);
+	stick("RightStick", pad.sThumbRX, pad.sThumbRY);
+	if (!live.empty())
+	{
+		live += "|";
+	}
+#endif
+	return live;
+}
+
 } // namespace kyty_launcher

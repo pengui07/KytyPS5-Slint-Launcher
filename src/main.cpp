@@ -2272,6 +2272,7 @@ int main(int argc, char** argv)
 	// The page edits a working copy of Settings::host_input_mapping; Save writes it into `s` and saves the file.
 	auto input_mapping = std::make_shared<InputMapping>();
 	auto capture_timer = std::make_shared<slint::Timer>();
+	auto live_timer    = std::make_shared<slint::Timer>(); // lights up what the gamepad presses while the page is open
 	{
 		std::vector<slint::SharedString> labels;
 		for (const auto& source: InputMapping::Sources())
@@ -2338,7 +2339,18 @@ int main(int argc, char** argv)
 		    c.set_skin_index(input_mapping->SkinIndex());
 		    c.set_show_cursor(input_mapping->ShowCursor());
 		    c.set_status(slint::SharedString(input_mapping->PadStatus()));
+		    c.set_live("");
 		    refresh_controls();
+		    live_timer->start(slint::TimerMode::Repeated, std::chrono::milliseconds(33),
+		                      [&]
+		                      {
+			                      auto&                    c    = ui->global<Controls>();
+			                      const slint::SharedString live = slint::SharedString(input_mapping->LiveControls());
+			                      if (c.get_live() != live)
+			                      {
+				                      c.set_live(live);
+			                      }
+		                      });
 	    });
 	// A click on a binding starts a capture: the timer polls the keyboard/mouse or the gamepad until it has one.
 	ui->global<Controls>().on_begin_capture(
@@ -2448,6 +2460,7 @@ int main(int argc, char** argv)
 		    }
 		    c.set_notice("");
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 		    ui->set_status(slint::SharedString("Controls saved"));
 	    });
@@ -2456,12 +2469,14 @@ int main(int argc, char** argv)
 	    [&]
 	    {
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 	    });
 	ui->global<Controls>().on_close(
 	    [&]
 	    {
 		    stop_controls_capture();
+		    live_timer->stop();
 		    ui->set_show_controls(false);
 	    });
 

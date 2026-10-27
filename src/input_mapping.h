@@ -94,6 +94,11 @@ public:
 	// "Connected: Controller 1" or "No controller connected"; off Windows it says capture is unavailable.
 	std::string PadStatus() const;
 
+	// The controls the first connected gamepad is pressing right now, as "|Cross|L2|" (empty when none): every
+	// control whose gamepad binding is held, and the stick directions past the dead zone. The page lights them
+	// up live. Always empty off Windows.
+	std::string LiveControls() const;
+
 private:
 	const std::string* Find(bool pad, const std::string& id) const;
 	void               AssignRaw(bool pad, const std::string& id, const std::string& binding);
