@@ -118,7 +118,8 @@ things.
 
 ## When something is wrong
 
-Problems are listed in the status bar at start-up and after **Reload**.
+Problems are checked at start-up and after **Reload**. The status bar shows the first one and how many more there
+are. The console (**View > Console**) lists every one as `warning: theme <file>: ...`.
 
 - **Skipped files**: a file that isn't valid JSON, one with an unknown `base`, or one named `dark.json`,
   `light.json` or `classic.json` (those names belong to the built-in themes).
