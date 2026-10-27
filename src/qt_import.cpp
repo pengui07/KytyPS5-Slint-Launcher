@@ -243,6 +243,21 @@ ImportReport import_qt_ini(const std::string& ini_path, const Paths& paths, Sett
 		}
 	}
 
+	// [AdditionalContent]: each game's add-ons ("LABEL" or "LABEL=DIR"), keyed by title id.
+	for (const auto& title_id: ini.keys_in("AdditionalContent"))
+	{
+		const std::string key = "AdditionalContent/" + title_id;
+		use(key);
+		std::vector<std::string> entries;
+		if (ini.get_list(key, entries) && !entries.empty())
+		{
+			std::string upper = title_id;
+			std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+			s.addcont[upper] = entries;
+			r.settings++;
+		}
+	}
+
 	// [MainDialog]: the Qt launcher's own "check for updates on startup" (a launcher setting, not the emulator's).
 	// STEP7:3.
 	{

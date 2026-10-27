@@ -408,7 +408,8 @@ void CheatsPage::Open(const GameEntry& game, const std::string& run_dir)
 	self.title_id = game.title_id;
 	self.version  = game.game_version;
 	self.process  = path_utf8(utf8_path(game.eboot).filename());
-	if (self.process.empty())
+	// A .zar game runs the eboot.bin inside it.
+	if (self.process.empty() || game.archive)
 	{
 		self.process = "eboot.bin";
 	}

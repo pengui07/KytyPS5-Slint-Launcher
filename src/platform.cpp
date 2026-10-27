@@ -61,6 +61,17 @@ std::string pick_path_dialog(const std::string&, bool)
 	return {};
 }
 
+std::string save_path_dialog(const std::string&)
+{
+	return {};
+}
+
+void reveal_in_file_manager(const std::string& file)
+{
+	const std::wstring args = L"/select,\"" + utf8_path(file).wstring() + L"\"";
+	ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
 namespace {
 
 // STEP6:6e: device enumeration for the settings page.
@@ -401,6 +412,74 @@ std::string pick_path_dialog(const std::string& current, bool folder)
 	}
 	return {};
 #endif
+}
+
+std::string save_path_dialog(const std::string& suggested)
+{
+	std::error_code ec;
+	fs::path        path = utf8_path(suggested);
+	if (!fs::is_directory(path.parent_path(), ec))
+	{
+		const char* home = std::getenv("HOME");
+		path             = fs::path(home != nullptr ? home : "/") / path.filename();
+	}
+	bool ok = false;
+#ifdef __APPLE__
+	const std::string script = "POSIX path of (choose file name default location POSIX file \"" +
+	                           path_utf8(path.parent_path()) + "\" default name \"" + path_utf8(path.filename()) + "\")";
+	std::string picked = run_capture({"osascript", "-e", script}, &ok);
+	return ok ? picked : std::string();
+#else
+	if (ProgramExists("zenity"))
+	{
+		return run_capture({"zenity", "--file-selection", "--save", "--confirm-overwrite", "--filename=" + path_utf8(path)}, &ok);
+	}
+	if (ProgramExists("kdialog"))
+	{
+		return run_capture({"kdialog", "--getsavefilename", path_utf8(path)}, &ok);
+	}
+	return {};
+#endif
+}
+
+void reveal_in_file_manager(const std::string& file)
+{
+#ifdef __APPLE__
+	bool ok = false;
+	run_capture({"open", "-R", file}, &ok);
+	if (ok)
+	{
+		return;
+	}
+#else
+	// The freedesktop file manager interface (Nautilus, Dolphin, Nemo, Thunar...) selects the file.
+	if (ProgramExists("dbus-send"))
+	{
+		std::string uri = "file://";
+		for (unsigned char c: file)
+		{
+			if (std::isalnum(c) != 0 || c == '/' || c == '-' || c == '_' || c == '.' || c == '~')
+			{
+				uri += static_cast<char>(c);
+			} else
+			{
+				char hex[4];
+				std::snprintf(hex, sizeof(hex), "%%%02X", c);
+				uri += hex;
+			}
+		}
+		bool ok = false;
+		run_capture({"dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.FileManager1",
+		             "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", "array:string:" + uri,
+		             "string:"},
+		            &ok);
+		if (ok)
+		{
+			return;
+		}
+	}
+#endif
+	open_in_system(path_utf8(utf8_path(file).parent_path()));
 }
 
 #ifndef __APPLE__

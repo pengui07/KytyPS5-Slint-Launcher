@@ -24,9 +24,9 @@ struct GameEntry
 	uint64_t    size   = 0;
 	GameStatus  status = GameStatus::Unknown;
 	std::string comment;
-	// STEP6:6e: a .zar archive listed as the game itself: `dir` and `eboot` are the file, the name is the file
-	// stem, and the title id, versions and icon are unknown (they live inside the archive, which the launcher
-	// cannot read: that needs zarchive).
+	// A .zar archive is the game itself: `dir` and `eboot` are the file, and the name, title id, versions, icon
+	// and art come from inside it ("<file>.zar!/sce_sys/icon0.png", see zar.h). An archive that can't be read
+	// keeps its file stem as the name.
 	bool     archive      = false;
 	uint64_t play_seconds = 0; // total run time; 0 = never played (see PlayTimeDb, format_play_time)
 	int64_t  last_played  = 0; // unix seconds of the last recorded session; 0 = never (see format_last_played)
@@ -41,7 +41,7 @@ struct CompatEntry
 using CompatDb  = std::map<std::string, CompatEntry>; // key: upper-case title id
 using SizeCache = std::map<std::string, uint64_t>;    // key: path_key(dir)
 
-// Finds game folders (a folder holding eboot.bin) under the ';'-separated roots and reads
+// Finds game folders (a folder holding eboot.bin) and .zar archives under the ';'-separated roots and reads
 // their sce_sys/param.json. A root that is a regular .zar file is a game of its own (see GameEntry::archive).
 // Sorted by name. Folder sizes already in `sizes` are reused.
 std::vector<GameEntry> scan_games(const std::string& roots, SizeCache& sizes);
@@ -52,8 +52,8 @@ void     apply_compat(std::vector<GameEntry>& games, const CompatDb& db);
 // Downloads the shared compatibility list; empty on failure.
 std::string fetch_compat_json();
 
-// Decodes an image file and scales it down to fit max_w x max_h (never up). Output is
-// non-premultiplied RGBA8. Windows only (WIC); returns false elsewhere or on failure.
+// Decodes an image file (or "<archive>.zar!/<member>", see zar.h) and scales it down to fit max_w x max_h
+// (never up). Output is non-premultiplied RGBA8. WIC on Windows, stb_image elsewhere.
 bool load_image_rgba(const std::string& path, int max_w, int max_h, std::vector<uint8_t>& rgba, int& w, int& h);
 
 std::string read_text_file(const std::string& path);

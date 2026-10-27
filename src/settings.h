@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace kyty_launcher {
@@ -146,6 +147,11 @@ struct Settings
 	bool                     library_grid      = false;  // grid view instead of the table
 	std::vector<std::string> favourite_games;            // "Pin to top": title ids (eboot path for a game without one)
 	// STEP6:6c app keys: end
+	// Help > Check for updates: look for a newer launcher release when the launcher starts.
+	bool check_launcher_updates = true;
+	// Library > Additional Content…: the user's add-ons of each game, by upper-case title id. An entry is an
+	// entitlement label ("LABEL", a license only) or "LABEL=DIR" (its data in DIR); each is one --addcont.
+	std::map<std::string, std::vector<std::string>> addcont;
 	// The "emu" keys that were present in the user file. Together with "differs from the default" this decides
 	// which keys the user layer sets (written back on save; a build's config files may still override them at
 	// launch - see resolve_for_launch).
@@ -196,6 +202,10 @@ bool has_game_overrides(const Paths& paths, const std::string& title_id);   // t
 // Returns 1 when applied, 0 when `key` is not an emulator key (also "env" and "host_input_mapping", which are lists),
 // -1 when the value is invalid (`why` says how); `s` is unchanged then.
 int apply_qt_emu_value(Settings& s, const std::string& key, const std::string& text, std::string* why = nullptr);
+
+// Every "emu" key of `s` (not "env" and "host_input_mapping") with its value as plain text, in file order: the
+// text apply_qt_emu_value reads back ("R2560X1440", "Mailbox", "true", "60"). Game config export uses it.
+std::vector<std::pair<std::string, std::string>> emu_text_values(const Settings& s);
 
 // Name shown for a build exe that is not (or not known to be) in the Version Manager's list: the name given with
 // Rename, else the build's folder name.
