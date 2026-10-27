@@ -592,6 +592,7 @@ export component AppWindow inherits Window {
     // Games tab of Settings, one row per library game, and the "Set Emu..." picker.
     in property <[GameConfigRow]> game-configs;
     in property <[BuildChoice]> pin-builds; // every installed build, unfiltered
+    in property <[string]> pin-choices;     // "Library default", then pin-builds' names (the Games tab's drop-downs)
     // STEP7:2: the games taken off the library, listed in Settings > Games with a Restore button.
     in property <[RemovedGameRow]> removed-games;
     in-out property <int> removed-selected: -1;
@@ -820,6 +821,11 @@ export component AppWindow inherits Window {
                 activated => { root.open-settings(1); }
             }
             MenuItem {
+                title: "Games";
+                icon: @image-url("icons/library.svg");
+                activated => { root.open-settings(4); }
+            }
+            MenuItem {
                 title: "Advanced";
                 icon: @image-url("icons/wrench.svg");
                 activated => { root.open-settings(2); }
@@ -828,11 +834,6 @@ export component AppWindow inherits Window {
                 title: "Debug";
                 icon: @image-url("icons/bug.svg");
                 activated => { root.open-settings(3); }
-            }
-            MenuItem {
-                title: "Games";
-                icon: @image-url("icons/library.svg");
-                activated => { root.open-settings(4); }
             }
         }
         Menu {
@@ -1484,6 +1485,8 @@ export component AppWindow inherits Window {
         games-opened => { root.games-opened(); }
         open-game-settings(i) => { root.open-game-settings(i, false); }
         clear-game-emu(i) => { root.set-game-emu(i, -1); }
+        set-game-emu(i, build) => { root.set-game-emu(i, build); }
+        pin-choices: root.pin-choices;
         restore-game(i) => { root.restore-game(i); }
         pick-game-emu(i) => {
             root.pin-dialog-row = i;

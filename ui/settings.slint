@@ -18,6 +18,8 @@ export struct GameConfigRow {
     emu-missing: bool,   // the pinned exe is gone
     pinned: bool,
     can-config: bool,    // false without a title id: no pin and no per-game settings
+    custom: bool,        // the game has its own settings (an "emu" block in its file)
+    pin: int,            // the pinned build's index in the pin choices after "Library default" (-1: none or missing)
     icon: image,
 }
 
@@ -81,6 +83,7 @@ global Form {
 component Section inherits Rectangle {
     in property <string> title;
     in property <string> hint;
+    in property <bool> fill: false; // a child with vertical-stretch takes the height left (a table)
     horizontal-stretch: 1;
     preferred-width: 0px;
     background: Theme.card;
@@ -91,7 +94,7 @@ component Section inherits Rectangle {
         padding: 14px;
         padding-top: 12px;
         spacing: 6px;
-        alignment: start;
+        alignment: root.fill ? LayoutAlignment.stretch : LayoutAlignment.start;
         Rectangle {
             height: 22px;
             Text {
@@ -207,19 +210,25 @@ component FolderRow inherits Rectangle {
 component GameConfigRowView inherits Rectangle {
     in property <GameConfigRow> game;
     in property <bool> selected;
+    in property <[string]> emu-choices; // "Library default", then every installed build
     in property <length> name-w;
     in property <length> serial-w;
     in property <length> version-w;
+    in property <length> settings-w;
     in property <length> emu-w;
     callback clicked();
     callback double-clicked();
     callback menu(length, length); // right-click, in window coordinates
-    callback set-emu-none();       // the Emu drop-down: "None"
-    callback set-emu-pick();       // the Emu drop-down: "Set Emu…"
-    height: 42px;
+    callback set-emu(int);         // the Emulator drop-down: a build's index in the pin list, -1 for the library default
+    height: 44px;
     background: root.selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : transparent;
-    border-width: root.selected ? 1px : 0px;
-    border-color: Theme.row-outline;
+    // The selected row's marker, as in the drop-down lists.
+    if root.selected: Rectangle {
+        x: 0px;
+        width: 2px;
+        height: parent.height;
+        background: Theme.accent;
+    }
 
     HorizontalLayout {
         spacing: 0px;
@@ -229,7 +238,7 @@ component GameConfigRowView inherits Rectangle {
             width: root.name-w;
             padding-left: 6px;
             padding-right: 8px;
-            spacing: 8px;
+            spacing: 10px;
             VerticalLayout {
                 alignment: center;
                 Rectangle {
@@ -257,29 +266,37 @@ component GameConfigRowView inherits Rectangle {
         }
         TextCell { w: root.serial-w; text: root.game.serial == "" ? "—" : root.game.serial; }
         TextCell { w: root.version-w; text: root.game.game-version == "" ? "—" : root.game.game-version; }
-        // The Emu column is a drop-down: None, or pick another build. The row's TouchArea opens it (see below).
-        emu-cell := Dropdown {
+        // The Emulator column: a drop-down of the library default and every installed build, filling the whole
+        // cell with its own frame. It rises 1 px so its top edge sits on the line above (the previous row's
+        // box, or the header's line, which the list clips it under): one line between boxes, not two.
+        // The row's TouchArea opens it (see below).
+        Rectangle {
             width: root.emu-w;
-            compact: true;
-            tracks-selection: false;
-            model: ["None", "Set Emu…"];
-            item-enabled: [root.game.pinned, root.game.can-config];
-            text: root.game.pinned ? root.game.emu : "None";
-            text-color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
-            selected(i) => {
-                if (i == 0) {
-                    root.set-emu-none();
-                } else {
-                    root.set-emu-pick();
-                }
+            emu-cell := Dropdown {
+                y: -1px;
+                width: parent.width;
+                height: parent.height + 1px;
+                enabled: root.game.can-config;
+                model: root.emu-choices;
+                current-index: root.game.pin + 1;
+                popup-width: max(root.emu-w, 220px);
+                text: !root.game.can-config ? "—" : root.game.pinned ? root.game.emu : "Library default";
+                text-color: root.game.emu-missing ? Theme.danger : root.game.pinned ? Theme.text : Theme.muted;
+                selected(i) => { root.set-emu(i - 1); }
             }
+        }
+        TextCell {
+            w: root.settings-w;
+            text: !root.game.can-config ? "—" : root.game.custom ? "Custom" : "Global";
+            color: root.game.custom ? Theme.text : Theme.muted;
         }
     }
 
     touch := TouchArea {
         clicked => {
             // A click in the Emu column opens its drop-down; anywhere else selects the row.
-            if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x) {
+            if (self.mouse-x >= emu-cell.absolute-position.x - root.absolute-position.x
+                && self.mouse-x < emu-cell.absolute-position.x - root.absolute-position.x + emu-cell.width) {
                 emu-cell.open();
             } else {
                 root.clicked();
@@ -394,10 +411,14 @@ export component SettingsPage inherits VerticalLayout {
     // Look for a newer launcher release at startup (Help > Check for updates asks any time).
     in-out property <bool> check-launcher-updates: true;
     in property <string> launcher-version; // this build's release tag, "" for a development build
-    in-out property <length> gw-name: 300px;
     in-out property <length> gw-serial: 110px;
     in-out property <length> gw-version: 110px;
-    in-out property <length> gw-emu: 280px;
+    in-out property <length> gw-settings: 100px;
+    in-out property <length> gw-emu: 300px;
+    in property <[string]> pin-choices;      // the Emulator drop-downs: "Library default", then the installed builds
+    property <bool> selected-can-config: root.games-selected >= 0 && root.games-selected < root.game-configs.length
+        && root.game-configs[root.games-selected].can-config;
+    property <bool> selected-pinned: root.selected-can-config && root.game-configs[root.games-selected].pinned;
     in-out property <string> microphone;
     in-out property <int> present-mode;
     in-out property <int> printf-dir;
@@ -452,7 +473,8 @@ export component SettingsPage inherits VerticalLayout {
     callback games-opened();                 // the Games tab was shown: refresh its rows
     callback open-game-settings(int);        // Games tab row -> per-game mode
     callback clear-game-emu(int);            // pin "None"
-    callback pick-game-emu(int);             // "Set Emu..." (the window shows the picker)
+    callback pick-game-emu(int);             // "Set emulator..." (the window shows the picker)
+    callback set-game-emu(int, int);         // the Emulator drop-down: library index, build index (-1: library default)
     callback restore-game(int);              // STEP7:2: Games tab: put a removed game back on the library
     callback reset-game();                   // per-game mode: drop the game's overrides
 
@@ -505,13 +527,16 @@ export component SettingsPage inherits VerticalLayout {
                     clicked => { root.back(); }
                 }
             }
-            for tab[i] in root.game-mode ? ["General", "Graphics", "Advanced", "Debug"] : ["General", "Graphics", "Advanced", "Debug", "Games"]: TabButton {
+            // Shown in this order; `tab` is the settings-tab number (Games is 4 wherever it sits).
+            for tab in root.game-mode
+                ? [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]
+                : [{ label: "General", tab: 0 }, { label: "Graphics", tab: 1 }, { label: "Games", tab: 4 }, { label: "Advanced", tab: 2 }, { label: "Debug", tab: 3 }]: TabButton {
                 // Fixed width (not fill): HBox children grow by default and push
                 // later tabs off-screen.
                 width: 110px;
-                text: tab;
-                active: i == root.settings-tab;
-                clicked => { root.settings-tab = i; }
+                text: tab.label;
+                active: tab.tab == root.settings-tab;
+                clicked => { root.settings-tab = tab.tab; }
             }
         }
     }
@@ -1236,214 +1261,235 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    // Games: every library game with its emulator pin; each can also open its own settings.
+    // Games: every library game with its emulator pin; each can also open its own settings. The games card takes
+    // the page's height, the removed games card only the height of its rows.
     if root.settings-tab == 4 && !root.game-mode: VerticalLayout {
         vertical-stretch: 1;
-        spacing: 8px;
-        Hint {
-            text: "\"None\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
-        }
-        games-box := Rectangle {
+        padding-top: 8px;
+        spacing: Form.gap;
+        Section {
             vertical-stretch: 1;
-            background: Theme.bg;
-            border-radius: 0px;
-            border-width: 1px;
-            border-color: Theme.card-border;
-            clip: true;
-            // Right-click menu of the selected row (the row selects itself first).
-            games-menu := ContextMenuArea {
-                x: 0px;
-                y: 0px;
-                width: 0px;
-                height: 0px;
-                Menu {
-                    MenuItem {
-                        title: "Game settings…";
-                        icon: @image-url("icons/global-settings.svg");
-                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
-                        activated => { root.open-game-settings(root.games-selected); }
-                    }
-                    MenuItem {
-                        title: "None";
-                        icon: @image-url("icons/clear.svg");
-                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
-                        activated => { root.clear-game-emu(root.games-selected); }
-                    }
-                    MenuItem {
-                        title: "Set Emu…";
-                        icon: @image-url("icons/pin.svg");
-                        enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
-                        activated => { root.pick-game-emu(root.games-selected); }
+            fill: true;
+            title: "Games (" + root.game-configs.length + ")";
+            hint: "\"Library default\" runs the game with the emulator chosen in the library. Pinning a build runs that game with it instead; a \"-latest\" build follows its updates, a dated build stays exactly as it is. Pins and per-game settings are kept per serial.";
+            games-box := Rectangle {
+                vertical-stretch: 1;
+                min-height: 160px;
+                background: Theme.log-bg;
+                border-radius: 0px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                clip: true;
+                // The Game column takes what the others leave, so the table always spans the card.
+                property <length> fixed-w: 20px + root.gw-serial + root.gw-version + root.gw-settings + root.gw-emu;
+                property <length> name-w: max(220px, self.width - 2px - self.fixed-w);
+                // Right-click menu of the selected row (the row selects itself first). Only what fits the game.
+                games-menu := ContextMenuArea {
+                    x: 0px;
+                    y: 0px;
+                    width: 0px;
+                    height: 0px;
+                    Menu {
+                        MenuItem {
+                            title: "Game settings…";
+                            icon: @image-url("icons/global-settings.svg");
+                            enabled: root.selected-can-config;
+                            activated => { root.open-game-settings(root.games-selected); }
+                        }
+                        MenuItem {
+                            title: root.selected-pinned ? "Change emulator…" : "Set emulator…";
+                            icon: @image-url("icons/pin.svg");
+                            enabled: root.selected-can-config;
+                            activated => { root.pick-game-emu(root.games-selected); }
+                        }
+                        if root.selected-pinned: MenuItem {
+                            title: "Use library default";
+                            icon: @image-url("icons/clear.svg");
+                            activated => { root.clear-game-emu(root.games-selected); }
+                        }
                     }
                 }
-            }
-            VerticalLayout {
-                padding: 1px;
-                // The header follows the rows' horizontal scroll.
-                Rectangle {
-                    height: 28px;
-                    background: Theme.log-bg.with-alpha(0.85);
-                    clip: true;
-                    HorizontalLayout {
-                        x: games-table.content-x;
-                        width: 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu;
-                        height: parent.height;
-                        spacing: 0px;
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        HeaderCell { text: "Game"; w <=> root.gw-name; }
-                        HeaderCell { text: "Serial"; w <=> root.gw-serial; }
-                        HeaderCell { text: "Game Version"; w <=> root.gw-version; }
-                        HeaderCell { text: "Emu"; w <=> root.gw-emu; }
-                    }
+                VerticalLayout {
+                    padding: 1px;
+                    // The header follows the rows' horizontal scroll.
                     Rectangle {
-                        y: parent.height - 1px;
-                        height: 1px;
-                        background: Theme.card-border;
+                        height: 30px;
+                        clip: true;
+                        HorizontalLayout {
+                            x: games-table.content-x;
+                            width: games-box.name-w + games-box.fixed-w;
+                            height: parent.height;
+                            spacing: 0px;
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            // No grip on Game: it fills the space the other columns leave.
+                            Text {
+                                width: games-box.name-w;
+                                text: "Game";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            HeaderCell { text: "Serial"; w <=> root.gw-serial; }
+                            HeaderCell { text: "Version"; w <=> root.gw-version; }
+                            // Lined up with the text inside the drop-downs below.
+                            HorizontalLayout {
+                                width: root.gw-emu;
+                                padding-left: 10px;
+                                Text {
+                                    text: "Emulator";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            HeaderCell { text: "Settings"; w <=> root.gw-settings; tooltip: "Custom: the game has its own settings (Game settings…). Global: it uses yours."; }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.card-border;
+                        }
                     }
-                }
-                games-table := ListView {
-                    vertical-stretch: 1;
-                    content-width: max(self.visible-width, 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu);
-                    for game[index] in root.game-configs: GameConfigRowView {
-                        width: 20px + root.gw-name + root.gw-serial + root.gw-version + root.gw-emu;
-                        game: game;
-                        name-w: root.gw-name;
-                        serial-w: root.gw-serial;
-                        version-w: root.gw-version;
-                        emu-w: root.gw-emu;
-                        selected: index == root.games-selected;
-                        clicked => { root.games-selected = index; }
-                        double-clicked => {
-                            if (game.can-config) {
-                                root.open-game-settings(index);
+                    games-table := ListView {
+                        vertical-stretch: 1;
+                        content-width: max(self.visible-width, games-box.name-w + games-box.fixed-w);
+                        for game[index] in root.game-configs: GameConfigRowView {
+                            width: games-box.name-w + games-box.fixed-w;
+                            game: game;
+                            emu-choices: root.pin-choices;
+                            name-w: games-box.name-w;
+                            serial-w: root.gw-serial;
+                            version-w: root.gw-version;
+                            settings-w: root.gw-settings;
+                            emu-w: root.gw-emu;
+                            selected: index == root.games-selected;
+                            clicked => { root.games-selected = index; }
+                            double-clicked => {
+                                if (game.can-config) {
+                                    root.open-game-settings(index);
+                                }
+                            }
+                            menu(x, y) => {
+                                games-menu.show({ x: x - games-menu.absolute-position.x, y: y - games-menu.absolute-position.y });
+                            }
+                            set-emu(build) => {
+                                root.games-selected = index;
+                                root.set-game-emu(index, build);
                             }
                         }
-                        menu(x, y) => {
-                            games-menu.show({ x: x - games-menu.absolute-position.x, y: y - games-menu.absolute-position.y });
-                        }
-                        set-emu-none => { root.clear-game-emu(index); }
-                        set-emu-pick => { root.pick-game-emu(index); }
                     }
                 }
+                if root.game-configs.length == 0: Text {
+                    text: "No games in the library. Add a game folder in General.";
+                    color: Theme.muted;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
-            if root.game-configs.length == 0: Text {
-                text: "No games in the library. Add a game folder in General.";
-                color: Theme.muted;
-                font-size: 14px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            AppButton {
-                text: "Game settings…";
-                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
-                clicked => { root.open-game-settings(root.games-selected); }
-            }
-            AppButton {
-                text: "None";
-                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].pinned;
-                clicked => { root.clear-game-emu(root.games-selected); }
-            }
-            AppButton {
-                text: "Set Emu…";
-                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length && root.game-configs[root.games-selected].can-config;
-                clicked => { root.pick-game-emu(root.games-selected); }
-            }
-            // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
-            // confirmation. Games without a title id have no save folder.
-            AppButton {
-                text: "Delete save data…";
-                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
-                    && root.game-configs[root.games-selected].serial != "" && !root.running;
-                clicked => { GameActions.delete-save-data(root.games-selected); }
-            }
-            // Game configs as JSON keyed by serial: the format of the Qt launcher's Import/Export.
-            AppButton {
-                text: "Import configs…";
-                clicked => { GameActions.import-configs(); }
-            }
-            AppButton {
-                text: "Export config…";
-                enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
-                    && root.game-configs[root.games-selected].serial != "";
-                clicked => { GameActions.export-config(root.games-selected); }
+            // The selected game's actions; the emulator ones change with its pin.
+            HorizontalLayout {
+                spacing: 8px;
+                AppButton {
+                    text: "Game settings…";
+                    enabled: root.selected-can-config;
+                    clicked => { root.open-game-settings(root.games-selected); }
+                }
+                AppButton {
+                    text: root.selected-pinned ? "Change emulator…" : "Set emulator…";
+                    enabled: root.selected-can-config;
+                    clicked => { root.pick-game-emu(root.games-selected); }
+                }
+                if root.selected-pinned: AppButton {
+                    text: "Use library default";
+                    clicked => { root.clear-game-emu(root.games-selected); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                // Game configs as JSON keyed by serial: the format of the Qt launcher's Import/Export.
+                AppButton {
+                    text: "Import configs…";
+                    clicked => { GameActions.import-configs(); }
+                }
+                AppButton {
+                    text: "Export config…";
+                    enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
+                        && root.game-configs[root.games-selected].serial != "";
+                    clicked => { GameActions.export-config(root.games-selected); }
+                }
+                // STEP6:6e: wipes <run folder>/_SaveData/<serial> of the selected game, after the launcher window's
+                // confirmation. Games without a title id have no save folder.
+                AppButton {
+                    text: "Delete save data…";
+                    enabled: root.games-selected >= 0 && root.games-selected < root.game-configs.length
+                        && root.game-configs[root.games-selected].serial != "" && !root.running;
+                    clicked => { GameActions.delete-save-data(root.games-selected); }
+                }
             }
         }
 
-        // STEP7:2: what "Remove from list" took off the library. Nothing was deleted from disk; restoring puts the
+        // STEP7:2: what "Remove from list" took off the library. Nothing was deleted from disk; Restore puts the
         // game back in the library (the rescan finds it again).
-        Text {
-            text: root.removed-games.length == 0 ? "Removed games" : "Removed games (" + root.removed-games.length + ")";
-            color: Theme.muted;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        if root.removed-games.length == 0: Hint {
-            text: "Nothing removed. \"Remove from list\" only hides a game: its files stay where they are and it is listed here until restored.";
-        }
-        if root.removed-games.length > 0: Rectangle {
-            height: 110px;
-            background: Theme.bg;
-            border-radius: 0px;
-            border-width: 1px;
-            border-color: Theme.card-border;
-            clip: true;
-            ListView {
-                for game[i] in root.removed-games: Rectangle {
-                    height: 28px;
-                    background: i == root.removed-selected ? Theme.row-selected : removed-touch.has-hover ? Theme.row-hover : transparent;
-                    HorizontalLayout {
-                        padding-left: 10px;
-                        padding-right: 10px;
-                        spacing: 10px;
-                        Text {
-                            horizontal-stretch: 1;
-                            min-width: 0px;
-                            text: game.label;
-                            color: Theme.text;
-                            font-size: 13px;
-                            vertical-alignment: center;
-                            overflow: elide;
+        Section {
+            vertical-stretch: 0;
+            title: "Removed games (" + root.removed-games.length + ")";
+            hint: "\"Remove from list\" only hides a game: its files stay where they are and it is listed here until restored.";
+            if root.removed-games.length == 0: Hint {
+                text: "Nothing removed.";
+            }
+            if root.removed-games.length > 0: Rectangle {
+                // Up to four rows, then the list scrolls.
+                height: min(4, root.removed-games.length) * 34px + 2px;
+                background: Theme.log-bg;
+                border-radius: 0px;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                clip: true;
+                ListView {
+                    x: 1px;
+                    y: 1px;
+                    width: parent.width - 2px;
+                    height: parent.height - 2px;
+                    for game[i] in root.removed-games: Rectangle {
+                        height: 34px;
+                        background: removed-touch.has-hover ? Theme.row-hover : transparent;
+                        removed-touch := TouchArea {
+                            // Straight to the library, like the Restore button.
+                            double-clicked => { root.restore-game(i); }
                         }
-                        Text {
-                            width: min(self.preferred-width, 320px);
-                            text: game.detail;
-                            color: Theme.faint;
-                            font-size: 11px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                    }
-                    removed-touch := TouchArea {
-                        clicked => { root.removed-selected = i; }
-                        // Straight to the library, like the Restore button.
-                        double-clicked => {
-                            root.removed-selected = i;
-                            root.restore-game(i);
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 4px;
+                            spacing: 12px;
+                            Text {
+                                min-width: 0px;
+                                text: game.label;
+                                color: Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                text: game.detail;
+                                color: Theme.faint;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                AppButton {
+                                    text: "Restore";
+                                    clicked => { root.restore-game(i); }
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
-        if root.removed-games.length > 0: HorizontalLayout {
-            alignment: start;
-            spacing: 8px;
-            AppButton {
-                text: "Restore";
-                enabled: root.removed-selected >= 0 && root.removed-selected < root.removed-games.length;
-                clicked => { root.restore-game(root.removed-selected); }
-            }
-            Text {
-                horizontal-stretch: 1;
-                text: "The game goes back on the library. A double-click on a row does the same.";
-                color: Theme.faint;
-                font-size: 11px;
-                vertical-alignment: center;
-                overflow: elide;
             }
         }
     }

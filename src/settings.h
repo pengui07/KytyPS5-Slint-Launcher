@@ -195,6 +195,7 @@ bool        set_game_emulator(const Paths& paths, const std::string& title_id, c
 // baked into the file (variables the page did not touch are left exactly as the file held them).
 bool save_game_overrides(const Paths& paths, const std::string& title_id, const Settings& baseline, const Settings& edited);
 bool reset_game_overrides(const Paths& paths, const std::string& title_id); // drops "emu", keeps the pin
+bool has_game_overrides(const Paths& paths, const std::string& title_id);   // the file has a non-empty "emu"
 
 // Kyty.ini import: applies one value of [GlobalConfiguration] or of a game's entry (the text as QSettings holds it:
 // "R2560X1440", "Mailbox", "true", "60") to the "emu" key of the same name, and marks the key as set by the user.

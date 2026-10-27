@@ -82,6 +82,8 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 	std::shared_ptr<slint::VectorModel<slint::SharedString>> dropdown_model  = std::make_shared<slint::VectorModel<slint::SharedString>>();
 	// Every installed build for the pin picker: not filtered by the search box or the kind selector (unlike installed_model).
 	std::shared_ptr<slint::VectorModel<BuildChoice>>         pin_model      = std::make_shared<slint::VectorModel<BuildChoice>>();
+	// The Games tab's Emulator drop-downs: "Library default", then pin_model's names in the same order.
+	std::shared_ptr<slint::VectorModel<slint::SharedString>> pin_choices    = std::make_shared<slint::VectorModel<slint::SharedString>>();
 
 	// Worker threads, joined in Shutdown; each gets a token that CancelAll sets. Started from the UI
 	// thread only. Finished ones are joined and dropped before the next one starts, so an hourly
@@ -558,7 +560,13 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 				c.path = slint::SharedString(b.exe);
 				all.push_back(c);
 			}
+			std::vector<slint::SharedString> choices {slint::SharedString("Library default")};
+			for (const auto& c: all)
+			{
+				choices.push_back(c.name);
+			}
 			pin_model->set_vector(std::move(all));
+			pin_choices->set_vector(std::move(choices));
 		}
 		WithUi([&](AppWindow& w, const VM&) { w.set_emu_build_index(current); });
 		// Builds the filter hides (or that are gone) leave the selection.
@@ -1586,6 +1594,7 @@ struct VersionManager::Impl: std::enable_shared_from_this<Impl>
 		    {
 			    w.set_emu_builds(dropdown_model);
 			    w.set_pin_builds(pin_model);
+			    w.set_pin_choices(pin_choices);
 			    w.on_choose_emu_build(
 			        [self](int index)
 			        {
